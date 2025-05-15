@@ -23,13 +23,17 @@ client.on('messageCreate', async (message) => {
 
   if (urls) {
     for (const url of urls) {
+      console.log(`URL found: ${url}`);
       try {
         const archiveResponse = await axios.post('https://archive.is/submit/', { url });
         const archiveUrl = archiveResponse.data.url;
 
+        const prompt = `Summarize this article in 1500 characters: ${url}`;
+        console.log(`Prompt: ${prompt}`);
+
         const summaryResponse = await openai.createCompletion({
           model: 'text-davinci-002',
-          prompt: `Summarize this article in 1500 characters: ${url}`,
+          prompt: prompt,
           max_tokens: 1500,
         });
 
