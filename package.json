@@ -1,0 +1,15 @@
+{
+  "name": "discord-article-archiver-bot",
+  "version": "1.0.0",
+  "description": "A Discord bot that watches for article links in a channel, sends them to archive.is for archival, and uses ChatGPT APIs to automatically create a 1500 character summary of the linked article.",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^13.3.1",
+    "axios": "^0.24.0",
+    "dotenv": "^10.0.0",
+    "openai": "^1.0.0"
+  }
+}
