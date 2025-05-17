@@ -133,7 +133,7 @@
           }
 
           //message.channel.send(`Summary: ${summary}`);
-          message.channel.reply({ content: `Summary: ${summary}`, allowedMentions: { repliedUser: false } });
+          message.reply({ content: `Summary: ${summary}`, allowedMentions: { repliedUser: false } });
         }
       } catch (error) {
         logger.error('Error summarizing the article:', error);
