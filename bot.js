@@ -106,7 +106,7 @@
             return;
           }
           //message.channel.send(`Summary: ${summary}`);
-          message.channel.reply({ content: `Summary: ${summary}`, allowedMentions: { repliedUser: false } });
+          message.reply({ content: `Summary: ${summary}`, allowedMentions: { repliedUser: false } });
         } else {
           const completion = await openai.chat.completions.create({
             model: 'gemma3:12b-it-qat',
