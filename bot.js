@@ -74,6 +74,14 @@
             continue;
           }
 
+          const gifHosts = ['tenor.com', 'giphy.com', 'imgur.com'];
+          const isGifHost = gifHosts.some(host => url.toLowerCase().includes(host));
+
+          if (isGifHost) {
+            logger.info(`Skipping GIF hosting URL: ${url}`);
+            continue;
+          }
+
           if (method === 'response') {
             const response = await openai.responses.create({
               model: 'gpt-4.1-nano',
