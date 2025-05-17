@@ -1,50 +1,121 @@
-const { Client, Intents } = require('discord.js');
-const axios = require('axios');
-const dotenv = require('dotenv');
-const { Configuration, OpenAIApi } = require('openai');
+(async () => {
+  const { Client, Intents } = await import('discord.js');
+  const axios = (await import('axios')).default;
+  const dotenv = (await import('dotenv')).default;
+  const OpenAI = (await import('openai')).default;
+  const fs = (await import('fs')).promises;
+  const logger = require('./logger'); // Import the logger
 
-dotenv.config();
+  dotenv.config();
 
-const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
+  const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
 
-const openai = new OpenAIApi(new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
-}));
+  const openai = new OpenAI({
+    apiKey: process.env.OLLAMA_API_KEY,
+    baseURL: process.env.OPENAI_BASE_URL || 'http://localhost:11434/v1/', // Get baseURL from environment variable
+  });
 
-client.once('ready', () => {
-  console.log('Bot is online!');
-});
+  const systemPrompt = await fs.readFile('prompt.txt', 'utf-8');
 
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
+  client.once('ready', () => {
+    logger.info('Bot is online and connected to Discord APIs!');
+  });
 
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const urls = message.content.match(urlRegex);
+  client.on('shardError', (error) => {
+    logger.error('A WebSocket connection encountered an error:', error);
+  });
 
-  if (urls) {
-    for (const url of urls) {
-      console.log(`URL found: ${url}`);
-      try {
-        const archiveResponse = await axios.post('https://archive.is/submit/', { url });
-        const archiveUrl = archiveResponse.data.url;
+  client.on('debug', (info) => {
+    logger.debug(`DEBUG: ${info}`);
+  });
 
-        const prompt = `Summarize this article in 1500 characters: ${url}`;
-        console.log(`Prompt: ${prompt}`);
+  client.on('warn', (warning) => {
+    logger.warn(`WARNING: ${warning}`);
+  });
 
-        const summaryResponse = await openai.createCompletion({
-          model: 'text-davinci-002',
-          prompt: prompt,
-          max_tokens: 1500,
-        });
+  client.on('error', (error) => {
+    logger.error('An error occurred:', error);
+  });
 
-        const summary = summaryResponse.data.choices[0].text.trim();
+  client.on('disconnect', (event) => {
+    logger.error(`Disconnected from Discord Gateway with code: ${event.code}, reason: ${event.reason}`);
+  });
 
-        message.channel.send(`Archived URL: ${archiveUrl}\nSummary: ${summary}`);
-      } catch (error) {
-        console.error('Error archiving or summarizing the article:', error);
+  client.on('reconnecting', () => {
+    logger.info('Reconnecting to Discord Gateway...');
+  });
+
+  client.on('messageCreate', async (message) => {
+    logger.info(`Message received: ${message.content}`);
+    if (message.author.bot) return;
+
+    if (message.content.toLowerCase() === 'ping') {
+      message.channel.send('pong');
+      return;
+    }
+
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urls = message.content.match(urlRegex);
+
+    if (urls) {
+      for (const url of urls) {
+        logger.info(`URL found: ${url}`);
+        try {
+          const prompt = `Summarize this article based on your system prompt: ${url}`;
+          logger.info(`Prompt: ${prompt}`);
+
+          const method = process.env.OPENAI_METHOD || 'completion'; // Default to 'completion'
+
+          if (method === 'response') {
+            const response = await openai.responses.create({
+              model: 'gpt-4.1-nano',
+              instructions: systemPrompt, // Use the system prompt as instructions
+              input: `Summarize this article in 1500 characters or less: ${url}`, // User input
+            });
+
+            logger.info('API Response:', response);
+            const summary = response.output_text?.trim();
+
+            if (!summary) {
+              logger.error('No summary text found in the response.');
+              message.channel.send('Sorry, I could not generate a summary for this article.');
+              return;
+            }
+
+            message.channel.send(`URL: ${url}\nSummary: ${summary}`);
+          } else {
+            const completion = await openai.chat.completions.create({
+              model: 'gemma3:12b-it-qat',
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `Summarize this article in 1500 characters or less: ${url}` },
+              ],
+              max_tokens: 1500,
+            });
+
+            logger.info('API Response:', completion);
+            if (completion.error) {
+              logger.error('Error from OpenAI API:', completion.error);
+              message.channel.send('Sorry, I could not summarize this article at the moment.');
+              return;
+            }
+
+            const summary = completion.choices[0].message.content.trim();
+
+            if (!summary) {
+              logger.error('No summary text found in the response.');
+              message.channel.send('Sorry, I could not generate a summary for this article.');
+              return;
+            }
+
+            message.channel.send(`URL: ${url}\nSummary: ${summary}`);
+          }
+        } catch (error) {
+          logger.error('Error summarizing the article:', error);
+        }
       }
     }
-  }
-});
+  });
 
-client.login(process.env.DISCORD_TOKEN);
+  client.login(process.env.DISCORD_TOKEN);
+})();
