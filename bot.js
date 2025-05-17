@@ -66,6 +66,14 @@
 
           const method = process.env.OPENAI_METHOD || 'completion'; // Default to 'completion'
 
+          const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
+          const isImageUrl = imageExtensions.some(ext => url.toLowerCase().endsWith(ext));
+
+          if (isImageUrl) {
+            logger.info(`Skipping image URL: ${url}`);
+            continue;
+          }
+
           if (method === 'response') {
             const response = await openai.responses.create({
               model: 'gpt-4.1-nano',
