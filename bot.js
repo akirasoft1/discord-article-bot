@@ -125,7 +125,7 @@
               return;
             }
 
-            message.channel.send(`URL: ${url}\nSummary: ${summary}`);
+            message.channel.send(`Summary: ${summary}`);
           }
         } catch (error) {
           logger.error('Error summarizing the article:', error);
