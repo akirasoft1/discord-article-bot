@@ -98,7 +98,8 @@
               return;
             }
 
-            message.channel.send(`URL: ${url}\nSummary: ${summary}`);
+            //message.channel.send(`URL: ${url}\nSummary: ${summary}`);
+            message.channel.send(`Summary: ${summary}`);
           } else {
             const completion = await openai.chat.completions.create({
               model: 'gemma3:12b-it-qat',
