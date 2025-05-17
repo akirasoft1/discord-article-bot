@@ -19,6 +19,12 @@ This project is a Discord bot that watches for article links in a channel, sends
    ```sh
    DISCORD_TOKEN=your_discord_token
    OPENAI_API_KEY=your_openai_api_key
+   DISCORD_TOKEN=your_discord_token
+   OPENAI_API_KEY=your_openai_api_key
+   OLLAMA_API_KEY=ollama_api_key
+   LOG_LEVEL=INFO|DEBUG|ERROR
+   OPENAI_BASE_URL=your_openai_base_url_if_needed
+   OPENAI_METHOD=completion|response
    ```
 
 4. Run the bot:
