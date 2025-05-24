@@ -109,11 +109,16 @@
           message.reply({ content: `Summary: ${summary}`, allowedMentions: { repliedUser: false } });
         } else {
           const completion = await openai.chat.completions.create({
-            model: 'gemma3:12b-it-qat',
+            //model: 'gemma3:12b-it-qat',
+            //model: 'gemma3:12b',
+            model: 'gemma3:27b',
+            // model: 'llama3.3:70b-instruct-q2_K',
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: `Summarize this article in 1500 characters or less: ${url}` },
             ],
+            temperature: 0.7,
+            top_p: 0.95,              
             max_tokens: 1500,
           });
 
@@ -144,6 +149,14 @@
   client.on('messageReactionAdd', (reaction, user) => {
     logger.info(`Reaction added: ${reaction.emoji.name} by ${user.tag} to message: ${reaction.message.content}`);
   });
+
+  client.on('messageReactionAdd', async (reaction, user) => {
+    if (reaction.emoji.name !== 'Rocking') return; // Check if the reaction is the newspaper emoji
+    if (reaction.count > 1) return; // Ensure it's the first reaction
+    const message = reaction.message;
+    message.reply({ content: `heh heh heh heh heh`, allowedMentions: { repliedUser: false } });
+  });
+
 
   client.login(process.env.DISCORD_TOKEN);
 })();
