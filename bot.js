@@ -17,7 +17,7 @@
   });
 
   const openai = new OpenAI({
-    apiKey: process.env.OLLAMA_API_KEY,
+    apiKey: process.env.OPENAI_API_KEY,
     baseURL: process.env.OPENAI_BASE_URL || 'http://localhost:11434/v1/', // Get baseURL from environment variable
   });
 
@@ -94,7 +94,7 @@
           const response = await openai.responses.create({
             model: 'gpt-4.1-nano',
             instructions: systemPrompt, // Use the system prompt as instructions
-            input: `Summarize this article in 1500 characters or less: ${url}`, // User input
+            input: `Summarize this article per your system prompt: ${url}`, // User input
           });
 
           logger.info('API Response:', response);
