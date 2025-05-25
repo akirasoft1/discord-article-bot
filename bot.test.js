@@ -1,12 +1,71 @@
-const { isArchiveUrl, transformArchiveUrl } = require('./bot');
+const { isArchiveUrl, transformArchiveUrl, processUrlForSummarization } = require('./bot');
+
 // Mock the logger to prevent console output during tests
-const mockLogger = {
-  warn: jest.fn(),
+// Define the mock implementation directly inline
+jest.mock('./logger', () => ({
   info: jest.fn(),
   error: jest.fn(),
+  warn: jest.fn(),
   debug: jest.fn(),
-};
-jest.mock('./logger', () => mockLogger);
+}));
+
+// Mock the 'discord.js' module
+jest.mock('discord.js', () => {
+  const mockLogin = jest.fn();
+  const mockOn = jest.fn();
+  const mockOnce = jest.fn();
+
+  // Mock Client constructor
+  const MockClient = jest.fn().mockImplementation(() => {
+    return {
+      login: mockLogin,
+      on: mockOn,
+      once: mockOnce,
+      // Store mocks for potential assertion if needed, though not strictly necessary
+      // if tests primarily focus on higher-level behavior.
+      _mockLogin: mockLogin,
+      _mockOn: mockOn,
+      _mockOnce: mockOnce,
+    };
+  });
+
+  return {
+    Client: MockClient,
+    Intents: {
+      FLAGS: {
+        GUILDS: 'mock_guilds_intent',
+        GUILD_MESSAGES: 'mock_guild_messages_intent',
+        GUILD_MESSAGE_REACTIONS: 'mock_guild_message_reactions_intent',
+      },
+    },
+  };
+});
+
+// Mock the 'openai' module
+jest.mock('openai', () => {
+  // Create mock functions for the methods we expect to be called
+  const mockChatCompletionsCreate = jest.fn();
+  const mockResponsesCreate = jest.fn();
+
+  // Return a mock constructor
+  return jest.fn().mockImplementation(() => {
+    // This is the mock OpenAI instance structure
+    return {
+      chat: {
+        completions: {
+          create: mockChatCompletionsCreate,
+        },
+      },
+      responses: {
+        create: mockResponsesCreate,
+      },
+      // Store the mocks on the instance if needed for direct access in tests,
+      // or tests can access them via the module-level variables above.
+      _mockChatCompletionsCreate: mockChatCompletionsCreate,
+      _mockResponsesCreate: mockResponsesCreate,
+    };
+  });
+});
 
 describe('isArchiveUrl', () => {
   const archiveHosts = [
@@ -68,19 +127,22 @@ describe('isArchiveUrl', () => {
 });
 
 describe('transformArchiveUrl', () => {
+  let logger; // To hold the mocked logger instance
+
   beforeEach(() => {
-    // Clear mock calls for logger before each test in this suite
-    mockLogger.warn.mockClear();
-    mockLogger.info.mockClear();
-    mockLogger.error.mockClear();
-    mockLogger.debug.mockClear();
+    // Acquire the mocked logger instance and clear its methods
+    logger = require('./logger');
+    logger.warn.mockClear();
+    logger.info.mockClear();
+    logger.error.mockClear();
+    logger.debug.mockClear();
   });
 
   it('should successfully transform a standard archive.is URL', () => {
     const result = transformArchiveUrl('https://archive.is/https://example.com/page');
     expect(result.status).toBe('success');
     expect(result.resultUrl).toBe('https://archive.today/TEXT/https://example.com/page');
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining("[transformArchiveUrl] Transformed 'https://archive.is/https://example.com/page' to 'https://archive.today/TEXT/https://example.com/page'"));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("[transformArchiveUrl] Transformed 'https://archive.is/https://example.com/page' to 'https://archive.today/TEXT/https://example.com/page'"));
   });
 
   it('should successfully transform an archive.is URL with a timestamp/shortcode', () => {
@@ -131,29 +193,28 @@ describe('transformArchiveUrl', () => {
   });
 
 
-  it('should return error if no embedded http(s) URL is found', () => {
-    const result = transformArchiveUrl('https://archive.is/onlyapath');
-    expect(result.status).toBe('error');
-    expect(result.message).toContain('The structure is unrecognized.');
-    expect(result.errorLog).toContain('[transformArchiveUrl] Could not find an embedded URL');
+  it('should return untransformable_shortlink for a simple path like /onlyapath', () => {
+    const shortlinkUrl = 'https://archive.is/onlyapath';
+    const result = transformArchiveUrl(shortlinkUrl);
+    expect(result.status).toBe('untransformable_shortlink');
+    expect(result.message).toBe(`Archive link ${shortlinkUrl} appears to be a shortlink and cannot be directly converted to a text-only version. Please try accessing it in a browser first.`);
+    expect(result.errorLog).toBe(`[transformArchiveUrl] Archive link ${shortlinkUrl} is a shortlink. No embedded URL found in path. Pathname: /onlyapath`);
   });
 
-  it('should return error if the extracted embedded URL is invalid', () => {
-    // archive.is sometimes has links like archive.is/google.com (without protocol)
-    // our current logic expects http(s):// in the path. If it was `https://archive.is/prefix/google.com`
-    // it would try to parse `google.com` as a URL, which fails.
-    const result = transformArchiveUrl('https://archive.is/prefix/invalid-url-that-is-not-a-url');
-    // This test case will actually be caught by "Could not find an embedded URL" because "invalid-url-that-is-not-a-url" does not start with http(s)
-     expect(result.status).toBe('error');
-     expect(result.message).toContain('The structure is unrecognized.');
-     expect(result.errorLog).toContain('Could not find an embedded URL');
+  it('should return error if the extracted embedded URL is invalid or path is unrecognized', () => {
+    // Test case 1: Path without http(s) and multiple segments (not a simple shortlink)
+    const complexNonHttpUrl = 'https://archive.is/prefix/invalid-url-that-is-not-a-url';
+    const result1 = transformArchiveUrl(complexNonHttpUrl);
+    expect(result1.status).toBe('error');
+    expect(result1.message).toBe(`Sorry, I could not correctly process the archive link: ${complexNonHttpUrl}. The structure is unrecognized or does not contain an embedded URL.`);
+    expect(result1.errorLog).toContain(`[transformArchiveUrl] Could not find an embedded URL in the path of archive link: ${complexNonHttpUrl}. Path: /prefix/invalid-url-that-is-not-a-url`);
 
-    // To test the inner try-catch for new URL(originalUrl) failing:
-    const archiveUrlWithInvalidEmbedded = 'https://archive.is/http:/malformed'; // http:/malformed is not a valid URL
+    // Test case 2: Extracted embedded URL is invalid
+    const archiveUrlWithInvalidEmbedded = 'https://archive.is/http:/malformed'; // "http:/malformed" is not a valid URL
     const result2 = transformArchiveUrl(archiveUrlWithInvalidEmbedded);
     expect(result2.status).toBe('error');
-    expect(result2.message).toContain('The embedded link appears invalid.');
-    expect(result2.errorLog).toContain('Failed to validate extracted original URL');
+    expect(result2.message).toBe(`Sorry, I could not correctly process the archive link: ${archiveUrlWithInvalidEmbedded}. The embedded link appears invalid.`);
+    expect(result2.errorLog).toContain(`[transformArchiveUrl] Failed to validate extracted original URL 'http:/malformed' from archive link: ${archiveUrlWithInvalidEmbedded}.`);
   });
   
   it('should return error if the archive URL itself is completely malformed (e.g., just protocol)', () => {
@@ -193,14 +254,16 @@ describe('processUrlForSummarization', () => {
   let mockMessage;
   let mockOpenAI;
   let mockAxios;
+  let logger; // To hold the mocked logger instance
   const systemPrompt = "Test system prompt";
 
   beforeEach(() => {
-    // Reset mocks for each test
-    mockLogger.warn.mockClear();
-    mockLogger.info.mockClear();
-    mockLogger.error.mockClear();
-    mockLogger.debug.mockClear();
+    // Acquire the mocked logger instance and clear its methods
+    logger = require('./logger');
+    logger.warn.mockClear();
+    logger.info.mockClear();
+    logger.error.mockClear();
+    logger.debug.mockClear();
 
     mockMessage = {
       channel: {
@@ -209,16 +272,15 @@ describe('processUrlForSummarization', () => {
       reply: jest.fn(),
     };
 
-    mockOpenAI = {
-      responses: {
-        create: jest.fn()
-      },
-      chat: {
-        completions: {
-          create: jest.fn()
-        }
-      }
-    };
+    // Instantiate the mocked OpenAI. Its methods will be jest.fn() from the module mock.
+    const OpenAI = require('openai'); // This gets our mocked constructor
+    mockOpenAI = new OpenAI();      // This is now an instance of our mock
+
+    // Clear mocks on the instance's methods for each test if needed
+    // (already done by jest.fn() for each new instance, but can be explicit)
+    mockOpenAI.chat.completions.create.mockClear();
+    mockOpenAI.responses.create.mockClear();
+
 
     mockAxios = {
       get: jest.fn(),
@@ -236,6 +298,7 @@ describe('processUrlForSummarization', () => {
     // transformArchiveUrl will be called, let it behave normally for this valid case.
     
     mockAxios.get.mockResolvedValueOnce({ data: fetchedContent });
+    // Access the mock function from the instance created by the module mock
     mockOpenAI.chat.completions.create.mockResolvedValueOnce({
       choices: [{ message: { content: summaryContent } }],
     });
@@ -244,13 +307,13 @@ describe('processUrlForSummarization', () => {
     const originalEnv = process.env;
     process.env = { ...originalEnv, OPENAI_METHOD: 'completion' };
 
-    await processUrlForSummarization(archiveUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, mockLogger);
+    await processUrlForSummarization(archiveUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, logger);
 
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${archiveUrl}`));
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Archive URL detected: ${archiveUrl}`));
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[transformArchiveUrl] Transformed '${archiveUrl}' to '${transformedTextUrl}'`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${archiveUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Archive URL detected: ${archiveUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[transformArchiveUrl] Transformed '${archiveUrl}' to '${transformedTextUrl}'`));
     expect(mockAxios.get).toHaveBeenCalledWith(transformedTextUrl);
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Successfully fetched content from ${transformedTextUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Successfully fetched content from ${transformedTextUrl}`));
     expect(mockOpenAI.chat.completions.create).toHaveBeenCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([
         expect.objectContaining({ role: 'user', content: expect.stringContaining(fetchedContent) })
@@ -267,12 +330,12 @@ describe('processUrlForSummarization', () => {
     
     mockAxios.get.mockRejectedValueOnce(new Error('Network Error'));
 
-    await processUrlForSummarization(archiveUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, mockLogger);
+    await processUrlForSummarization(archiveUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, logger);
 
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${archiveUrl}`));
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[transformArchiveUrl] Transformed '${archiveUrl}' to '${transformedTextUrl}'`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${archiveUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[transformArchiveUrl] Transformed '${archiveUrl}' to '${transformedTextUrl}'`));
     expect(mockAxios.get).toHaveBeenCalledWith(transformedTextUrl);
-    expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Error fetching content from ${transformedTextUrl}: Network Error`));
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Error fetching content from ${transformedTextUrl}: Network Error`));
     expect(mockMessage.channel.send).toHaveBeenCalledWith(expect.stringContaining(`Sorry, I could not retrieve the content from the archive link: ${archiveUrl}`));
     expect(mockOpenAI.chat.completions.create).not.toHaveBeenCalled();
   });
@@ -289,9 +352,9 @@ describe('processUrlForSummarization', () => {
     const originalEnv = process.env;
     process.env = { ...originalEnv, OPENAI_METHOD: 'completion' };
 
-    await processUrlForSummarization(normalUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, mockLogger);
+    await processUrlForSummarization(normalUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, logger);
     
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${normalUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${normalUrl}`));
     expect(mockAxios.get).not.toHaveBeenCalled(); // Should not attempt to fetch from /TEXT/ URL
     expect(mockOpenAI.chat.completions.create).toHaveBeenCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([
@@ -305,10 +368,10 @@ describe('processUrlForSummarization', () => {
   // Test Scenario 4: Image URL skip
   it('should skip processing for image URLs', async () => {
     const imageUrl = 'https://example.com/image.png';
-    await processUrlForSummarization(imageUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, mockLogger);
+    await processUrlForSummarization(imageUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, logger);
 
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${imageUrl}`));
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Skipping image URL: ${imageUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${imageUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Skipping image URL: ${imageUrl}`));
     expect(mockAxios.get).not.toHaveBeenCalled();
     expect(mockOpenAI.chat.completions.create).not.toHaveBeenCalled();
     expect(mockMessage.reply).not.toHaveBeenCalled();
@@ -318,10 +381,10 @@ describe('processUrlForSummarization', () => {
   // Test Scenario 5: GIF host skip
   it('should skip processing for GIF hosting URLs', async () => {
     const gifUrl = 'https://tenor.com/view/some.gif';
-    await processUrlForSummarization(gifUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, mockLogger);
+    await processUrlForSummarization(gifUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, logger);
 
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${gifUrl}`));
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Skipping GIF hosting URL: ${gifUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${gifUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Skipping GIF hosting URL: ${gifUrl}`));
     expect(mockAxios.get).not.toHaveBeenCalled();
     expect(mockOpenAI.chat.completions.create).not.toHaveBeenCalled();
     expect(mockMessage.reply).not.toHaveBeenCalled();
@@ -335,12 +398,12 @@ describe('processUrlForSummarization', () => {
     // transformArchiveUrl will be called internally. For this test, its actual error return is what we're testing.
     // No need to mock transformArchiveUrl itself, just ensure isArchiveUrl would identify it.
     
-    await processUrlForSummarization(malformedArchiveUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, mockLogger);
+    await processUrlForSummarization(malformedArchiveUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, logger);
 
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${malformedArchiveUrl}`));
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Archive URL detected: ${malformedArchiveUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${malformedArchiveUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Archive URL detected: ${malformedArchiveUrl}`));
     // The error log from transformArchiveUrl (via processUrlForSummarization)
-    expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining("[processUrlForSummarization] Original error log: [transformArchiveUrl] Could not find an embedded URL"));
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("[processUrlForSummarization] Original error log: [transformArchiveUrl] Could not find an embedded URL"));
     // The user-facing message from transformArchiveUrl (via processUrlForSummarization)
     expect(mockMessage.channel.send).toHaveBeenCalledWith(expect.stringContaining("The structure is unrecognized."));
     
@@ -357,7 +420,7 @@ describe('processUrlForSummarization', () => {
 
     mockOpenAI.responses.create.mockResolvedValueOnce({ output_text: summaryContent });
 
-    await processUrlForSummarization(normalUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, mockLogger);
+    await processUrlForSummarization(normalUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, logger);
 
     expect(mockOpenAI.responses.create).toHaveBeenCalledWith(expect.objectContaining({
       input: expect.stringContaining(normalUrl)
@@ -374,9 +437,9 @@ describe('processUrlForSummarization', () => {
     const originalEnv = process.env;
     process.env = { ...originalEnv, OPENAI_METHOD: 'completion' };
 
-    await processUrlForSummarization(url, mockMessage, mockOpenAI, systemPrompt, mockAxios, mockLogger);
+    await processUrlForSummarization(url, mockMessage, mockOpenAI, systemPrompt, mockAxios, logger);
 
-    expect(mockLogger.error).toHaveBeenCalledWith(
+    expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining(`[processUrlForSummarization] Error summarizing the article for URL ${url}: Unexpected OpenAI error`),
       expect.any(Error)
     );
@@ -391,14 +454,14 @@ describe('processUrlForSummarization', () => {
     // isArchiveUrl(shortlinkUrl) will be true.
     // transformArchiveUrl(shortlinkUrl) will return status: 'untransformable_shortlink'.
 
-    await processUrlForSummarization(shortlinkUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, mockLogger);
+    await processUrlForSummarization(shortlinkUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, logger);
 
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${shortlinkUrl}`));
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Archive URL detected: ${shortlinkUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${shortlinkUrl}`));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Archive URL detected: ${shortlinkUrl}`));
     
     // Check for the log message from processUrlForSummarization when it handles 'untransformable_shortlink'
     const expectedLogMessage = `[processUrlForSummarization] [transformArchiveUrl] Archive link ${shortlinkUrl} is a shortlink. No embedded URL found in path. Pathname: /xYz12`;
-    expect(mockLogger.info).toHaveBeenCalledWith(expectedLogMessage);
+    expect(logger.info).toHaveBeenCalledWith(expectedLogMessage);
 
     // Check that the specific user-facing message is sent
     const expectedUserMessage = `Archive link ${shortlinkUrl} appears to be a shortlink and cannot be directly converted to a text-only version. Please try accessing it in a browser first.`;

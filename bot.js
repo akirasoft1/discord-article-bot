@@ -39,33 +39,72 @@ function transformArchiveUrl(archiveUrlString) {
   // This function does NOT send discord messages.
   try {
     const parsedUrl = new URL(archiveUrlString);
-    const pathSegments = parsedUrl.pathname.split('/');
-    let originalUrlPathIndex = -1;
+    const pathOfArchiveUrl = parsedUrl.pathname;
+    
+    let extractedOriginalUrlString;
+    const httpMarker = '/http://';
+    const httpsMarker = '/https://';
 
-    for (let i = 0; i < pathSegments.length; i++) {
-      if (pathSegments[i].startsWith('http:') || pathSegments[i].startsWith('https:')) {
-        originalUrlPathIndex = i;
-        break;
-      }
+    let httpIndex = pathOfArchiveUrl.indexOf(httpMarker);
+    let httpsIndex = pathOfArchiveUrl.indexOf(httpsMarker);
+
+    let startIndex = -1;
+
+    if (httpIndex !== -1 && (httpsIndex === -1 || httpIndex < httpsIndex)) {
+        startIndex = httpIndex;
+    } else if (httpsIndex !== -1) {
+        startIndex = httpsIndex;
     }
 
-    if (originalUrlPathIndex !== -1) {
-      let originalUrl = pathSegments.slice(originalUrlPathIndex).join('/');
-      if (originalUrl.startsWith('http:/') && !originalUrl.startsWith('http://')) {
-        originalUrl = originalUrl.replace('http:/', 'http://');
-      } else if (originalUrl.startsWith('https:/') && !originalUrl.startsWith('https://')) {
-        originalUrl = originalUrl.replace('https:/', 'https://');
+    if (startIndex !== -1) {
+      // Extract the embedded URL string starting after the initial '/' of the marker
+      extractedOriginalUrlString = pathOfArchiveUrl.substring(startIndex + 1);
+
+      // Apply protocol fixup
+      if (extractedOriginalUrlString.startsWith('http:/') && !extractedOriginalUrlString.startsWith('http://')) {
+        extractedOriginalUrlString = extractedOriginalUrlString.replace('http:/', 'http://');
+      } else if (extractedOriginalUrlString.startsWith('https:/') && !extractedOriginalUrlString.startsWith('https://')) {
+        extractedOriginalUrlString = extractedOriginalUrlString.replace('https:/', 'https://');
       }
 
       try {
-        new URL(originalUrl); // Validate
-        const resultUrl = `https://archive.today/TEXT/${originalUrl}`;
+        const originalUrlObj = new URL(extractedOriginalUrlString); // Validate and parse
+
+        // Add new validation checks here
+        if (originalUrlObj.protocol !== 'http:' && originalUrlObj.protocol !== 'https:') {
+          const errorLog = `[transformArchiveUrl] Invalid embedded URL protocol for '${extractedOriginalUrlString}'. Protocol: '${originalUrlObj.protocol}'.`;
+          const message = `Sorry, I could not correctly process the archive link: ${archiveUrlString}. The embedded link has an unsupported protocol.`;
+          return { status: 'error', resultUrl: archiveUrlString, message, errorLog };
+        }
+
+        if (!originalUrlObj.hostname) {
+          const errorLog = `[transformArchiveUrl] Invalid embedded URL (empty hostname) for '${extractedOriginalUrlString}'. Hostname: '${originalUrlObj.hostname}'.`;
+          const message = `Sorry, I could not correctly process the archive link: ${archiveUrlString}. The embedded link is missing a hostname.`;
+          return { status: 'error', resultUrl: archiveUrlString, message, errorLog };
+        }
+        
+        // Optional stricter hostname check: (uncomment if needed, for now, the above are primary)
+        // if (!originalUrlObj.hostname.includes('.') && originalUrlObj.hostname !== 'localhost') {
+        //   const errorLog = `[transformArchiveUrl] Invalid embedded URL hostname (no dot and not localhost) for '${extractedOriginalUrlString}'. Hostname: '${originalUrlObj.hostname}'.`;
+        //   const message = `Sorry, I could not correctly process the archive link: ${archiveUrlString}. The embedded link hostname appears invalid.`;
+        //   return { status: 'error', resultUrl: archiveUrlString, message, errorLog };
+        // }
+
+        // Reconstruct the full original URL string including search (query) and hash
+        const reconstructedEmbeddedUrl = originalUrlObj.protocol + '//' + 
+                                        originalUrlObj.host + // .host includes hostname and port if any
+                                        originalUrlObj.pathname + 
+                                        originalUrlObj.search + 
+                                        originalUrlObj.hash;
+        
+        const resultUrl = `https://archive.today/TEXT/${reconstructedEmbeddedUrl}`;
         logger.info(`[transformArchiveUrl] Transformed '${archiveUrlString}' to '${resultUrl}'`);
         return { status: 'success', resultUrl };
       } catch (e) {
-        const errorLog = `[transformArchiveUrl] Failed to validate extracted original URL '${originalUrl}' from archive link: ${archiveUrlString}. Error: ${e.message}`;
-        const message = `Sorry, I could not correctly process the archive link: ${archiveUrlString}. The embedded link appears invalid.`;
-        return { status: 'error', message, errorLog };
+        // This catch block now primarily handles errors from `new URL(extractedOriginalUrlString)` itself (e.g., completely unparseable string)
+        const errorLog = `[transformArchiveUrl] Failed to parse extracted original URL '${extractedOriginalUrlString}' from archive link: ${archiveUrlString}. Error: ${e.message}`;
+        const message = `Sorry, I could not correctly process the archive link: ${archiveUrlString}. The embedded link appears invalid or unparseable.`;
+        return { status: 'error', resultUrl: archiveUrlString, message, errorLog };
       }
     } else {
       // No 'http:' or 'https:' found in path segments. This could be a shortlink or a malformed path.
@@ -147,19 +186,21 @@ async function processUrlForSummarization(url, message, openaiClient, currentSys
 
     const method = process.env.OPENAI_METHOD || 'completion'; 
 
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
-    const isImageUrl = imageExtensions.some(ext => url.toLowerCase().endsWith(ext));
-
-    if (isImageUrl) {
-      localLogger.info(`[processUrlForSummarization] Skipping image URL: ${url}`);
-      return; 
-    }
-
+    // Check for GIF hosting sites first
     const gifHosts = ['tenor.com', 'giphy.com', 'imgur.com'];
     const isGifHost = gifHosts.some(host => url.toLowerCase().includes(host));
 
     if (isGifHost) {
       localLogger.info(`[processUrlForSummarization] Skipping GIF hosting URL: ${url}`);
+      return; 
+    }
+
+    // Then check for image extensions, if not a GIF host
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
+    const isImageUrl = imageExtensions.some(ext => url.toLowerCase().endsWith(ext));
+
+    if (isImageUrl) {
+      localLogger.info(`[processUrlForSummarization] Skipping image URL: ${url}`);
       return; 
     }
 
@@ -221,18 +262,11 @@ async function processUrlForSummarization(url, message, openaiClient, currentSys
   // dotenv.config() has been called.
 
   const client = new Client({
-  intents: [
-    Intents.FLAGS.GUILDS,
-    Intents.FLAGS.GUILD_MESSAGES,
-    Intents.FLAGS.GUILD_MESSAGE_REACTIONS
-  ],
-  });
-
     intents: [
       Intents.FLAGS.GUILDS,
       Intents.FLAGS.GUILD_MESSAGES,
       Intents.FLAGS.GUILD_MESSAGE_REACTIONS
-    ],
+    ]
   });
 
   const openai = new OpenAI({
