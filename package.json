@@ -4,7 +4,8 @@
   "description": "A Discord bot that watches for article links in a channel, sends them to archive.is for archival, and uses ChatGPT APIs to automatically create a 1500 character summary of the linked article.",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "test": "jest"
   },
   "dependencies": {
     "axios": "^0.24.0",
@@ -13,5 +14,8 @@
     "dotenv": "^10.0.0",
     "openai": "^4.98.0",
     "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
   }
 }
