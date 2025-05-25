@@ -1,12 +1,12 @@
-(async () => {
-  const { Client, Intents } = await import('discord.js');
-  const axios = (await import('axios')).default;
-  const dotenv = (await import('dotenv')).default;
-  const OpenAI = (await import('openai')).default;
-  const fs = (await import('fs')).promises;
-  const logger = require('./logger'); // Import the logger
+const { Client, Intents } = require('discord.js'); // Assuming CommonJS for discord.js if imports are mixed
+const axios = require('axios'); // Assuming CommonJS
+const dotenv = require('dotenv');
+const OpenAI = require('openai'); // Assuming CommonJS
+const fs = require('fs').promises;
+const logger = require('./logger'); // Import the logger
 
-  function isArchiveUrl(urlString) {
+// Define helper functions in the module scope
+function isArchiveUrl(urlString) {
     const archiveHostnames = [
       'archive.is',
       'archive.today',
@@ -26,121 +26,94 @@
       logger.warn(`isArchiveUrl: Error parsing URL '${urlString}': ${error.message}`);
       return false;
     }
-  }
+}
 
-  dotenv.config();
+dotenv.config(); // Configure dotenv early
 
-  const client = new Client({
-  intents: [
-    Intents.FLAGS.GUILDS,
-    Intents.FLAGS.GUILD_MESSAGES,
-    Intents.FLAGS.GUILD_MESSAGE_REACTIONS
-  ],
-  });
+// Moved transformArchiveUrl to module scope
+function transformArchiveUrl(archiveUrlString) {
+  // Input: an archiveUrlString that isArchiveUrl has already confirmed to be an archive URL.
+  // Output:
+  //  - { status: 'success', resultUrl: 'https://archive.today/TEXT/...' }
+  //  - { status: 'error', message: 'User-facing error message', errorLog: 'Detailed error for logging' }
+  // This function does NOT send discord messages.
+  try {
+    const parsedUrl = new URL(archiveUrlString);
+    const pathSegments = parsedUrl.pathname.split('/');
+    let originalUrlPathIndex = -1;
 
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    baseURL: process.env.OPENAI_BASE_URL || 'http://localhost:11434/v1/', // Get baseURL from environment variable
-  });
+    for (let i = 0; i < pathSegments.length; i++) {
+      if (pathSegments[i].startsWith('http:') || pathSegments[i].startsWith('https:')) {
+        originalUrlPathIndex = i;
+        break;
+      }
+    }
 
-  const systemPrompt = await fs.readFile('prompt.txt', 'utf-8');
-
-  client.once('ready', () => {
-    logger.info('Bot is online and connected to Discord APIs!');
-  });
-
-  client.on('shardError', (error) => {
-    logger.error('A WebSocket connection encountered an error:', error);
-  });
-
-  client.on('debug', (info) => {
-    logger.debug(`DEBUG: ${info}`);
-  });
-
-  client.on('warn', (warning) => {
-    logger.warn(`WARNING: ${warning}`);
-  });
-
-  client.on('error', (error) => {
-    logger.error('An error occurred:', error);
-  });
-
-  client.on('disconnect', (event) => {
-    logger.error(`Disconnected from Discord Gateway with code: ${event.code}, reason: ${event.reason}`);
-  });
-
-  client.on('reconnecting', () => {
-    logger.info('Reconnecting to Discord Gateway...');
-  });
-
-  // ... (logger and other imports) ...
-
-  function transformArchiveUrl(archiveUrlString) {
-    // Input: an archiveUrlString that isArchiveUrl has already confirmed to be an archive URL.
-    // Output:
-    //  - { status: 'success', resultUrl: 'https://archive.today/TEXT/...' }
-    //  - { status: 'error', message: 'User-facing error message', errorLog: 'Detailed error for logging' }
-    // This function does NOT send discord messages.
-    try {
-      const parsedUrl = new URL(archiveUrlString);
-      const pathSegments = parsedUrl.pathname.split('/');
-      let originalUrlPathIndex = -1;
-
-      for (let i = 0; i < pathSegments.length; i++) {
-        if (pathSegments[i].startsWith('http:') || pathSegments[i].startsWith('https:')) {
-          originalUrlPathIndex = i;
-          break;
-        }
+    if (originalUrlPathIndex !== -1) {
+      let originalUrl = pathSegments.slice(originalUrlPathIndex).join('/');
+      if (originalUrl.startsWith('http:/') && !originalUrl.startsWith('http://')) {
+        originalUrl = originalUrl.replace('http:/', 'http://');
+      } else if (originalUrl.startsWith('https:/') && !originalUrl.startsWith('https://')) {
+        originalUrl = originalUrl.replace('https:/', 'https://');
       }
 
-      if (originalUrlPathIndex !== -1) {
-        let originalUrl = pathSegments.slice(originalUrlPathIndex).join('/');
-        if (originalUrl.startsWith('http:/') && !originalUrl.startsWith('http://')) {
-          originalUrl = originalUrl.replace('http:/', 'http://');
-        } else if (originalUrl.startsWith('https:/') && !originalUrl.startsWith('https://')) {
-          originalUrl = originalUrl.replace('https:/', 'https://');
-        }
-
-        try {
-          new URL(originalUrl); // Validate
-          const resultUrl = `https://archive.today/TEXT/${originalUrl}`;
-          logger.info(`[transformArchiveUrl] Transformed '${archiveUrlString}' to '${resultUrl}'`);
-          return { status: 'success', resultUrl };
-        } catch (e) {
-          const errorLog = `[transformArchiveUrl] Failed to validate extracted original URL '${originalUrl}' from archive link: ${archiveUrlString}. Error: ${e.message}`;
-          const message = `Sorry, I could not correctly process the archive link: ${archiveUrlString}. The embedded link appears invalid.`;
-          return { status: 'error', message, errorLog };
-        }
-      } else {
-        const errorLog = `[transformArchiveUrl] Could not find an embedded URL in the path of archive link: ${archiveUrlString}. Path: ${parsedUrl.pathname}`;
-        const message = `Sorry, I could not correctly process the archive link: ${archiveUrlString}. The structure is unrecognized.`;
+      try {
+        new URL(originalUrl); // Validate
+        const resultUrl = `https://archive.today/TEXT/${originalUrl}`;
+        logger.info(`[transformArchiveUrl] Transformed '${archiveUrlString}' to '${resultUrl}'`);
+        return { status: 'success', resultUrl };
+      } catch (e) {
+        const errorLog = `[transformArchiveUrl] Failed to validate extracted original URL '${originalUrl}' from archive link: ${archiveUrlString}. Error: ${e.message}`;
+        const message = `Sorry, I could not correctly process the archive link: ${archiveUrlString}. The embedded link appears invalid.`;
         return { status: 'error', message, errorLog };
       }
-    } catch (e) {
-      // Error parsing the archiveUrlString itself
-      const errorLog = `[transformArchiveUrl] Error parsing the archive URL '${archiveUrlString}' itself. Error: ${e.message}`;
-      const message = `Sorry, the archive link ${archiveUrlString} appears to be malformed.`;
-      return { status: 'error', message, errorLog };
+    } else {
+      // No 'http:' or 'https:' found in path segments. This could be a shortlink or a malformed path.
+      const pathSegmentsFiltered = pathSegments.filter(Boolean); // Filter out empty strings from split
+      if (pathSegmentsFiltered.length === 1 && pathSegmentsFiltered[0].length > 0 && !pathSegmentsFiltered[0].includes('.')) {
+        // Likely a shortlink, e.g., /vdNld (no dots, single segment)
+        const errorLog = `[transformArchiveUrl] Archive link ${archiveUrlString} is a shortlink. No embedded URL found in path. Pathname: ${parsedUrl.pathname}`;
+        const message = `Archive link ${archiveUrlString} appears to be a shortlink and cannot be directly converted to a text-only version. Please try accessing it in a browser first.`;
+        return {
+          status: 'untransformable_shortlink',
+          resultUrl: archiveUrlString, // The original shortlink
+          message,
+          errorLog
+        };
+      } else {
+        // Not a clear shortlink, and no embedded URL found
+        const errorLog = `[transformArchiveUrl] Could not find an embedded URL in the path of archive link: ${archiveUrlString}. Path: ${parsedUrl.pathname}`;
+        const message = `Sorry, I could not correctly process the archive link: ${archiveUrlString}. The structure is unrecognized or does not contain an embedded URL.`;
+        return { status: 'error', message, errorLog };
+      }
     }
+  } catch (e) {
+    // Error parsing the archiveUrlString itself
+    const errorLog = `[transformArchiveUrl] Error parsing the archive URL '${archiveUrlString}' itself. Error: ${e.message}`;
+    const message = `Sorry, the archive link ${archiveUrlString} appears to be malformed.`;
+    return { status: 'error', message, errorLog };
   }
+}
 
-
-  // ... (client setup, other event handlers) ...
-
+// Moved processUrlForSummarization to module scope
 async function processUrlForSummarization(url, message, openaiClient, currentSystemPrompt, axiosInstance, localLogger) {
   localLogger.info(`[processUrlForSummarization] Processing URL: ${url}`);
   let urlToFetchContentFrom = url;
 
-  if (isArchiveUrl(url)) {
+  if (isArchiveUrl(url)) { // This call should now be fine
     localLogger.info(`[processUrlForSummarization] Archive URL detected: ${url}`);
-    const transformResult = transformArchiveUrl(url); // transformArchiveUrl uses its own logger calls
+    const transformResult = transformArchiveUrl(url); 
 
     if (transformResult.status === 'success') {
       urlToFetchContentFrom = transformResult.resultUrl;
-    } else {
-      localLogger.error(`[processUrlForSummarization] Original error log: ${transformResult.errorLog}`);
+    } else if (transformResult.status === 'untransformable_shortlink') {
+      localLogger.info(`[processUrlForSummarization] ${transformResult.errorLog}`); // Using info as it's an expected case
       message.channel.send(transformResult.message);
-      return; // Skip this URL
+      return; // Stop processing for this URL
+    } else { // Handles 'error' status from transformArchiveUrl
+      localLogger.error(`[processUrlForSummarization] Error during URL transformation: ${transformResult.errorLog}`);
+      message.channel.send(transformResult.message);
+      return; 
     }
   }
 
@@ -155,7 +128,7 @@ async function processUrlForSummarization(url, message, openaiClient, currentSys
       } catch (fetchError) {
         localLogger.error(`[processUrlForSummarization] Error fetching content from ${urlToFetchContentFrom}: ${fetchError.message}`);
         message.channel.send(`Sorry, I could not retrieve the content from the archive link: ${url}. It might be unavailable or there was an issue.`);
-        return; // Skip this URL
+        return; 
       }
     }
 
@@ -172,15 +145,14 @@ async function processUrlForSummarization(url, message, openaiClient, currentSys
       chatCompletionUserMessage = `Summarize this article in 1500 characters or less: ${urlToFetchContentFrom}`;
     }
 
-    const method = process.env.OPENAI_METHOD || 'completion'; // Default to 'completion'
+    const method = process.env.OPENAI_METHOD || 'completion'; 
 
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
-    // Use original 'url' for image and GIF checks, not 'urlToFetchContentFrom'
     const isImageUrl = imageExtensions.some(ext => url.toLowerCase().endsWith(ext));
 
     if (isImageUrl) {
       localLogger.info(`[processUrlForSummarization] Skipping image URL: ${url}`);
-      return; // Skip this URL
+      return; 
     }
 
     const gifHosts = ['tenor.com', 'giphy.com', 'imgur.com'];
@@ -188,18 +160,18 @@ async function processUrlForSummarization(url, message, openaiClient, currentSys
 
     if (isGifHost) {
       localLogger.info(`[processUrlForSummarization] Skipping GIF hosting URL: ${url}`);
-      return; // Skip this URL
+      return; 
     }
 
     if (method === 'response') {
-      const response = await openaiClient.responses.create({
+      const responseData = await openaiClient.responses.create({ // Renamed 'response' to 'responseData'
         model: 'gpt-4.1-nano',
         instructions: currentSystemPrompt,
         input: responseInputContent,
       });
 
-      localLogger.info('[processUrlForSummarization] OpenAI API Response (response method):', response);
-      const summary = response.output_text?.trim();
+      localLogger.info('[processUrlForSummarization] OpenAI API Response (response method):', responseData);
+      const summary = responseData.output_text?.trim();
 
       if (!summary) {
         localLogger.error('[processUrlForSummarization] No summary text found in OpenAI response (response method).');
@@ -207,7 +179,7 @@ async function processUrlForSummarization(url, message, openaiClient, currentSys
         return;
       }
       message.reply({ content: `Summary: ${summary}`, allowedMentions: { repliedUser: false } });
-    } else { // completion method
+    } else { 
       const completion = await openaiClient.chat.completions.create({
         model: 'gemma3:27b',
         messages: [
@@ -241,15 +213,77 @@ async function processUrlForSummarization(url, message, openaiClient, currentSys
   }
 }
 
+
+// IIFE for client setup and event handling
+(async () => {
+  // Note: discord.js, axios, openai, fs are already required at the top level.
+  // logger is also at the top level.
+  // dotenv.config() has been called.
+
+  const client = new Client({
+  intents: [
+    Intents.FLAGS.GUILDS,
+    Intents.FLAGS.GUILD_MESSAGES,
+    Intents.FLAGS.GUILD_MESSAGE_REACTIONS
+  ],
+  });
+
+    intents: [
+      Intents.FLAGS.GUILDS,
+      Intents.FLAGS.GUILD_MESSAGES,
+      Intents.FLAGS.GUILD_MESSAGE_REACTIONS
+    ],
+  });
+
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+    baseURL: process.env.OPENAI_BASE_URL || 'http://localhost:11434/v1/',
+  });
+
+  let systemPromptContent = ''; // Initialize systemPromptContent
+
+  client.once('ready', async () => { // Make ready handler async
+    try {
+      systemPromptContent = await fs.readFile('prompt.txt', 'utf-8');
+      logger.info('System prompt loaded successfully.');
+    } catch (err) {
+      logger.error('Failed to load system prompt:', err);
+      // Handle error appropriately, e.g., by setting a default prompt or exiting
+    }
+    logger.info('Bot is online and connected to Discord APIs!');
+  });
+
+  client.on('shardError', (error) => {
+    logger.error('A WebSocket connection encountered an error:', error);
+  });
+
+  client.on('debug', (info) => {
+    logger.debug(`DEBUG: ${info}`);
+  });
+
+  client.on('warn', (warning) => {
+    logger.warn(`WARNING: ${warning}`);
+  });
+
+  client.on('error', (error) => {
+    logger.error('An error occurred:', error);
+  });
+
+  client.on('disconnect', (event) => {
+    logger.error(`Disconnected from Discord Gateway with code: ${event.code}, reason: ${event.reason}`);
+  });
+
+  client.on('reconnecting', () => {
+    logger.info('Reconnecting to Discord Gateway...');
+  });
+  
   client.on('messageReactionAdd', async (reaction, user) => {
-    if (reaction.emoji.name !== '📰') return; // Check if the reaction is the newspaper emoji
-    if (reaction.count > 1) return; // Ensure it's the first reaction
+    if (reaction.emoji.name !== '📰') return; 
+    if (reaction.count > 1) return; 
 
     const message = reaction.message;
-    // Ensure axios and openai are the instances initialized in the IIFE
-    const localAxios = axios; 
-    const localOpenAI = openai;
-
+    // Axios and OpenAI are now from the module scope, no need for localAxios/localOpenAI
+    
     logger.info(`Newspaper emoji reaction added by ${user.tag} to message: ${message.content}`);
 
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -261,13 +295,12 @@ async function processUrlForSummarization(url, message, openaiClient, currentSys
     }
 
     for (const url of urls) {
-      // Call the refactored processing function for each URL
-      // Pass the correct logger instance (the one initialized in the IIFE)
-      await processUrlForSummarization(url, message, localOpenAI, systemPrompt, localAxios, logger);
+      // Pass systemPromptContent which is loaded on 'ready'
+      await processUrlForSummarization(url, message, openai, systemPromptContent, axios, logger);
     }
   });
 
-  client.on('messageReactionAdd', (reaction, user) => {
+  client.on('messageReactionAdd', (reaction, user) => { // This seems like a duplicate event listener.
     logger.info(`Reaction added: ${reaction.emoji.name} by ${user.tag} to message: ${reaction.message.content}`);
   });
 

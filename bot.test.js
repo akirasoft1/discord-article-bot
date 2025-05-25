@@ -169,6 +169,24 @@ describe('transformArchiveUrl', () => {
     expect(result.message).toContain('appears to be malformed');
     expect(result.errorLog).toContain('Invalid URL'); // Error message from URL constructor
   });
+
+  it('should identify a simple shortlink and return untransformable_shortlink status', () => {
+    const shortlinkUrl = 'https://archive.is/vdNld';
+    const result = transformArchiveUrl(shortlinkUrl);
+    expect(result.status).toBe('untransformable_shortlink');
+    expect(result.resultUrl).toBe(shortlinkUrl);
+    expect(result.message).toContain('appears to be a shortlink and cannot be directly converted');
+    expect(result.errorLog).toContain('is a shortlink. No embedded URL found in path');
+  });
+
+  it('should return error for a complex path without http(s) that is not a shortlink', () => {
+    const complexPathUrl = 'https://archive.is/some/complex/path';
+    const result = transformArchiveUrl(complexPathUrl);
+    expect(result.status).toBe('error'); // Not a shortlink, and no embedded URL
+    expect(result.message).toContain('The structure is unrecognized or does not contain an embedded URL.');
+    expect(result.errorLog).toContain('Could not find an embedded URL');
+  });
+
 });
 
 describe('processUrlForSummarization', () => {
@@ -366,4 +384,30 @@ describe('processUrlForSummarization', () => {
     process.env = originalEnv;
   });
 
+  it('should handle untransformable_shortlink status from transformArchiveUrl correctly', async () => {
+    const shortlinkUrl = 'https://archive.is/xYz12'; // Example shortlink
+
+    // transformArchiveUrl will be called internally by processUrlForSummarization.
+    // isArchiveUrl(shortlinkUrl) will be true.
+    // transformArchiveUrl(shortlinkUrl) will return status: 'untransformable_shortlink'.
+
+    await processUrlForSummarization(shortlinkUrl, mockMessage, mockOpenAI, systemPrompt, mockAxios, mockLogger);
+
+    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Processing URL: ${shortlinkUrl}`));
+    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining(`[processUrlForSummarization] Archive URL detected: ${shortlinkUrl}`));
+    
+    // Check for the log message from processUrlForSummarization when it handles 'untransformable_shortlink'
+    const expectedLogMessage = `[processUrlForSummarization] [transformArchiveUrl] Archive link ${shortlinkUrl} is a shortlink. No embedded URL found in path. Pathname: /xYz12`;
+    expect(mockLogger.info).toHaveBeenCalledWith(expectedLogMessage);
+
+    // Check that the specific user-facing message is sent
+    const expectedUserMessage = `Archive link ${shortlinkUrl} appears to be a shortlink and cannot be directly converted to a text-only version. Please try accessing it in a browser first.`;
+    expect(mockMessage.channel.send).toHaveBeenCalledWith(expectedUserMessage);
+
+    // Ensure no further processing (like fetching or OpenAI calls) happens
+    expect(mockAxios.get).not.toHaveBeenCalled();
+    expect(mockOpenAI.chat.completions.create).not.toHaveBeenCalled();
+    expect(mockOpenAI.responses.create).not.toHaveBeenCalled();
+    expect(mockMessage.reply).not.toHaveBeenCalled();
+  });
 });
