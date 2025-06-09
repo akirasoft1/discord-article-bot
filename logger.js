@@ -1,14 +1,26 @@
+// logger.js
 const winston = require('winston');
 
 const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info', // Set log level via environment variable
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.printf(({ timestamp, level, message }) => `${timestamp} [${level.toUpperCase()}]: ${message}`)
-  ),
+  level: process.env.LOG_LEVEL || 'info',  // This controls winston's log level
   transports: [
-    new winston.transports.Console(), // Log to console
-  ],
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.printf(info => {
+          return `${info.timestamp} ${info.level}: ${info.message}`;
+        })
+      )
+    })
+  ]
 });
 
+// Add the debug method if it doesn't exist
+if (!logger.debug) {
+  logger.debug = logger.log.bind(logger, 'debug');
+}
+
+logger.info(`Logger initialized - Level: ${logger.level}`);
+logger.console = console.log;
 module.exports = logger;
