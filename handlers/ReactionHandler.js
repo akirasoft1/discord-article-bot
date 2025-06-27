@@ -23,7 +23,7 @@ class ReactionHandler {
 
     // Process each URL
     for (const url of urls) {
-      await this.summarizationService.processUrl(url, message);
+      await this.summarizationService.processUrl(url, message, user);
     }
   }
 }
