@@ -3,7 +3,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 // Validate required environment variables
-const requiredEnvVars = ['DISCORD_TOKEN', 'OPENAI_API_KEY'];
+const requiredEnvVars = ['DISCORD_TOKEN', 'OPENAI_API_KEY', 'MONGO_URI'];
 const missing = requiredEnvVars.filter(v => !process.env[v]);
 
 if (missing.length > 0) {
@@ -40,5 +40,8 @@ module.exports = {
     maxSummaryLength: 1500,
     systemPromptFile: 'prompt.txt'
   },
-  debug: process.env.DEBUG === 'true'
+  debug: process.env.DEBUG === 'true',
+  mongo: {
+    uri: process.env.MONGO_URI
+  }
 };

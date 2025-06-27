@@ -6,6 +6,7 @@ const UrlUtils = require('../utils/urlUtils');
 const TokenService = require('./TokenService');
 const CostService = require('./CostService');
 const ResponseParser = require('./ResponseParser');
+const MongoService = require('./MongoService');
 
 class SummarizationService {
   constructor(openaiClient, config) {
@@ -22,13 +23,16 @@ class SummarizationService {
       timeout: 30000,
       headers: { 'User-Agent': 'Discord-Bot/1.0' }
     });
+
+    // Connect to MongoDB
+    MongoService.connect();
   }
 
   setSystemPrompt(prompt) {
     this.systemPrompt = prompt;
   }
 
-  async processUrl(url, message) {
+  async processUrl(url, message, user) {
     logger.info(`Processing URL: ${url}`);
 
     if (UrlUtils.shouldSkipUrl(url)) {
@@ -57,6 +61,14 @@ class SummarizationService {
         await message.channel.send('Sorry, I could not format the summary properly.');
         return;
       }
+
+      await MongoService.persistData({
+        userId: user.id,
+        username: user.tag,
+        url,
+        inputTokens: result.tokens.input,
+        outputTokens: result.tokens.output,
+      });
       
       await message.reply({
         content: responseMessage,
