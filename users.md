@@ -21,6 +21,18 @@ The primary way to get a summary is by reacting to a message containing a URL or
     - `!summarize https://example.com/article academic` (for a formal summary)
 - **Available Styles**: `pirate`, `shakespeare`, `genz`, `academic`
 
+### Article Polls
+
+- **Command**: `!poll <url>`
+- **Description**: Generates a yes/no poll question based on the article summary.
+- **Example**: `!poll https://example.com/article`
+
+### Discussion Questions
+
+- **Command**: `!discussion_questions <url>`
+- **Description**: Generates thought-provoking discussion questions based on the article summary.
+- **Example**: `!discussion_questions https://example.com/article`
+
 ## Enhanced Summarization Commands
 
 These commands allow you to request summaries with specific moods, narrators, or historical perspectives.
@@ -128,6 +140,5 @@ These commands help you manage your personalized news experience and view server
 ## General Notes
 
 - The bot's prefix for commands is `!` (this can be configured by the server administrator).
-- If the bot detects a paywall, it will attempt to find an archived version of the article.
 - If the bot detects a questionable source, it will react with a ⚠️ emoji.
 - All summaries are sanitized to remove direct URLs to prevent Discord's auto-embedding.

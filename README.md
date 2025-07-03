@@ -13,7 +13,6 @@ A Discord bot that monitors for article links in channels, processes them throug
   - **Fact-Check Integration**: Flags articles from questionable sources with ⚠️.
 
 - 🔗 **URL Intelligence**:
-  - **Paywall Detector**: Attempts to find archive.org versions of paywalled articles.
   - **Duplicate Detection**: Notifies if an article was already shared, including by whom and when.
   - **Related Articles**: Suggests similar articles shared previously.
   - **Source Credibility**: Rates sources with star ratings (⭐⭐⭐⭐⭐).
@@ -24,7 +23,6 @@ A Discord bot that monitors for article links in channels, processes them throug
   - **Article Polls**: Auto-generates quick polls (e.g., "Do you agree with this take? 👍/👎").
   - **Discussion Starters**: Generates thought-provoking questions about the article.
   - **Quote of the Day**: Extracts and highlights interesting quotes from shared articles.
-  - **Article Bingo**: Creates bingo cards with common news themes.
 
 ### Utility & Convenience
 
@@ -130,11 +128,18 @@ discord-article-archiver-bot/
 │   ├── SummarizationService.js   # Main summarization orchestration
 │   ├── TokenService.js           # Token counting and estimation
 │   ├── CostService.js            # Cost calculation and tracking
-│   └── ResponseParser.js         # API response parsing and formatting
+│   ├── ResponseParser.js         # API response parsing and formatting
+│   ├── AnalyticsService.js       # Analytics and insights generation
+│   ├── FollowUpService.js        # Follow-up tracking and notifications
+│   ├── PollService.js            # Poll and discussion question generation
+│   ├── RssService.js             # RSS feed monitoring
+│   ├── SourceCredibilityService.js # Source credibility rating
+│   └── SubscriptionService.js    # User topic subscriptions
 ├── handlers/
 │   └── ReactionHandler.js        # Discord reaction handling
 └── utils/
-    └── urlUtils.js               # URL parsing and validation
+    ├── urlUtils.js               # URL parsing and validation
+    └── textUtils.js              # Text utility functions (e.g., reading time)
 ```
 
 ## Usage
