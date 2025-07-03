@@ -49,6 +49,8 @@ Upon startup, the `bot.js` file serves as the main entry point. It performs the 
     - `!perspective_summarize <url> <perspective>`: Generates a summary from a specific alternative viewpoint (e.g., liberal, conservative).
     - `!learn_language <url> <language1> [language2...]`: Generates summaries in multiple specified languages for language learning.
     - `!cultural_summarize <url> <context>`: Generates a summary with a specific cultural context.
+    - `!poll <url>`: Generates a yes/no poll question based on the article summary.
+    - `!discussion_questions <url>`: Generates thought-provoking discussion questions based on the article summary.
 
 ## 3. Summarization Workflow (`SummarizationService.js`)
 
@@ -58,28 +60,22 @@ The `processUrl` method in `SummarizationService` orchestrates the entire articl
 2.  **Duplicate Detection**: Checks `MongoService` if the URL has been summarized before. If so, it informs the user and exits.
 3.  **URL Filtering**: Uses `UrlUtils` to skip image/GIF URLs.
 4.  **Fact-Check Integration**: Checks `isQuestionableSource` (based on `config.js`) and reacts with ⚠️ if the source is questionable.
-5.  **Paywall Detection**: Uses `PaywallService` to detect paywalls. If a paywall is found, it attempts to find an archived version of the article via `archive.today`.
-6.  **URL Preprocessing**: Transforms archive.today URLs using `ArchiveService` if necessary.
-7.  **Content Fetching**: Fetches the article content. If it's an `archive.today/TEXT/` URL, it fetches directly; otherwise, it relies on OpenAI's web fetching capabilities.
-8.  **Language Detection and Translation**: If `autoTranslation` is enabled in `config.js`, it detects the language of the content. If it's not the target language, it translates the content using OpenAI.
-9.  **Summary Generation**: Calls OpenAI (either via `responses` or `chat.completions` API based on `config.openai.method`) to generate the summary. The AI's prompt is dynamically adjusted based on selected `style`, `mood`, `narrator`, or `historicalPerspective`.
-10. **Summary Enhancement**: Calls `enhanceSummary` to add:
+5.  **URL Preprocessing**: Transforms archive.today URLs using `ArchiveService` if necessary.
+6.  **Content Fetching**: Fetches the article content. If it's an `archive.today/TEXT/` URL, it fetches directly; otherwise, it relies on OpenAI's web fetching capabilities.
+7.  **Language Detection and Translation**: If `autoTranslation` is enabled in `config.js`, it detects the language of the content. If it's not the target language, it translates the content using OpenAI.
+8.  **Summary Generation**: Calls OpenAI (either via `responses` or `chat.completions` API based on `config.openai.method`) to generate the summary. The AI's prompt is dynamically adjusted based on selected `style`, `mood`, `narrator`, or `historicalPerspective`.
+9.  **Summary Enhancement**: Calls `enhanceSummary` to add:
     - **Reading Time**: Calculates estimated reading time using `TextUtils`.
     - **Topic Detection**: Uses OpenAI to identify the main topic of the article.
     - **Sentiment Analysis**: Uses OpenAI to determine the sentiment of the article.
     - **Bias Analysis**: Uses OpenAI to detect potential biases in the article.
-11. **Related Articles**: Queries `MongoService` for articles with similar topics.
-12. **Source Credibility**: Uses `SourceCredibilityService` to rate the credibility of the article's source.
-13. **Context Provision**: If enabled, uses OpenAI to provide historical or background context for the article's topic.
-14. **Data Persistence**: Stores the article's metadata (URL, user, tokens, topic, etc.) in `MongoService`.
-15. **Discord Message Construction**: Uses `ResponseParser` to format the summary and all enhanced data into a Discord-friendly message.
-16. **Send Response**: Replies to the user's message with the formatted summary.
-17. **Interactive Features Trigger**: Triggers additional interactive elements:
-    - **Article Polls**: Generates and sends a poll related to the summary using `PollService`.
-    - **Discussion Starters**: Generates and sends thought-provoking questions using `PollService`.
-    - **Quote of the Day**: Extracts and sends an interesting quote from the article.
-    - **Article Bingo**: Generates and sends a bingo card based on article themes.
-18. **Follow-up Check**: If `followUpTracker` is enabled, checks `MongoService` for users who requested follow-ups on related topics and notifies them.
+10. **Related Articles**: Queries `MongoService` for articles with similar topics.
+11. **Source Credibility**: Uses `SourceCredibilityService` to rate the credibility of the article's source.
+12. **Context Provision**: If enabled, uses OpenAI to provide historical or background context for the article's topic.
+13. **Data Persistence**: Stores the article's metadata (URL, user, tokens, topic, etc.) in `MongoService`.
+14. **Discord Message Construction**: Uses `ResponseParser` to format the summary and all enhanced data into a Discord-friendly message.
+15. **Send Response**: Replies to the user's message with the formatted summary.
+16. **Follow-up Check**: If `followUpTracker` is enabled, checks `MongoService` for users who requested follow-ups on related topics and notifies them.
 
 ## 4. Background Tasks
 
