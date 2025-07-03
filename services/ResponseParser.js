@@ -65,6 +65,23 @@ class ResponseParser {
     }
     
     let message = `**Summary:** ${result.summary}`;
+
+    // Add enhanced summary details if available
+    if (result.readingTime || result.topic || result.sentiment) {
+      message += '\n\n---\n';
+      if (result.readingTime) message += `**Reading Time:** ${result.readingTime}\n`;
+      if (result.topic) message += `**Topic:** ${result.topic}\n`;
+      if (result.sentiment) message += `**Sentiment:** ${result.sentiment}
+`;
+      if (result.sourceCredibility) message += `**Source Credibility:** ${result.sourceCredibility}
+`;
+      if (result.biasAnalysis) message += `**Bias Analysis:** ${result.biasAnalysis}
+`;
+      if (result.context) message += `**Context:** ${result.context}
+`;
+      if (result.wasTranslated) message += `**Translated From:** ${result.detectedLanguage}
+`;
+    }
     
     // Add token and cost information if available
     if (result.tokens && result.costs) {
@@ -79,6 +96,15 @@ class ResponseParser {
       message += `Total: ${result.tokens.total.toLocaleString()}\n`;
       message += `💰 **Cost:** Input: ${result.costs.input}, `;
       message += `Output: ${result.costs.output}, Total: ${result.costs.total}`;
+    }
+
+    // Add related articles if available
+    if (result.relatedArticles && result.relatedArticles.length > 0) {
+      message += '\n\n---\n';
+      message += '**Related Articles:**\n';
+      result.relatedArticles.forEach((article, index) => {
+        message += `${index + 1}. [${article.url}]\n`;
+      });
     }
     
     return message;

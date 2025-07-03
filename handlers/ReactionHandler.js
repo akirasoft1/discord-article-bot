@@ -3,8 +3,9 @@ const logger = require('../logger');
 const UrlUtils = require('../utils/urlUtils');
 
 class ReactionHandler {
-  constructor(summarizationService) {
+  constructor(summarizationService, mongoService) {
     this.summarizationService = summarizationService;
+    this.mongoService = mongoService;
   }
 
   async handleNewsReaction(reaction, user) {
@@ -24,6 +25,12 @@ class ReactionHandler {
     // Process each URL
     for (const url of urls) {
       await this.summarizationService.processUrl(url, message, user);
+
+      // Update reaction count in DB
+      if (reaction.emoji.name) {
+        const totalReactions = reaction.count;
+        await this.mongoService.updateArticleReactions(url, reaction.emoji.name, totalReactions);
+      }
     }
   }
 }
