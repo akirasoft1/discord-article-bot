@@ -2,8 +2,9 @@
 const dotenv = require('dotenv');
 dotenv.config();
 
+
 // Validate required environment variables
-const requiredEnvVars = ['DISCORD_TOKEN', 'OPENAI_API_KEY'];
+const requiredEnvVars = ['DISCORD_TOKEN', 'OPENAI_API_KEY', 'MONGO_URI'];
 const missing = requiredEnvVars.filter(v => !process.env[v]);
 
 if (missing.length > 0) {
@@ -14,8 +15,9 @@ if (missing.length > 0) {
 
 // Optional environment variables with defaults
 const optionalEnvVars = {
-  OPENAI_BASE_URL: 'http://localhost:11434/v1/',
+  OPENAI_BASE_URL: 'https://api.openai.com/v1',
   OPENAI_METHOD: 'completion',
+  OPENAI_MODEL: 'gpt-4.1-mini',
   DEBUG: 'false'
 };
 
@@ -26,6 +28,8 @@ Object.entries(optionalEnvVars).forEach(([key, defaultValue]) => {
   }
 });
 
+const mongoUri = process.env.MONGO_URI.replace('${MONGO_PASSWORD}', process.env.MONGO_PASSWORD);
+
 module.exports = {
   discord: {
     token: process.env.DISCORD_TOKEN,
@@ -34,11 +38,15 @@ module.exports = {
   openai: {
     apiKey: process.env.OPENAI_API_KEY,
     baseURL: process.env.OPENAI_BASE_URL || optionalEnvVars.OPENAI_BASE_URL,
-    method: process.env.OPENAI_METHOD || optionalEnvVars.OPENAI_METHOD
+    method: process.env.OPENAI_METHOD || optionalEnvVars.OPENAI_METHOD,
+    model: process.env.OPENAI_MODEL || optionalEnvVars.OPENAI_MODEL
   },
   bot: {
     maxSummaryLength: 1500,
     systemPromptFile: 'prompt.txt'
   },
-  debug: process.env.DEBUG === 'true'
+  debug: process.env.DEBUG === 'true',
+  mongo: {
+    uri: mongoUri
+  }
 };

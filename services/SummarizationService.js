@@ -6,12 +6,15 @@ const UrlUtils = require('../utils/urlUtils');
 const TokenService = require('./TokenService');
 const CostService = require('./CostService');
 const ResponseParser = require('./ResponseParser');
+const MongoService = require('./MongoService');
 
 class SummarizationService {
   constructor(openaiClient, config) {
     this.openaiClient = openaiClient;
     this.config = config;
     this.systemPrompt = null;
+    this.isProcessing = false;
+    this.mongoService = new MongoService(config.mongo.uri);
     
     // Initialize services
     this.tokenService = new TokenService();
@@ -22,21 +25,32 @@ class SummarizationService {
       timeout: 30000,
       headers: { 'User-Agent': 'Discord-Bot/1.0' }
     });
+
+    
+
+    
   }
 
   setSystemPrompt(prompt) {
     this.systemPrompt = prompt;
   }
 
-  async processUrl(url, message) {
-    logger.info(`Processing URL: ${url}`);
-
-    if (UrlUtils.shouldSkipUrl(url)) {
-      logger.info(`Skipping URL (image/gif): ${url}`);
+  async processUrl(url, message, user) {
+    if (this.isProcessing) {
+      logger.info('Already processing a URL, skipping.');
       return;
     }
 
+    this.isProcessing = true;
+
     try {
+      logger.info(`Processing URL: ${url}`);
+
+      if (UrlUtils.shouldSkipUrl(url)) {
+        logger.info(`Skipping URL (image/gif): ${url}`);
+        return;
+      }
+
       const processedUrl = await this.preprocessUrl(url, message);
       if (!processedUrl) return;
 
@@ -57,6 +71,14 @@ class SummarizationService {
         await message.channel.send('Sorry, I could not format the summary properly.');
         return;
       }
+
+      await this.mongoService.persistData({
+        userId: user.id,
+        username: user.tag,
+        url,
+        inputTokens: result.tokens.input,
+        outputTokens: result.tokens.output,
+      });
       
       await message.reply({
         content: responseMessage,
@@ -65,6 +87,8 @@ class SummarizationService {
     } catch (error) {
       logger.error(`Error processing URL ${url}: ${error.message}`);
       await message.channel.send(`An unexpected error occurred while processing ${url}.`);
+    } finally {
+      this.isProcessing = false;
     }
   }
 
@@ -245,7 +269,7 @@ class SummarizationService {
     const startTime = Date.now();
     
     const response = await this.openaiClient.responses.create({
-      model: 'gpt-4.1-mini',
+      model: this.config.openai.model, // Use model from config
       tools: [{ type: "web_search_preview" }],
       instructions: this.systemPrompt,
       input: inputText,
@@ -261,7 +285,7 @@ class SummarizationService {
     const startTime = Date.now();
 
     const completion = await this.openaiClient.chat.completions.create({
-      model: 'gemma3:27b',
+      model: this.config.openai.model, // Use model from config
       messages: messages,
       temperature: 0.7,
       top_p: 0.95,
