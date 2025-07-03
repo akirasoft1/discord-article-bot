@@ -139,6 +139,10 @@ discord-article-archiver-bot/
 
 ## Key Features
 
+### Concurrency Limiting
+
+To prevent rate-limiting errors from the OpenAI API, the bot now includes a locking mechanism that ensures only one URL is processed at a time. This prevents the bot from sending too many requests at once, which can help to avoid `429` errors.
+
 ### Token Counting & Cost Tracking
 - Uses OpenAI's tiktoken library for accurate token estimation
 - Real-time cost calculation for each summary
@@ -165,6 +169,10 @@ The bot uses Winston for structured logging with:
 - **Cost tracking**: Logs individual and cumulative costs
 
 ## Troubleshooting
+
+### 429 Insufficient Quota Error
+
+If you receive a `429 insufficient_quota` error, it means that you have exceeded your OpenAI API quota. To resolve this issue, you will need to log in to your OpenAI account and verify your billing details, usage, and any spending limits that may be in place.
 
 ### Bot not responding to reactions
 - Ensure the bot has permissions: `Read Messages`, `Read Message History`, `Add Reactions`, `Send Messages`
