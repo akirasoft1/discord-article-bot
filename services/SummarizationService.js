@@ -13,6 +13,8 @@ class SummarizationService {
     this.openaiClient = openaiClient;
     this.config = config;
     this.systemPrompt = null;
+    this.isProcessing = false;
+    this.mongoService = new MongoService(config.mongo.uri);
     
     // Initialize services
     this.tokenService = new TokenService();
@@ -24,8 +26,9 @@ class SummarizationService {
       headers: { 'User-Agent': 'Discord-Bot/1.0' }
     });
 
-    // Connect to MongoDB
-    MongoService.connect();
+    
+
+    
   }
 
   setSystemPrompt(prompt) {
@@ -33,14 +36,21 @@ class SummarizationService {
   }
 
   async processUrl(url, message, user) {
-    logger.info(`Processing URL: ${url}`);
-
-    if (UrlUtils.shouldSkipUrl(url)) {
-      logger.info(`Skipping URL (image/gif): ${url}`);
+    if (this.isProcessing) {
+      logger.info('Already processing a URL, skipping.');
       return;
     }
 
+    this.isProcessing = true;
+
     try {
+      logger.info(`Processing URL: ${url}`);
+
+      if (UrlUtils.shouldSkipUrl(url)) {
+        logger.info(`Skipping URL (image/gif): ${url}`);
+        return;
+      }
+
       const processedUrl = await this.preprocessUrl(url, message);
       if (!processedUrl) return;
 
@@ -62,7 +72,7 @@ class SummarizationService {
         return;
       }
 
-      await MongoService.persistData({
+      await this.mongoService.persistData({
         userId: user.id,
         username: user.tag,
         url,
@@ -77,6 +87,8 @@ class SummarizationService {
     } catch (error) {
       logger.error(`Error processing URL ${url}: ${error.message}`);
       await message.channel.send(`An unexpected error occurred while processing ${url}.`);
+    } finally {
+      this.isProcessing = false;
     }
   }
 
@@ -257,7 +269,7 @@ class SummarizationService {
     const startTime = Date.now();
     
     const response = await this.openaiClient.responses.create({
-      model: 'gpt-4.1-mini',
+      model: this.config.openai.model, // Use model from config
       tools: [{ type: "web_search_preview" }],
       instructions: this.systemPrompt,
       input: inputText,
@@ -273,7 +285,7 @@ class SummarizationService {
     const startTime = Date.now();
 
     const completion = await this.openaiClient.chat.completions.create({
-      model: 'gemma3:27b',
+      model: this.config.openai.model, // Use model from config
       messages: messages,
       temperature: 0.7,
       top_p: 0.95,

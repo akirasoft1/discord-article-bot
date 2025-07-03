@@ -9,7 +9,8 @@ const ReactionHandler = require('./handlers/ReactionHandler');
 
 class DiscordBot {
   constructor() {
-    logger.info('Creating DiscordBot instance');
+    logger.info('Creating DiscordBot v0.6 instance');
+    logger.info(`OpenAI API Key: ${config.openai.apiKey ? 'Loaded' : 'Not Loaded'}`);
     
     this.client = new Client({
       intents: [
