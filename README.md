@@ -4,15 +4,76 @@ A Discord bot that monitors for article links in channels, processes them throug
 
 ## Features
 
-- 📰 **Reaction-based Summarization**: React with 📰 emoji to any message containing URLs to trigger automatic summarization
-- 🗃️ **Archive.today Integration**: Automatically converts archive links to text-only versions for better processing
-- 🤖 **AI-Powered Summaries**: Uses OpenAI-compatible APIs (including Ollama) to generate concise 1500-character summaries
-- 🔍 **Smart URL Detection**: Filters out images and GIF links automatically
-- 📝 **Configurable System Prompts**: Customize the AI's summarization behavior via `prompt.txt`
-- 💰 **Cost Tracking**: Real-time token usage and cost breakdown for each summary (OpenAI models)
-- 📊 **Token Counting**: Accurate token estimation using tiktoken library
-- 🔗 **Link Sanitization**: Removes URLs from summaries to prevent Discord auto-expansion
-- 🛡️ **Robust Error Handling**: Graceful handling of invalid URLs, failed requests, and API errors
+### Content Enhancement
+
+- 🎯 **Smart Content Analysis**:
+  - **Topic Detection**: Automatically tags articles with topics (e.g., politics, tech, sports).
+  - **Sentiment Analysis**: Adds emoji reactions based on article mood (😢 for sad news, 🎉 for positive).
+  - **Reading Time Estimator**: Provides estimated reading time (e.g., "📖 ~3 min read").
+  - **Fact-Check Integration**: Flags articles from questionable sources with ⚠️.
+
+- 🔗 **URL Intelligence**:
+  - **Paywall Detector**: Attempts to find archive.org versions of paywalled articles.
+  - **Duplicate Detection**: Notifies if an article was already shared, including by whom and when.
+  - **Related Articles**: Suggests similar articles shared previously.
+  - **Source Credibility**: Rates sources with star ratings (⭐⭐⭐⭐⭐).
+
+### Interactive Features
+
+- 📊 **Community Engagement**:
+  - **Article Polls**: Auto-generates quick polls (e.g., "Do you agree with this take? 👍/👎").
+  - **Discussion Starters**: Generates thought-provoking questions about the article.
+  - **Quote of the Day**: Extracts and highlights interesting quotes from shared articles.
+  - **Article Bingo**: Creates bingo cards with common news themes.
+
+### Utility & Convenience
+
+- 🤖 **Smart Notifications**:
+  - **Breaking News Alerts**: Monitors RSS feeds and auto-posts urgent news.
+  - **Follow-up Tracker**: Allows users to mark stories for follow-up and get updates.
+  - **Personalized Feeds**: Users can subscribe to specific topics for tailored alerts.
+  - **Reminder Bot**: (Planned) "You saved this article to read later 📚".
+
+- 📈 **Analytics & Insights**:
+  - **Server News Trends**: Shows weekly hot topics and article counts.
+  - **Reading Habits**: Provides personal stats like "You've read 47 summaries this month!".
+  - **Popular Sources**: Displays which news outlets are most preferred by the server.
+  - **Controversy Meter**: Detects articles that generate lots of debate.
+
+### Fun & Quirky Features
+
+- 🎭 **Personality Modes**:
+  - **Summary Styles**: Summaries in various styles (e.g., Pirate, Shakespeare, Gen Z, Academic).
+  - **Mood-Based Summaries**: Summaries with different moods (e.g., cheerful, serious).
+  - **Celebrity Narrator**: Summaries narrated in the style of a chosen celebrity.
+  - **Historical Perspective**: Summaries from a specific historical viewpoint (e.g., 1950s, Victorian).
+
+### Advanced Features
+
+- 🧠 **AI-Powered Extras**:
+  - **Bias Detection**: Highlights potentially biased language or framing.
+  - **Alternative Perspectives**: Provides summaries from different political or ideological viewpoints.
+  - **Prediction Tracker**: (Planned) Tracks how AI predictions about future events pan out.
+  - **Context Provider**: Provides historical or background context for topics.
+
+### Multi-Language Support
+
+- 🌐 **Multi-Language Support**:
+  - **Auto-Translation**: Summarizes foreign articles in English.
+  - **Language Learning**: Provides summaries in multiple languages for practice.
+  - **Cultural Context**: Explains cultural references for international news.
+
+### Core Features
+
+- 📰 **Reaction-based Summarization**: React with 📰 emoji to any message containing URLs to trigger automatic summarization.
+- 🗃️ **Archive.today Integration**: Automatically converts archive links to text-only versions for better processing.
+- 🤖 **AI-Powered Summaries**: Uses OpenAI-compatible APIs (including Ollama) to generate concise 1500-character summaries.
+- 🔍 **Smart URL Detection**: Filters out images and GIF links automatically.
+- 📝 **Configurable System Prompts**: Customize the AI's summarization behavior via `prompt.txt`.
+- 💰 **Cost Tracking**: Real-time token usage and cost breakdown for each summary (OpenAI models).
+- 📊 **Token Counting**: Accurate token estimation using tiktoken library.
+- 🔗 **Link Sanitization**: Removes URLs from summaries to prevent Discord auto-expansion.
+- 🛡️ **Robust Error Handling**: Graceful handling of invalid URLs, failed requests, and API errors.
 
 ## Prerequisites
 
