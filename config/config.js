@@ -33,7 +33,8 @@ const mongoUri = process.env.MONGO_URI.replace('${MONGO_PASSWORD}', process.env.
 module.exports = {
   discord: {
     token: process.env.DISCORD_TOKEN,
-    intents: ['Guilds', 'GuildMessages', 'GuildMessageReactions', 'MessageContent']
+    intents: ['Guilds', 'GuildMessages', 'GuildMessageReactions', 'MessageContent'],
+    prefix: process.env.DISCORD_PREFIX || '!'
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY,
@@ -43,7 +44,95 @@ module.exports = {
   },
   bot: {
     maxSummaryLength: 1500,
-    systemPromptFile: 'prompt.txt'
+    systemPromptFile: 'prompt.txt',
+    factChecker: {
+      enabled: process.env.FACT_CHECKER_ENABLED === 'true' || true,
+      questionableSources: process.env.QUESTIONABLE_SOURCES ? process.env.QUESTIONABLE_SOURCES.split(',') : []
+    },
+    sourceCredibility: {
+      enabled: process.env.SOURCE_CREDIBILITY_ENABLED === 'true' || true,
+      trustedSources: process.env.TRUSTED_SOURCES ? JSON.parse(process.env.TRUSTED_SOURCES) : {}
+    },
+    rssFeeds: {
+      enabled: process.env.RSS_FEEDS_ENABLED === 'true' || false,
+      intervalMinutes: parseInt(process.env.RSS_INTERVAL_MINUTES || '60', 10),
+      feeds: process.env.RSS_FEEDS ? JSON.parse(process.env.RSS_FEEDS) : []
+    },
+    followUpTracker: {
+      enabled: process.env.FOLLOW_UP_TRACKER_ENABLED === 'true' || false,
+      intervalMinutes: parseInt(process.env.FOLLOW_UP_INTERVAL_MINUTES || '1440', 10) // Default to 24 hours
+    },
+    summaryStyles: {
+      enabled: process.env.SUMMARY_STYLES_ENABLED === 'true' || true,
+      styles: {
+        pirate: "Summarize this article in the style of a pirate.",
+        shakespeare: "Summarize this article in the style of William Shakespeare.",
+        genz: "Summarize this article using Gen Z slang and internet culture references.",
+        academic: "Summarize this article in a formal, academic tone, suitable for a research paper."
+      }
+    },
+    moodBasedSummaries: {
+      enabled: process.env.MOOD_BASED_SUMMARIES_ENABLED === 'true' || true,
+      moods: {
+        monday: "Summarize this article in a serious and formal tone.",
+        friday: "Summarize this article in a cheerful and lighthearted tone.",
+        neutral: "Summarize this article in a neutral and objective tone."
+      },
+      defaultMood: "neutral"
+    },
+    celebrityNarrators: {
+      enabled: process.env.CELEBRITY_NARRATORS_ENABLED === 'true' || true,
+      narrators: {
+        gordon_ramsay: "Summarize this article as if Gordon Ramsay is narrating, with his characteristic intensity and expletives (bleeped, of course).",
+        shakespeare: "Summarize this article as if William Shakespeare is narrating, using Elizabethan language and dramatic flair.",
+        morgan_freeman: "Summarize this article as if Morgan Freeman is narrating, with his calm, authoritative, and deep voice."
+      }
+    },
+    historicalPerspectives: {
+      enabled: process.env.HISTORICAL_PERSPECTIVES_ENABLED === 'true' || true,
+      perspectives: {
+        '1950s': "Summarize this article as if it were being reported in the 1950s, using language and cultural references from that era.",
+        'victorian': "Summarize this article as if it were being reported in the Victorian era, with formal language and a focus on societal norms.",
+        'ancient_rome': "Summarize this article as if it were being discussed in Ancient Rome, focusing on aspects relevant to Roman citizens and using appropriate terminology."
+      }
+    },
+    biasDetection: {
+      enabled: process.env.BIAS_DETECTION_ENABLED === 'true' || false,
+      threshold: parseFloat(process.env.BIAS_THRESHOLD || '0.7'), // Example threshold
+      types: process.env.BIAS_TYPES ? process.env.BIAS_TYPES.split(',') : ['political', 'gender', 'racial', 'corporate']
+    },
+    alternativePerspectives: {
+      enabled: process.env.ALTERNATIVE_PERSPECTIVES_ENABLED === 'true' || false,
+      perspectives: {
+        liberal: "Summarize this article from a liberal viewpoint.",
+        conservative: "Summarize this article from a conservative viewpoint.",
+        environmentalist: "Summarize this article from an environmentalist viewpoint.",
+        economic: "Summarize this article from an economic viewpoint."
+      }
+    },
+    contextProvider: {
+      enabled: process.env.CONTEXT_PROVIDER_ENABLED === 'true' || false,
+      minKeywords: parseInt(process.env.CONTEXT_MIN_KEYWORDS || '3', 10),
+      prompt: "Provide a brief historical or background context for the following topic/keywords: "
+    },
+    autoTranslation: {
+      enabled: process.env.AUTO_TRANSLATION_ENABLED === 'true' || true,
+      targetLanguage: process.env.AUTO_TRANSLATION_TARGET_LANGUAGE || 'English',
+      supportedLanguages: process.env.AUTO_TRANSLATION_SUPPORTED_LANGUAGES ? process.env.AUTO_TRANSLATION_SUPPORTED_LANGUAGES.split(',') : ['English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese']
+    },
+    languageLearning: {
+      enabled: process.env.LANGUAGE_LEARNING_ENABLED === 'true' || true,
+      targetLanguages: process.env.LANGUAGE_LEARNING_TARGET_LANGUAGES ? process.env.LANGUAGE_LEARNING_TARGET_LANGUAGES.split(',') : ['Spanish', 'French'],
+      presentationStyle: process.env.LANGUAGE_LEARNING_PRESENTATION_STYLE || 'side-by-side' // 'side-by-side', 'alternating'
+    },
+    culturalContext: {
+      enabled: process.env.CULTURAL_CONTEXT_ENABLED === 'true' || true,
+      contexts: {
+        japanese: "Summarize this article with a focus on Japanese cultural nuances and perspectives.",
+        indian: "Summarize this article with a focus on Indian cultural nuances and perspectives.",
+        western: "Summarize this article with a focus on Western cultural nuances and perspectives."
+      }
+    }
   },
   debug: process.env.DEBUG === 'true',
   mongo: {
