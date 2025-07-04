@@ -1,6 +1,6 @@
 # Node.js specific files
 node_modules/
-deployment.yaml
+deployment*.yaml
 secret.yaml
 Dockerfile
 npm-debug.log
@@ -27,3 +27,4 @@ Thumbs.db
 *.sublime-workspace
 
 bot_slash.js
+configmap.yaml
