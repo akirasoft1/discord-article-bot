@@ -260,7 +260,7 @@ spec:
         # Volume for prompt.txt
         volumeMounts:
         - name: prompt-volume
-          mountPath: /app/prompt.txt
+          mountPath: /usr/src/app/prompt.txt
           subPath: prompt.txt
         
         # Health checks
@@ -293,26 +293,18 @@ kubectl apply -f bot-deployment.yaml
 Create a `Dockerfile` in your project root:
 
 ```dockerfile
-FROM node:18-alpine
 
-WORKDIR /app
+FROM node:20-alpine
 
-# Copy package files
+WORKDIR /usr/src/app
+
 COPY package*.json ./
+RUN npm install
 
-# Install dependencies
-RUN npm ci --only=production
-
-# Copy application files
 COPY . .
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
-USER nodejs
+CMD [ "node", "bot.js" ]
 
-# Start the bot
-CMD ["node", "bot.js"]
 ```
 
 Build and push:
