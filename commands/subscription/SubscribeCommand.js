@@ -19,13 +19,14 @@ class SubscribeCommand extends BaseCommand {
     this.subscriptionService = subscriptionService;
   }
 
-  async execute(message, args) {
+  async execute(message, args, context) {
     const topic = args.join(' ');
     const { success, message: replyMessage } = await this.subscriptionService.subscribe(
       message.author.id, 
       topic
     );
-    return message.reply(replyMessage);
+    
+    return this.sendReply(message, replyMessage, context);
   }
 }
 

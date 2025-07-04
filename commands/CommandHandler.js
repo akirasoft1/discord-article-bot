@@ -48,7 +48,12 @@ class CommandHandler {
           message.member.permissions.has(perm)
         );
         if (!hasPermission) {
-          return message.reply('You do not have permission to use this command.');
+          const permissionMessage = 'You do not have permission to use this command.';
+          if (context.bot?.messageService) {
+            return context.bot.messageService.replyToMessage(message, permissionMessage);
+          } else {
+            return message.reply(permissionMessage);
+          }
         }
       }
 
@@ -59,7 +64,12 @@ class CommandHandler {
         
         if (cooldownTime && Date.now() < cooldownTime) {
           const timeLeft = Math.ceil((cooldownTime - Date.now()) / 1000);
-          return message.reply(`Please wait ${timeLeft} seconds before using this command again.`);
+          const cooldownMessage = `Please wait ${timeLeft} seconds before using this command again.`;
+          if (context.bot?.messageService) {
+            return context.bot.messageService.replyToMessage(message, cooldownMessage);
+          } else {
+            return message.reply(cooldownMessage);
+          }
         }
         
         this.cooldowns.set(cooldownKey, Date.now() + command.cooldown * 1000);
@@ -67,7 +77,12 @@ class CommandHandler {
 
       // Validate arguments
       if (!command.validateArgs(args)) {
-        return message.reply(command.getUsage());
+        const usageMessage = command.getUsage();
+        if (context.bot?.messageService) {
+          return context.bot.messageService.replyToMessage(message, usageMessage);
+        } else {
+          return message.reply(usageMessage);
+        }
       }
 
       // Execute command
@@ -76,7 +91,12 @@ class CommandHandler {
       
     } catch (error) {
       logger.error(`Error executing command ${commandName}:`, error);
-      return message.reply('An error occurred while executing that command.');
+      const errorMessage = 'An error occurred while executing that command.';
+      if (context.bot?.messageService) {
+        return context.bot.messageService.replyToMessage(message, errorMessage);
+      } else {
+        return message.reply(errorMessage);
+      }
     }
   }
 

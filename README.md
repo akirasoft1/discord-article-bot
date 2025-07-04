@@ -289,6 +289,7 @@ Trusted sources are configured via the `TRUSTED_SOURCES` environment variable as
 - `!perspective_summarize <url> <perspective>` - Alternative perspective (aliases: `!perspsum`, `!perspective`)
 - `!learn_language <url> <languages...>` - Multi-language (aliases: `!langsum`, `!multilang`)
 - `!cultural_summarize <url> <context>` - Cultural context (aliases: `!cultsum`, `!cultural`)
+- `!summarize_with_context <url> [style]` - Summary with historical/background context (aliases: `!sumctx`, `!contextsum`)
 
 ### Utility Commands
 - `!poll <url>` - Generate a poll from an article

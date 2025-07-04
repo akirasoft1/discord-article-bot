@@ -10,6 +10,7 @@ const RssService = require('./services/RssService');
 const FollowUpService = require('./services/FollowUpService');
 const SubscriptionService = require('./services/SubscriptionService');
 const AnalyticsService = require('./services/AnalyticsService');
+const MessageService = require('./services/MessageService');
 const CommandHandler = require('./commands/CommandHandler');
 
 // Import all command classes
@@ -27,6 +28,7 @@ const HistoricalSummarizeCommand = require('./commands/summarization/HistoricalS
 const PerspectiveSummarizeCommand = require('./commands/summarization/PerspectiveSummarizeCommand');
 const LearnLanguageCommand = require('./commands/summarization/LearnLanguageCommand');
 const CulturalSummarizeCommand = require('./commands/summarization/CulturalSummarizeCommand');
+const SummarizeWithContextCommand = require('./commands/summarization/SummarizeWithContextCommand');
 const PollCommand = require('./commands/utility/PollCommand');
 const DiscussionQuestionsCommand = require('./commands/utility/DiscussionQuestionsCommand');
 const HelpCommand = require('./commands/utility/HelpCommand');
@@ -50,7 +52,8 @@ class DiscordBot {
       baseURL: config.openai.baseURL,
     });
 
-    this.summarizationService = new SummarizationService(this.openaiClient, config, this.client);
+    this.messageService = new MessageService(this.openaiClient);
+    this.summarizationService = new SummarizationService(this.openaiClient, config, this.client, this.messageService);
     this.reactionHandler = new ReactionHandler(this.summarizationService, this.summarizationService.mongoService);
     this.rssService = new RssService(this.summarizationService.mongoService, this.summarizationService, this.client);
     this.followUpService = new FollowUpService(this.summarizationService.mongoService, this.summarizationService, this.client);
@@ -95,6 +98,7 @@ class DiscordBot {
     this.commandHandler.register(new PerspectiveSummarizeCommand(this.summarizationService));
     this.commandHandler.register(new LearnLanguageCommand(this.summarizationService));
     this.commandHandler.register(new CulturalSummarizeCommand(this.summarizationService));
+    this.commandHandler.register(new SummarizeWithContextCommand(this.summarizationService));
 
     // Register utility commands
     this.commandHandler.register(new PollCommand(this.summarizationService));

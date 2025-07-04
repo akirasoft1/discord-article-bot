@@ -103,7 +103,7 @@ class ResponseParser {
       message += '\n\n---\n';
       message += '**Related Articles:**\n';
       result.relatedArticles.forEach((article, index) => {
-        message += `${index + 1}. [${article.url}]\n`;
+        message += `${index + 1}. <${article.url}>\n`;
       });
     }
     
