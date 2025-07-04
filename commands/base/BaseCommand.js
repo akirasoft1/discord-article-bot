@@ -65,6 +65,28 @@ class BaseCommand {
   async execute(message, args, context) {
     throw new Error(`Command ${this.name} must implement execute method`);
   }
+
+  /**
+   * Helper method to send a reply using MessageService if available
+   */
+  async sendReply(message, content, context, options = {}) {
+    if (context.bot?.messageService) {
+      return context.bot.messageService.replyToMessage(message, content, options);
+    } else {
+      return message.reply({ content, ...options });
+    }
+  }
+
+  /**
+   * Helper method to send a message using MessageService if available
+   */
+  async sendMessage(channel, content, context, options = {}) {
+    if (context.bot?.messageService) {
+      return context.bot.messageService.sendMessage(channel, content, options);
+    } else {
+      return channel.send({ content, ...options });
+    }
+  }
 }
 
 module.exports = BaseCommand;

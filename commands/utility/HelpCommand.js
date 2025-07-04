@@ -21,7 +21,7 @@ class HelpCommand extends BaseCommand {
     this.commandHandler = commandHandler;
   }
 
-  async execute(message, args) {
+  async execute(message, args, context) {
     const [commandName] = args;
 
     if (commandName) {
@@ -29,7 +29,7 @@ class HelpCommand extends BaseCommand {
       const command = this.commandHandler.getCommand(commandName);
       
       if (!command) {
-        return message.reply(`Command '${commandName}' not found. Use !help to see all commands.`);
+        return this.sendReply(message, `Command '${commandName}' not found. Use !help to see all commands.`, context);
       }
 
       const embed = new EmbedBuilder()
@@ -49,7 +49,7 @@ class HelpCommand extends BaseCommand {
         embed.addFields({ name: 'Examples', value: command.examples.join('\n'), inline: false });
       }
 
-      return message.channel.send({ embeds: [embed] });
+      return this.sendMessage(message.channel, '', context, { embeds: [embed] });
     }
 
     // Show all commands grouped by category
@@ -72,7 +72,7 @@ class HelpCommand extends BaseCommand {
       });
     });
 
-    return message.channel.send({ embeds: [embed] });
+    return this.sendMessage(message.channel, '', context, { embeds: [embed] });
   }
 }
 

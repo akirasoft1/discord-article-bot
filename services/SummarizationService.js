@@ -12,10 +12,11 @@ const SourceCredibilityService = require('./SourceCredibilityService');
 const PollService = require('./PollService');
 
 class SummarizationService {
-  constructor(openaiClient, config, discordClient) {
+  constructor(openaiClient, config, discordClient, messageService = null) {
     this.openaiClient = openaiClient;
     this.config = config;
     this.discordClient = discordClient;
+    this.messageService = messageService;
     this.systemPrompt = null;
     this.isProcessing = false;
     this.mongoService = new MongoService(config.mongo.uri);
@@ -56,7 +57,13 @@ class SummarizationService {
       const existingArticle = await this.mongoService.findArticleByUrl(url);
       if (existingArticle) {
         const timeSince = new Date(existingArticle.createdAt).toLocaleDateString();
-        await message.channel.send(`This article was already shared on ${timeSince} by @${existingArticle.username}.`);
+        const duplicateMessage = `This article was already shared on ${timeSince} by @${existingArticle.username}.`;
+        
+        if (this.messageService) {
+          await this.messageService.sendMessage(message.channel, duplicateMessage);
+        } else {
+          await message.channel.send(duplicateMessage);
+        }
         return;
       }
 
@@ -91,7 +98,12 @@ class SummarizationService {
       const result = await this.generateSummary(content, processedUrl, style, mood, narrator, historicalPerspective);
       
       if (!result) {
-        await message.channel.send('Sorry, I could not generate a summary for this article.');
+        const errorMessage = 'Sorry, I could not generate a summary for this article.';
+        if (this.messageService) {
+          await this.messageService.sendMessage(message.channel, errorMessage);
+        } else {
+          await message.channel.send(errorMessage);
+        }
         return;
       }
 
@@ -104,24 +116,23 @@ class SummarizationService {
 
       const sourceCredibility = this.sourceCredibilityService.rateSource(url);
 
-      let context = null;
-      if (enhancedResult.topic) {
-        context = await this.provideContext(enhancedResult.topic);
-      }
-
       const responseMessage = ResponseParser.buildDiscordMessage({
         ...result,
         ...enhancedResult,
         relatedArticles,
         sourceCredibility,
-        context,
         wasTranslated,
         detectedLanguage,
       });
       
       if (!responseMessage) {
         logger.error('Failed to build response message');
-        await message.channel.send('Sorry, I could not format the summary properly.');
+        const formatErrorMessage = 'Sorry, I could not format the summary properly.';
+        if (this.messageService) {
+          await this.messageService.sendMessage(message.channel, formatErrorMessage);
+        } else {
+          await message.channel.send(formatErrorMessage);
+        }
         return;
       }
 
@@ -139,23 +150,189 @@ class SummarizationService {
         await this.checkAndNotifyFollowUps(url, enhancedResult.topic, result.summary);
       }
       
-      await message.reply({
-        content: responseMessage,
-        allowedMentions: { repliedUser: false }
-      });
+      if (this.messageService) {
+        await this.messageService.replyToMessage(message, responseMessage, {
+          allowedMentions: { repliedUser: false }
+        });
+      } else {
+        await message.reply({
+          content: responseMessage,
+          allowedMentions: { repliedUser: false }
+        });
+      }
 
       
 
       // Extract and send quote of the day
       const quote = await this.extractQuote(content || result.summary);
       if (quote) {
-        await message.channel.send(`**Quote of the Day:**\n>>> ${quote}`);
+        const quoteMessage = `**Key Article Quote:**\n>>> ${quote}`;
+        if (this.messageService) {
+          await this.messageService.sendMessage(message.channel, quoteMessage);
+        } else {
+          await message.channel.send(quoteMessage);
+        }
       }
 
       
     } catch (error) {
       logger.error(`Error processing URL ${url}: ${error.message}`);
-      await message.channel.send(`An unexpected error occurred while processing ${url}.`);
+      const unexpectedErrorMessage = `An unexpected error occurred while processing ${url}.`;
+      if (this.messageService) {
+        await this.messageService.sendMessage(message.channel, unexpectedErrorMessage);
+      } else {
+        await message.channel.send(unexpectedErrorMessage);
+      }
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  async processUrlWithContext(url, message, user, style = null, mood = null, narrator = null, historicalPerspective = null) {
+    if (this.isProcessing) {
+      logger.info('Already processing a URL, skipping.');
+      return;
+    }
+
+    this.isProcessing = true;
+
+    try {
+      logger.info(`Processing URL with context: ${url}`);
+
+      const existingArticle = await this.mongoService.findArticleByUrl(url);
+      if (existingArticle) {
+        const timeSince = new Date(existingArticle.createdAt).toLocaleDateString();
+        const duplicateMessage = `This article was already shared on ${timeSince} by @${existingArticle.username}.`;
+        
+        if (this.messageService) {
+          await this.messageService.sendMessage(message.channel, duplicateMessage);
+        } else {
+          await message.channel.send(duplicateMessage);
+        }
+        return;
+      }
+
+      if (UrlUtils.shouldSkipUrl(url)) {
+        logger.info(`Skipping URL (image/gif): ${url}`);
+        return;
+      }
+
+      if (this.isQuestionableSource(url)) {
+        logger.info(`Flagging questionable source: ${url}`);
+        await message.react('⚠️');
+      }
+
+      let processedUrl = url;
+
+      const finalUrl = await this.preprocessUrl(processedUrl, message);
+      if (!finalUrl) return;
+
+      let content = await this.fetchContent(finalUrl, message);
+      if (content === false) return;
+
+      let wasTranslated = false;
+      let detectedLanguage = 'N/A';
+
+      if (this.config.bot.autoTranslation.enabled) {
+        const translationResult = await this.detectAndTranslate(content);
+        content = translationResult.translatedText;
+        wasTranslated = translationResult.wasTranslated;
+        detectedLanguage = translationResult.detectedLanguage;
+      }
+      
+      const result = await this.generateSummary(content, processedUrl, style, mood, narrator, historicalPerspective);
+      
+      if (!result) {
+        const errorMessage = 'Sorry, I could not generate a summary for this article.';
+        if (this.messageService) {
+          await this.messageService.sendMessage(message.channel, errorMessage);
+        } else {
+          await message.channel.send(errorMessage);
+        }
+        return;
+      }
+
+      const enhancedResult = await this.enhanceSummary(result.summary, content);
+
+      let relatedArticles = [];
+      if (enhancedResult.topic) {
+        relatedArticles = await this.mongoService.findRelatedArticles(enhancedResult.topic, url);
+      }
+
+      const sourceCredibility = this.sourceCredibilityService.rateSource(url);
+
+      // Include context for this version
+      let context = null;
+      if (enhancedResult.topic) {
+        context = await this.provideContext(enhancedResult.topic);
+      }
+
+      const responseMessage = ResponseParser.buildDiscordMessage({
+        ...result,
+        ...enhancedResult,
+        relatedArticles,
+        sourceCredibility,
+        context,
+        wasTranslated,
+        detectedLanguage,
+      });
+      
+      if (!responseMessage) {
+        logger.error('Failed to build response message');
+        const formatErrorMessage = 'Sorry, I could not format the summary properly.';
+        if (this.messageService) {
+          await this.messageService.sendMessage(message.channel, formatErrorMessage);
+        } else {
+          await message.channel.send(formatErrorMessage);
+        }
+        return;
+      }
+
+      await this.mongoService.persistData({
+        userId: user.id,
+        username: user.tag,
+        url,
+        inputTokens: result.tokens.input,
+        outputTokens: result.tokens.output,
+        topic: enhancedResult.topic,
+      });
+
+      // Check and notify for follow-ups
+      if (enhancedResult.topic) {
+        await this.checkAndNotifyFollowUps(url, enhancedResult.topic, result.summary);
+      }
+      
+      if (this.messageService) {
+        await this.messageService.replyToMessage(message, responseMessage, {
+          allowedMentions: { repliedUser: false }
+        });
+      } else {
+        await message.reply({
+          content: responseMessage,
+          allowedMentions: { repliedUser: false }
+        });
+      }
+
+      // Extract and send quote of the day
+      const quote = await this.extractQuote(content || result.summary);
+      if (quote) {
+        const quoteMessage = `**Key Article Quote:**\n>>> ${quote}`;
+        if (this.messageService) {
+          await this.messageService.sendMessage(message.channel, quoteMessage);
+        } else {
+          await message.channel.send(quoteMessage);
+        }
+      }
+
+      
+    } catch (error) {
+      logger.error(`Error processing URL with context ${url}: ${error.message}`);
+      const unexpectedErrorMessage = `An unexpected error occurred while processing ${url}.`;
+      if (this.messageService) {
+        await this.messageService.sendMessage(message.channel, unexpectedErrorMessage);
+      } else {
+        await message.channel.send(unexpectedErrorMessage);
+      }
     } finally {
       this.isProcessing = false;
     }
@@ -173,7 +350,11 @@ class SummarizationService {
       return result.url;
     }
 
-    await message.channel.send(result.userMessage);
+    if (this.messageService) {
+      await this.messageService.sendMessage(message.channel, result.userMessage);
+    } else {
+      await message.channel.send(result.userMessage);
+    }
     
     if (result.isShortlink) {
       logger.info(result.userMessage);
@@ -196,7 +377,12 @@ class SummarizationService {
       return response.data;
     } catch (error) {
       logger.error(`Failed to fetch content from ${url}: ${error.message}`);
-      await message.channel.send(`Sorry, I could not retrieve the content from the archive link.`);
+      const fetchErrorMessage = `Sorry, I could not retrieve the content from the archive link.`;
+      if (this.messageService) {
+        await this.messageService.sendMessage(message.channel, fetchErrorMessage);
+      } else {
+        await message.channel.send(fetchErrorMessage);
+      }
       return false;
     }
   }

@@ -111,6 +111,17 @@ These commands allow you to request summaries with specific moods, narrators, or
     - `!cultural https://example.com/article indian`
 - **Available Contexts**: `japanese`, `indian`, `western`
 
+### Context-Enhanced Summaries
+
+- **Command**: `!summarize_with_context <url> [style]`
+- **Aliases**: `!sumctx`, `!contextsum`
+- **Description**: Generates a summary with additional historical/background context about the topic.
+- **Examples**:
+    - `!summarize_with_context https://example.com/article`
+    - `!sumctx https://example.com/article academic`
+    - `!contextsum https://example.com/article`
+- **Note**: This feature must be enabled by the server administrator via `CONTEXT_PROVIDER_ENABLED=true`
+
 ## Subscription and Analytics Commands
 
 These commands help you manage your personalized news experience and view server-wide trends.
