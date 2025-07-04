@@ -10,6 +10,26 @@ const RssService = require('./services/RssService');
 const FollowUpService = require('./services/FollowUpService');
 const SubscriptionService = require('./services/SubscriptionService');
 const AnalyticsService = require('./services/AnalyticsService');
+const CommandHandler = require('./commands/CommandHandler');
+
+// Import all command classes
+const SubscribeCommand = require('./commands/subscription/SubscribeCommand');
+const UnsubscribeCommand = require('./commands/subscription/UnsubscribeCommand');
+const MySubscriptionsCommand = require('./commands/subscription/MySubscriptionsCommand');
+const NewsTrendsCommand = require('./commands/analytics/NewsTrendsCommand');
+const MyReadingHabitsCommand = require('./commands/analytics/MyReadingHabitsCommand');
+const PopularSourcesCommand = require('./commands/analytics/PopularSourcesCommand');
+const ControversyMeterCommand = require('./commands/analytics/ControversyMeterCommand');
+const SummarizeCommand = require('./commands/summarization/SummarizeCommand');
+const MoodSummarizeCommand = require('./commands/summarization/MoodSummarizeCommand');
+const NarrateSummarizeCommand = require('./commands/summarization/NarrateSummarizeCommand');
+const HistoricalSummarizeCommand = require('./commands/summarization/HistoricalSummarizeCommand');
+const PerspectiveSummarizeCommand = require('./commands/summarization/PerspectiveSummarizeCommand');
+const LearnLanguageCommand = require('./commands/summarization/LearnLanguageCommand');
+const CulturalSummarizeCommand = require('./commands/summarization/CulturalSummarizeCommand');
+const PollCommand = require('./commands/utility/PollCommand');
+const DiscussionQuestionsCommand = require('./commands/utility/DiscussionQuestionsCommand');
+const HelpCommand = require('./commands/utility/HelpCommand');
 
 class DiscordBot {
   constructor() {
@@ -37,6 +57,10 @@ class DiscordBot {
     this.subscriptionService = new SubscriptionService(this.summarizationService.mongoService);
     this.analyticsService = new AnalyticsService(this.summarizationService.mongoService);
     
+    // Initialize command handler
+    this.commandHandler = new CommandHandler();
+    this.registerCommands();
+    
     this.setupEventHandlers();
   }
 
@@ -49,6 +73,35 @@ class DiscordBot {
       logger.error('Failed to start bot:', error);
       process.exit(1);
     }
+  }
+
+  registerCommands() {
+    // Register subscription commands
+    this.commandHandler.register(new SubscribeCommand(this.subscriptionService));
+    this.commandHandler.register(new UnsubscribeCommand(this.subscriptionService));
+    this.commandHandler.register(new MySubscriptionsCommand(this.subscriptionService));
+
+    // Register analytics commands
+    this.commandHandler.register(new NewsTrendsCommand(this.analyticsService));
+    this.commandHandler.register(new MyReadingHabitsCommand(this.analyticsService));
+    this.commandHandler.register(new PopularSourcesCommand(this.analyticsService));
+    this.commandHandler.register(new ControversyMeterCommand(this.analyticsService));
+
+    // Register summarization commands
+    this.commandHandler.register(new SummarizeCommand(this.summarizationService));
+    this.commandHandler.register(new MoodSummarizeCommand(this.summarizationService));
+    this.commandHandler.register(new NarrateSummarizeCommand(this.summarizationService));
+    this.commandHandler.register(new HistoricalSummarizeCommand(this.summarizationService));
+    this.commandHandler.register(new PerspectiveSummarizeCommand(this.summarizationService));
+    this.commandHandler.register(new LearnLanguageCommand(this.summarizationService));
+    this.commandHandler.register(new CulturalSummarizeCommand(this.summarizationService));
+
+    // Register utility commands
+    this.commandHandler.register(new PollCommand(this.summarizationService));
+    this.commandHandler.register(new DiscussionQuestionsCommand(this.summarizationService));
+    this.commandHandler.register(new HelpCommand(this.commandHandler));
+
+    logger.info(`Registered ${this.commandHandler.getAllCommands().length} commands`);
   }
 
   setupEventHandlers() {
@@ -104,138 +157,25 @@ class DiscordBot {
 
     this.client.on('messageCreate', async message => {
       if (message.author.bot) return;
+      if (!message.content.startsWith(config.discord.prefix)) return;
 
       const args = message.content.slice(config.discord.prefix.length).trim().split(/ +/);
-      const command = args.shift().toLowerCase();
+      const commandName = args.shift().toLowerCase();
 
-      if (command === 'subscribe') {
-        const topic = args.join(' ');
-        const { success, message: replyMessage } = await this.subscriptionService.subscribe(message.author.id, topic);
-        await message.reply(replyMessage);
-      } else if (command === 'unsubscribe') {
-        const topic = args.join(' ');
-        const { success, message: replyMessage } = await this.subscriptionService.unsubscribe(message.author.id, topic);
-        await message.reply(replyMessage);
-      } else if (command === 'my_subscriptions') {
-        const { success, message: replyMessage } = await this.subscriptionService.listSubscriptions(message.author.id);
-        await message.reply(replyMessage);
-      } else if (command === 'news_trends') {
-        const trendsMessage = await this.analyticsService.getServerNewsTrends();
-        await message.channel.send(trendsMessage);
-      } else if (command === 'my_reading_habits') {
-        const readingHabitsMessage = await this.analyticsService.getUserReadingHabits(message.author.id);
-        await message.reply(readingHabitsMessage);
-      } else if (command === 'popular_sources') {
-        const popularSourcesMessage = await this.analyticsService.getPopularSources();
-        await message.channel.send(popularSourcesMessage);
-      } else if (command === 'controversy_meter') {
-        const controversyMessage = await this.analyticsService.getControversyMeter();
-        await message.channel.send(controversyMessage);
-      } else if (command === 'summarize') {
-        const url = args[0];
-        const style = args[1]; // Optional style argument
-        if (!url) {
-          await message.reply('Please provide a URL to summarize.');
-          return;
-        }
-        if (style && !config.bot.summaryStyles.styles[style]) {
-          await message.reply(`Invalid summary style. Available styles: ${Object.keys(config.bot.summaryStyles.styles).join(', ')}`);
-          return;
-        }
-        await this.summarizationService.processUrl(url, message, message.author, style);
-      } else if (command === 'mood_summarize') {
-        const url = args[0];
-        const mood = args[1]; // Optional mood argument
-        if (!url) {
-          await message.reply('Please provide a URL to summarize.');
-          return;
-        }
-        if (mood && !config.bot.moodBasedSummaries.moods[mood]) {
-          await message.reply(`Invalid mood. Available moods: ${Object.keys(config.bot.moodBasedSummaries.moods).join(', ')}`);
-          return;
-        }
-        await this.summarizationService.processUrl(url, message, message.author, null, mood);
-      } else if (command === 'narrate_summarize') {
-        const url = args[0];
-        const narrator = args[1]; // Optional narrator argument
-        if (!url) {
-          await message.reply('Please provide a URL to summarize.');
-          return;
-        }
-        if (narrator && !config.bot.celebrityNarrators.narrators[narrator]) {
-          await message.reply(`Invalid narrator. Available narrators: ${Object.keys(config.bot.celebrityNarrators.narrators).join(', ')}`);
-          return;
-        }
-        await this.summarizationService.processUrl(url, message, message.author, null, null, narrator);
-      } else if (command === 'historical_summarize') {
-        const url = args[0];
-        const perspective = args[1]; // Optional historical perspective argument
-        if (!url) {
-          await message.reply('Please provide a URL to summarize.');
-          return;
-        }
-        if (perspective && !config.bot.historicalPerspectives.perspectives[perspective]) {
-          await message.reply(`Invalid historical perspective. Available perspectives: ${Object.keys(config.bot.historicalPerspectives.perspectives).join(', ')}`);
-          return;
-        }
-        await this.summarizationService.processUrl(url, message, message.author, null, null, null, perspective);
-      } else if (command === 'perspective_summarize') {
-        const url = args[0];
-        const perspective = args[1];
-        if (!url || !perspective) {
-          await message.reply('Please provide a URL and a perspective (e.g., liberal, conservative).');
-          return;
-        }
-        if (!config.bot.alternativePerspectives.perspectives[perspective]) {
-          await message.reply(`Invalid perspective. Available perspectives: ${Object.keys(config.bot.alternativePerspectives.perspectives).join(', ')}`);
-          return;
-        }
-        const content = await this.summarizationService.fetchContent(url, message);
-        if (content === false) return;
-        const summary = await this.summarizationService.getAlternativePerspectiveSummary(content, url, perspective);
-        if (summary) {
-          await message.channel.send(`**Summary from ${perspective} perspective:**\n${summary}`);
-        } else {
-          await message.channel.send(`Sorry, I could not generate a summary from the ${perspective} perspective.`);
-        }
-      } else if (command === 'learn_language') {
-        const url = args[0];
-        const languages = args.slice(1).map(lang => lang.toLowerCase());
-        if (!url || languages.length === 0) {
-          await message.reply('Please provide a URL and at least one target language (e.g., !learn_language <url> Spanish French).');
-          return;
-        }
-        const content = await this.summarizationService.fetchContent(url, message);
-        if (content === false) return;
-        const multiLanguageSummaries = await this.summarizationService.generateMultiLanguageSummary(content, url, languages);
-        if (multiLanguageSummaries) {
-          let responseMessage = '**Multi-language Summaries:**\n';
-          for (const lang in multiLanguageSummaries) {
-            responseMessage += `\n**${lang.charAt(0).toUpperCase() + lang.slice(1)}:**\n${multiLanguageSummaries[lang]}\n`;
-          }
-          await message.channel.send(responseMessage);
-        } else {
-          await message.channel.send('Sorry, I could not generate multi-language summaries.');
-        }
-      } else if (command === 'cultural_summarize') {
-        const url = args[0];
-        const culturalContext = args[1];
-        if (!url || !culturalContext) {
-          await message.reply('Please provide a URL and a cultural context (e.g., japanese, indian).');
-          return;
-        }
-        if (!config.bot.culturalContext.contexts[culturalContext]) {
-          await message.reply(`Invalid cultural context. Available contexts: ${Object.keys(config.bot.culturalContext.contexts).join(', ')}`);
-          return;
-        }
-        const content = await this.summarizationService.fetchContent(url, message);
-        if (content === false) return;
-        const summary = await this.summarizationService.generateCulturalContextSummary(content, url, culturalContext);
-        if (summary) {
-          await message.channel.send(`**Summary from ${culturalContext} cultural context:**\n${summary}`);
-        } else {
-          await message.channel.send(`Sorry, I could not generate a summary with the ${culturalContext} cultural context.`);
-        }
+      // Pass the bot context which includes all services
+      const context = {
+        bot: this,
+        config: config
+      };
+
+      await this.commandHandler.execute(message, commandName, args, context);
+    });
+
+    this.client.on('interactionCreate', async interaction => {
+      if (!interaction.isButton()) return;
+
+      if (interaction.customId === 'poll_yes' || interaction.customId === 'poll_no') {
+        await interaction.reply({ content: `You voted ${interaction.customId === 'poll_yes' ? 'Yes' : 'No'}!`, ephemeral: true });
       }
     });
 

@@ -8,10 +8,8 @@ const CostService = require('./CostService');
 const ResponseParser = require('./ResponseParser');
 const TextUtils = require('../utils/textUtils');
 const MongoService = require('./MongoService');
-const PaywallService = require('./PaywallService');
 const SourceCredibilityService = require('./SourceCredibilityService');
 const PollService = require('./PollService');
-const BingoService = require('./BingoService');
 
 class SummarizationService {
   constructor(openaiClient, config, discordClient) {
@@ -23,7 +21,6 @@ class SummarizationService {
     this.mongoService = new MongoService(config.mongo.uri);
     this.sourceCredibilityService = new SourceCredibilityService(config);
     this.pollService = new PollService(openaiClient);
-    this.bingoService = new BingoService(openaiClient);
     
     // Initialize services
     this.tokenService = new TokenService();
@@ -74,18 +71,6 @@ class SummarizationService {
       }
 
       let processedUrl = url;
-      if (await PaywallService.detectPaywall(url)) {
-        logger.info(`Paywall detected for ${url}. Attempting to find an archived version.`);
-        const archiveUrl = await PaywallService.findArchiveUrl(url);
-        if (archiveUrl) {
-          logger.info(`Found archived version: ${archiveUrl}`);
-          processedUrl = archiveUrl;
-          await message.channel.send(`Paywall detected. I'll use an archived version of the article.`);
-        } else {
-          logger.warn(`Could not find an archived version for ${url}.`);
-          await message.channel.send(`I detected a paywall but couldn't find an archived version. I'll try to summarize it anyway.`);
-        }
-      }
 
       const finalUrl = await this.preprocessUrl(processedUrl, message);
       if (!finalUrl) return;
@@ -159,17 +144,7 @@ class SummarizationService {
         allowedMentions: { repliedUser: false }
       });
 
-      // Generate and send poll
-      const pollQuestion = await this.pollService.generatePoll(result.summary);
-      if (pollQuestion) {
-        await this.pollService.createDiscordPoll(message.channel, pollQuestion);
-      }
-
-      // Generate discussion questions
-      const discussionQuestions = await this.pollService.generateDiscussionQuestions(result.summary);
-      if (discussionQuestions) {
-        await message.channel.send(`**Discussion Starters:**\n${discussionQuestions}`);
-      }
+      
 
       // Extract and send quote of the day
       const quote = await this.extractQuote(content || result.summary);
@@ -177,12 +152,7 @@ class SummarizationService {
         await message.channel.send(`**Quote of the Day:**\n>>> ${quote}`);
       }
 
-      // Generate and send Article Bingo card
-      const bingoCard = await this.bingoService.generateBingoCard(result.summary);
-      if (bingoCard) {
-        const formattedBingoCard = this.bingoService.formatBingoCard(bingoCard);
-        await message.channel.send(`**Article Bingo:**\n${formattedBingoCard}`);
-      }
+      
     } catch (error) {
       logger.error(`Error processing URL ${url}: ${error.message}`);
       await message.channel.send(`An unexpected error occurred while processing ${url}.`);

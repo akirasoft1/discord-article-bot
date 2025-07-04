@@ -2,6 +2,16 @@
 
 This document explains how Discord users can interact with the bot to summarize articles and utilize its various features.
 
+## Getting Help
+
+- **Command**: `!help [command]`
+- **Aliases**: `!h`, `!commands`
+- **Description**: Displays all available commands or detailed information about a specific command.
+- **Examples**:
+    - `!help` - Shows all commands grouped by category
+    - `!help summarize` - Shows detailed help for the summarize command
+    - `!help subscription` - Shows commands in the subscription category
+
 ## Core Interaction: Summarizing Articles
 
 The primary way to get a summary is by reacting to a message containing a URL or by using the `!summarize` command.
@@ -14,10 +24,11 @@ The primary way to get a summary is by reacting to a message containing a URL or
 ### 2. Command-Based Summarization
 
 - **Command**: `!summarize <url> [style]`
+- **Aliases**: `!sum`
 - **Description**: Summarizes the article at the given URL. Optionally, you can specify a `style` to change the summary's tone.
 - **Examples**:
     - `!summarize https://example.com/article`
-    - `!summarize https://example.com/article pirate` (for a pirate-themed summary)
+    - `!sum https://example.com/article pirate` (for a pirate-themed summary)
     - `!summarize https://example.com/article academic` (for a formal summary)
 - **Available Styles**: `pirate`, `shakespeare`, `genz`, `academic`
 
@@ -30,8 +41,11 @@ The primary way to get a summary is by reacting to a message containing a URL or
 ### Discussion Questions
 
 - **Command**: `!discussion_questions <url>`
+- **Aliases**: `!discuss`, `!questions`
 - **Description**: Generates thought-provoking discussion questions based on the article summary.
-- **Example**: `!discussion_questions https://example.com/article`
+- **Examples**: 
+    - `!discussion_questions https://example.com/article`
+    - `!discuss https://example.com/article`
 
 ## Enhanced Summarization Commands
 
@@ -40,55 +54,61 @@ These commands allow you to request summaries with specific moods, narrators, or
 ### Mood-Based Summaries
 
 - **Command**: `!mood_summarize <url> [mood]`
+- **Aliases**: `!moodsum`
 - **Description**: Summarizes the article with a specific mood.
 - **Examples**:
     - `!mood_summarize https://example.com/article cheerful`
-    - `!mood_summarize https://example.com/article serious`
+    - `!moodsum https://example.com/article serious`
 - **Available Moods**: `monday` (serious), `friday` (cheerful), `neutral`
 
 ### Celebrity Narrator Summaries
 
 - **Command**: `!narrate_summarize <url> [narrator]`
+- **Aliases**: `!narratesum`, `!narrator`
 - **Description**: Summarizes the article as if narrated by a chosen celebrity.
 - **Examples**:
     - `!narrate_summarize https://example.com/article gordon_ramsay`
-    - `!narrate_summarize https://example.com/article morgan_freeman`
+    - `!narrator https://example.com/article morgan_freeman`
 - **Available Narrators**: `gordon_ramsay`, `shakespeare`, `morgan_freeman`
 
 ### Historical Perspective Summaries
 
 - **Command**: `!historical_summarize <url> [perspective]`
+- **Aliases**: `!histsum`
 - **Description**: Summarizes the article from a specific historical viewpoint.
 - **Examples**:
     - `!historical_summarize https://example.com/article 1950s`
-    - `!historical_summarize https://example.com/article victorian`
+    - `!histsum https://example.com/article victorian`
 - **Available Perspectives**: `1950s`, `victorian`, `ancient_rome`
 
 ### Alternative Perspective Summaries
 
 - **Command**: `!perspective_summarize <url> <perspective>`
+- **Aliases**: `!perspsum`, `!perspective`
 - **Description**: Generates a summary of the article from a specific alternative viewpoint.
 - **Examples**:
     - `!perspective_summarize https://example.com/article liberal`
-    - `!perspective_summarize https://example.com/article conservative`
+    - `!perspective https://example.com/article conservative`
 - **Available Perspectives**: `liberal`, `conservative`, `environmentalist`, `economic`
 
 ### Language Learning Summaries
 
 - **Command**: `!learn_language <url> <language1> [language2...]`
+- **Aliases**: `!langsum`, `!multilang`
 - **Description**: Generates summaries in multiple specified languages for language practice.
 - **Examples**:
     - `!learn_language https://example.com/article Spanish`
-    - `!learn_language https://example.com/article French German`
+    - `!multilang https://example.com/article French German`
 - **Available Languages**: (Configurable, but typically includes `English`, `Spanish`, `French`, `German`, `Italian`, `Portuguese`)
 
 ### Cultural Context Summaries
 
 - **Command**: `!cultural_summarize <url> <context>`
+- **Aliases**: `!cultsum`, `!cultural`
 - **Description**: Generates a summary with a specific cultural context.
 - **Examples**:
     - `!cultural_summarize https://example.com/article japanese`
-    - `!cultural_summarize https://example.com/article indian`
+    - `!cultural https://example.com/article indian`
 - **Available Contexts**: `japanese`, `indian`, `western`
 
 ## Subscription and Analytics Commands
@@ -110,26 +130,31 @@ These commands help you manage your personalized news experience and view server
 ### View Your Subscriptions
 
 - **Command**: `!my_subscriptions`
+- **Aliases**: `!mysubs`, `!subscriptions`
 - **Description**: Shows a list of all topics you are currently subscribed to.
 
 ### View Server News Trends
 
 - **Command**: `!news_trends`
+- **Aliases**: `!trends`
 - **Description**: Displays the top 5 most frequently discussed topics in the server over the last 7 days.
 
 ### View Your Reading Habits
 
 - **Command**: `!my_reading_habits`
+- **Aliases**: `!myhabits`, `!reading_habits`
 - **Description**: Shows how many summaries you've read in the last 30 days.
 
 ### View Popular Sources
 
 - **Command**: `!popular_sources`
+- **Aliases**: `!sources`
 - **Description**: Displays the top 5 most frequently shared news sources in the server over the last 30 days.
 
 ### View Controversy Meter
 
 - **Command**: `!controversy_meter`
+- **Aliases**: `!controversy`
 - **Description**: Shows articles that have generated the most reactions (indicating potential controversy) in the last 7 days.
 
 ## Follow-up Tracker
@@ -140,5 +165,7 @@ These commands help you manage your personalized news experience and view server
 ## General Notes
 
 - The bot's prefix for commands is `!` (this can be configured by the server administrator).
+- Use `!help` to see all available commands with their categories.
+- Many commands have shorter aliases for convenience (e.g., `!sum` instead of `!summarize`).
 - If the bot detects a questionable source, it will react with a ⚠️ emoji.
 - All summaries are sanitized to remove direct URLs to prevent Discord's auto-embedding.

@@ -15,13 +15,63 @@ Upon startup, the `bot.js` file serves as the main entry point. It performs the 
     - `FollowUpService`: Manages tracking and notifying users about updates to previously summarized articles. It receives `MongoService`, `SummarizationService`, and the Discord client.
     - `SubscriptionService`: Manages user subscriptions to specific topics for personalized news alerts. It receives `MongoService`.
     - `AnalyticsService`: Provides methods for generating various analytics and insights, such as news trends and reading habits. It receives `MongoService`.
+- **Command Handler Setup**: Initializes the `CommandHandler` and registers all available commands through the `registerCommands` method.
 - **Event Handlers Setup**: Registers listeners for Discord events like `ready`, `messageReactionAdd`, and `messageCreate`.
 - **System Prompt Loading**: Reads the `prompt.txt` file to load the system prompt, which guides the AI's summarization behavior, and sets it in the `SummarizationService`.
 - **RSS Feed Monitoring**: If enabled in `config.js`, initiates a periodic task to check configured RSS feeds for new articles.
 
-## 2. Message and Reaction Handling
+## 2. Command Architecture
 
-### 2.1. Reaction-Based Summarization (`ReactionHandler.js`)
+### 2.1. Command Handler System
+
+The bot uses a modular command architecture that replaces the previous if-else chain:
+
+- **BaseCommand Class** (`commands/base/BaseCommand.js`): Abstract base class that all commands extend. Provides:
+    - Argument validation
+    - Usage help generation
+    - Permission checking
+    - Cooldown management
+    - Command metadata (name, aliases, description, category)
+
+- **CommandHandler** (`commands/CommandHandler.js`): Central registry and executor for commands:
+    - Registers commands and their aliases
+    - Organizes commands by category
+    - Handles command execution with error handling
+    - Manages cooldowns and permissions
+    - Provides help system integration
+
+### 2.2. Command Categories
+
+Commands are organized into logical categories:
+
+- **Subscription Commands** (`commands/subscription/`):
+    - `SubscribeCommand`: Subscribe to news topics
+    - `UnsubscribeCommand`: Unsubscribe from topics
+    - `MySubscriptionsCommand`: List current subscriptions
+
+- **Analytics Commands** (`commands/analytics/`):
+    - `NewsTrendsCommand`: Server-wide trending topics
+    - `MyReadingHabitsCommand`: Personal reading statistics
+    - `PopularSourcesCommand`: Most shared news sources
+    - `ControversyMeterCommand`: Most controversial articles
+
+- **Summarization Commands** (`commands/summarization/`):
+    - `SummarizeCommand`: Basic article summarization with styles
+    - `MoodSummarizeCommand`: Mood-based summaries
+    - `NarrateSummarizeCommand`: Celebrity narrator summaries
+    - `HistoricalSummarizeCommand`: Historical perspective summaries
+    - `PerspectiveSummarizeCommand`: Alternative viewpoint summaries
+    - `LearnLanguageCommand`: Multi-language summaries
+    - `CulturalSummarizeCommand`: Cultural context summaries
+
+- **Utility Commands** (`commands/utility/`):
+    - `PollCommand`: Generate polls from articles
+    - `DiscussionQuestionsCommand`: Generate discussion starters
+    - `HelpCommand`: Display available commands and usage
+
+## 3. Message and Reaction Handling
+
+### 3.1. Reaction-Based Summarization (`ReactionHandler.js`)
 
 - The bot listens for `messageReactionAdd` events.
 - When a user reacts with the 📰 (newspaper) emoji to a message:
@@ -30,29 +80,18 @@ Upon startup, the `bot.js` file serves as the main entry point. It performs the 
     - For each detected URL, it calls `summarizationService.processUrl` to begin the summarization workflow.
     - After processing, it updates the reaction count for the article in `MongoService`.
 
-### 2.2. Command-Based Interactions (`bot.js` - `messageCreate` event)
+### 3.2. Command-Based Interactions
 
 - The bot listens for `messageCreate` events.
-- If a message starts with the configured prefix (default `!`), it parses the command and arguments.
-- Supported commands:
-    - `!subscribe <topic>`: Uses `SubscriptionService` to add a topic to the user's subscriptions in MongoDB.
-    - `!unsubscribe <topic>`: Uses `SubscriptionService` to remove a topic from the user's subscriptions in MongoDB.
-    - `!my_subscriptions`: Uses `SubscriptionService` to list the user's current topic subscriptions.
-    - `!news_trends`: Uses `AnalyticsService` to display the top trending topics in the server over a period.
-    - `!my_reading_habits`: Uses `AnalyticsService` to display the user's personal reading count.
-    - `!popular_sources`: Uses `AnalyticsService` to display the most popular news sources in the server.
-    - `!controversy_meter`: Uses `AnalyticsService` to display articles that have generated significant reactions.
-    - `!summarize <url> [style]`: Triggers summarization of a URL with an optional style (e.g., pirate, academic).
-    - `!mood_summarize <url> [mood]`: Triggers summarization of a URL with an optional mood (e.g., cheerful, serious).
-    - `!narrate_summarize <url> [narrator]`: Triggers summarization of a URL with an optional celebrity narrator (e.g., gordon_ramsay, morgan_freeman).
-    - `!historical_summarize <url> [perspective]`: Triggers summarization of a URL with an optional historical perspective (e.g., 1950s, victorian).
-    - `!perspective_summarize <url> <perspective>`: Generates a summary from a specific alternative viewpoint (e.g., liberal, conservative).
-    - `!learn_language <url> <language1> [language2...]`: Generates summaries in multiple specified languages for language learning.
-    - `!cultural_summarize <url> <context>`: Generates a summary with a specific cultural context.
-    - `!poll <url>`: Generates a yes/no poll question based on the article summary.
-    - `!discussion_questions <url>`: Generates thought-provoking discussion questions based on the article summary.
+- If a message starts with the configured prefix (default `!`), it extracts the command name and arguments.
+- The `CommandHandler` looks up the command (checking both names and aliases).
+- If found, it validates permissions and arguments, then executes the command's `execute` method.
+- Commands receive:
+    - The Discord message object
+    - Parsed arguments array
+    - Context object containing bot instance and configuration
 
-## 3. Summarization Workflow (`SummarizationService.js`)
+## 4. Summarization Workflow (`SummarizationService.js`)
 
 The `processUrl` method in `SummarizationService` orchestrates the entire article processing and summarization flow:
 
@@ -77,9 +116,9 @@ The `processUrl` method in `SummarizationService` orchestrates the entire articl
 15. **Send Response**: Replies to the user's message with the formatted summary.
 16. **Follow-up Check**: If `followUpTracker` is enabled, checks `MongoService` for users who requested follow-ups on related topics and notifies them.
 
-## 4. Background Tasks
+## 5. Background Tasks
 
-### 4.1. RSS Feed Monitoring (`RssService.js`)
+### 5.1. RSS Feed Monitoring (`RssService.js`)
 
 - Periodically (configured in `config.js`), `RssService` fetches new articles from specified RSS feeds.
 - For each new article:
@@ -89,7 +128,7 @@ The `processUrl` method in `SummarizationService` orchestrates the entire articl
     - If the article has a topic, it queries `MongoService` for users subscribed to that topic.
     - It sends personalized direct messages to subscribed users with the new article's link and summary.
 
-### 4.2. Follow-up Tracking (`FollowUpService.js`)
+### 5.2. Follow-up Tracking (`FollowUpService.js`)
 
 - Periodically (configured in `config.js`), `FollowUpService` checks `MongoService` for articles marked as `pending` for follow-up.
 - For each pending article:
@@ -97,7 +136,7 @@ The `processUrl` method in `SummarizationService` orchestrates the entire articl
     - It notifies all users who requested a follow-up via direct message.
     - It updates the article's `followUpStatus` to `completed` in `MongoService`.
 
-## 5. Data Persistence (`MongoService.js`)
+## 6. Data Persistence (`MongoService.js`)
 
 `MongoService` interacts with a MongoDB database to store and retrieve various types of data:
 
@@ -112,6 +151,18 @@ The `processUrl` method in `SummarizationService` orchestrates the entire articl
     - Aggregating article trends, reading counts, and popular sources.
     - Retrieving controversial articles based on reactions.
 
-## 6. Configuration (`config/config.js`)
+## 7. Configuration (`config/config.js`)
 
 All configurable parameters, including API keys, bot intents, OpenAI model settings, feature toggles, and specific data for features like questionable sources, trusted sources, summary styles, moods, narrators, historical perspectives, bias detection, alternative perspectives, context provider, auto-translation, and language learning, are managed through `config.js` and environment variables.
+
+## 8. Architecture Benefits
+
+The refactored command architecture provides several advantages:
+
+- **Modularity**: Each command is self-contained, making it easy to add, modify, or remove commands.
+- **Scalability**: New commands can be added without modifying the core message handler.
+- **Maintainability**: Commands can be updated independently without affecting others.
+- **Testability**: Individual commands can be unit tested in isolation.
+- **Discoverability**: The help system automatically includes all registered commands.
+- **Consistency**: All commands follow the same pattern for validation, execution, and error handling.
+- **Performance**: Command lookup is O(1) using a Map structure.

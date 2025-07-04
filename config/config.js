@@ -63,7 +63,7 @@ module.exports = {
       intervalMinutes: parseInt(process.env.FOLLOW_UP_INTERVAL_MINUTES || '1440', 10) // Default to 24 hours
     },
     summaryStyles: {
-      enabled: process.env.SUMMARY_STYLES_ENABLED === 'true' || false,
+      enabled: process.env.SUMMARY_STYLES_ENABLED === 'true' || true,
       styles: {
         pirate: "Summarize this article in the style of a pirate.",
         shakespeare: "Summarize this article in the style of William Shakespeare.",
@@ -72,7 +72,7 @@ module.exports = {
       }
     },
     moodBasedSummaries: {
-      enabled: process.env.MOOD_BASED_SUMMARIES_ENABLED === 'true' || false,
+      enabled: process.env.MOOD_BASED_SUMMARIES_ENABLED === 'true' || true,
       moods: {
         monday: "Summarize this article in a serious and formal tone.",
         friday: "Summarize this article in a cheerful and lighthearted tone.",
@@ -81,7 +81,7 @@ module.exports = {
       defaultMood: "neutral"
     },
     celebrityNarrators: {
-      enabled: process.env.CELEBRITY_NARRATORS_ENABLED === 'true' || false,
+      enabled: process.env.CELEBRITY_NARRATORS_ENABLED === 'true' || true,
       narrators: {
         gordon_ramsay: "Summarize this article as if Gordon Ramsay is narrating, with his characteristic intensity and expletives (bleeped, of course).",
         shakespeare: "Summarize this article as if William Shakespeare is narrating, using Elizabethan language and dramatic flair.",
@@ -89,7 +89,7 @@ module.exports = {
       }
     },
     historicalPerspectives: {
-      enabled: process.env.HISTORICAL_PERSPECTIVES_ENABLED === 'true' || false,
+      enabled: process.env.HISTORICAL_PERSPECTIVES_ENABLED === 'true' || true,
       perspectives: {
         '1950s': "Summarize this article as if it were being reported in the 1950s, using language and cultural references from that era.",
         'victorian': "Summarize this article as if it were being reported in the Victorian era, with formal language and a focus on societal norms.",
@@ -116,17 +116,17 @@ module.exports = {
       prompt: "Provide a brief historical or background context for the following topic/keywords: "
     },
     autoTranslation: {
-      enabled: process.env.AUTO_TRANSLATION_ENABLED === 'true' || false,
+      enabled: process.env.AUTO_TRANSLATION_ENABLED === 'true' || true,
       targetLanguage: process.env.AUTO_TRANSLATION_TARGET_LANGUAGE || 'English',
       supportedLanguages: process.env.AUTO_TRANSLATION_SUPPORTED_LANGUAGES ? process.env.AUTO_TRANSLATION_SUPPORTED_LANGUAGES.split(',') : ['English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese']
     },
     languageLearning: {
-      enabled: process.env.LANGUAGE_LEARNING_ENABLED === 'true' || false,
+      enabled: process.env.LANGUAGE_LEARNING_ENABLED === 'true' || true,
       targetLanguages: process.env.LANGUAGE_LEARNING_TARGET_LANGUAGES ? process.env.LANGUAGE_LEARNING_TARGET_LANGUAGES.split(',') : ['Spanish', 'French'],
       presentationStyle: process.env.LANGUAGE_LEARNING_PRESENTATION_STYLE || 'side-by-side' // 'side-by-side', 'alternating'
     },
     culturalContext: {
-      enabled: process.env.CULTURAL_CONTEXT_ENABLED === 'true' || false,
+      enabled: process.env.CULTURAL_CONTEXT_ENABLED === 'true' || true,
       contexts: {
         japanese: "Summarize this article with a focus on Japanese cultural nuances and perspectives.",
         indian: "Summarize this article with a focus on Indian cultural nuances and perspectives.",
