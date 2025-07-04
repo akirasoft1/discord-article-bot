@@ -1,6 +1,6 @@
 # Node.js specific files
 node_modules/
-deployment.yaml
+deployment*.yaml
 secret.yaml
 Dockerfile
 npm-debug.log
