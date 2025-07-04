@@ -27,3 +27,4 @@ Thumbs.db
 *.sublime-workspace
 
 bot_slash.js
+configmap.yaml
