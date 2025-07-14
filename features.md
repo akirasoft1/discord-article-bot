@@ -10,6 +10,7 @@ Fact-Check Integration: Flag articles from questionable sources with ⚠️
 
 Paywall Detector: Automatically try to find archive.org versions of paywalled articles
 Duplicate Detection: "This article was already shared 2 days ago by @user"
+Force Re-summarization: Use !resummarize to bypass duplicate check and get a fresh summary
 Related Articles: "Here are 3 similar articles shared this week"
 Source Credibility: Rate sources with star ratings ⭐⭐⭐⭐⭐
 
