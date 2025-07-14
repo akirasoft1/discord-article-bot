@@ -43,7 +43,7 @@ class SummarizationService {
     this.systemPrompt = prompt;
   }
 
-  async processUrl(url, message, user, style = null, mood = null, narrator = null, historicalPerspective = null) {
+  async processUrl(url, message, user, style = null, forceReSummarize = false, mood = null, narrator = null, historicalPerspective = null) {
     if (this.isProcessing) {
       logger.info('Already processing a URL, skipping.');
       return;
@@ -54,17 +54,19 @@ class SummarizationService {
     try {
       logger.info(`Processing URL: ${url}`);
 
-      const existingArticle = await this.mongoService.findArticleByUrl(url);
-      if (existingArticle) {
-        const timeSince = new Date(existingArticle.createdAt).toLocaleDateString();
-        const duplicateMessage = `This article was already shared on ${timeSince} by @${existingArticle.username}.`;
-        
-        if (this.messageService) {
-          await this.messageService.sendMessage(message.channel, duplicateMessage);
-        } else {
-          await message.channel.send(duplicateMessage);
+      if (!forceReSummarize) {
+        const existingArticle = await this.mongoService.findArticleByUrl(url);
+        if (existingArticle) {
+          const timeSince = new Date(existingArticle.createdAt).toLocaleDateString();
+          const duplicateMessage = `This article was already shared on ${timeSince} by @${existingArticle.username}.`;
+          
+          if (this.messageService) {
+            await this.messageService.sendMessage(message.channel, duplicateMessage);
+          } else {
+            await message.channel.send(duplicateMessage);
+          }
+          return;
         }
-        return;
       }
 
       if (UrlUtils.shouldSkipUrl(url)) {

@@ -22,6 +22,7 @@ const MyReadingHabitsCommand = require('./commands/analytics/MyReadingHabitsComm
 const PopularSourcesCommand = require('./commands/analytics/PopularSourcesCommand');
 const ControversyMeterCommand = require('./commands/analytics/ControversyMeterCommand');
 const SummarizeCommand = require('./commands/summarization/SummarizeCommand');
+const ReSummarizeCommand = require('./commands/summarization/ReSummarizeCommand');
 const MoodSummarizeCommand = require('./commands/summarization/MoodSummarizeCommand');
 const NarrateSummarizeCommand = require('./commands/summarization/NarrateSummarizeCommand');
 const HistoricalSummarizeCommand = require('./commands/summarization/HistoricalSummarizeCommand');
@@ -92,6 +93,7 @@ class DiscordBot {
 
     // Register summarization commands
     this.commandHandler.register(new SummarizeCommand(this.summarizationService));
+    this.commandHandler.register(new ReSummarizeCommand(this.summarizationService));
     this.commandHandler.register(new MoodSummarizeCommand(this.summarizationService));
     this.commandHandler.register(new NarrateSummarizeCommand(this.summarizationService));
     this.commandHandler.register(new HistoricalSummarizeCommand(this.summarizationService));

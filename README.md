@@ -14,6 +14,7 @@ A powerful Discord bot that monitors for article links in channels, processes th
 
 - 🔗 **URL Intelligence**:
   - **Duplicate Detection**: Notifies if an article was already shared, including by whom and when.
+  - **Force Re-summarization**: Use `!resummarize` to bypass duplicate check and get a fresh summary.
   - **Related Articles**: Suggests similar articles shared previously.
   - **Source Credibility**: Rates sources with star ratings (⭐⭐⭐⭐⭐).
 
@@ -270,6 +271,7 @@ Trusted sources are configured via the `TRUSTED_SOURCES` environment variable as
 ### Core Commands
 - `!help [command]` - Display help information
 - `!summarize <url> [style]` - Summarize an article (alias: `!sum`)
+- `!resummarize <url> [style]` - Force re-summarization of an article, bypassing duplicate check (alias: `!resum`)
 
 ### Subscription Commands
 - `!subscribe <topic>` - Subscribe to a news topic
