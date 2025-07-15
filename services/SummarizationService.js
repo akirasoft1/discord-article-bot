@@ -166,15 +166,15 @@ class SummarizationService {
       
 
       // Extract and send quote of the day
-      const quote = await this.extractQuote(content || result.summary);
-      if (quote) {
-        const quoteMessage = `**Key Article Quote:**\n>>> ${quote}`;
-        if (this.messageService) {
-          await this.messageService.sendMessage(message.channel, quoteMessage);
-        } else {
-          await message.channel.send(quoteMessage);
-        }
-      }
+      // const quote = await this.extractQuote(content || result.summary);
+      // if (quote) {
+      //   const quoteMessage = `**Key Article Quote:**\n>>> ${quote}`;
+      //   if (this.messageService) {
+      //     await this.messageService.sendMessage(message.channel, quoteMessage);
+      //   } else {
+      //     await message.channel.send(quoteMessage);
+      //   }
+      // }
 
       
     } catch (error) {
@@ -315,16 +315,16 @@ class SummarizationService {
         });
       }
 
-      // Extract and send quote of the day
-      const quote = await this.extractQuote(content || result.summary);
-      if (quote) {
-        const quoteMessage = `**Key Article Quote:**\n>>> ${quote}`;
-        if (this.messageService) {
-          await this.messageService.sendMessage(message.channel, quoteMessage);
-        } else {
-          await message.channel.send(quoteMessage);
-        }
-      }
+      // // Extract and send quote of the day
+      // const quote = await this.extractQuote(content || result.summary);
+      // if (quote) {
+      //   const quoteMessage = `**Key Article Quote:**\n>>> ${quote}`;
+      //   if (this.messageService) {
+      //     await this.messageService.sendMessage(message.channel, quoteMessage);
+      //   } else {
+      //     await message.channel.send(quoteMessage);
+      //   }
+      // }
 
       
     } catch (error) {
@@ -827,7 +827,7 @@ Text: """${text}"""`;
       const langResponse = await this.openaiClient.chat.completions.create({
         model: 'gpt-4o',
         messages: [{ role: 'user', content: languageDetectionPrompt }],
-        max_tokens: 20,
+        max_tokens: 200,
         temperature: 0.1,
       });
       const detectedLanguage = langResponse.choices[0].message.content.trim();

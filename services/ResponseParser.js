@@ -84,19 +84,19 @@ class ResponseParser {
     }
     
     // Add token and cost information if available
-    if (result.tokens && result.costs) {
-      message += '\n\n';
-      message += `📊 **Token Usage:** Input: ${result.tokens.input.toLocaleString()}`;
+    // if (result.tokens && result.costs) {
+    //   message += '\n\n';
+    //   message += `📊 **Token Usage:** Input: ${result.tokens.input.toLocaleString()}`;
       
-      if (result.tokens.cached > 0) {
-        message += ` (${result.tokens.cached.toLocaleString()} cached)`;
-      }
+    //   if (result.tokens.cached > 0) {
+    //     message += ` (${result.tokens.cached.toLocaleString()} cached)`;
+    //   }
       
-      message += `, Output: ${result.tokens.output.toLocaleString()}, `;
-      message += `Total: ${result.tokens.total.toLocaleString()}\n`;
-      message += `💰 **Cost:** Input: ${result.costs.input}, `;
-      message += `Output: ${result.costs.output}, Total: ${result.costs.total}`;
-    }
+    //   message += `, Output: ${result.tokens.output.toLocaleString()}, `;
+    //   message += `Total: ${result.tokens.total.toLocaleString()}\n`;
+    //   message += `💰 **Cost:** Input: ${result.costs.input}, `;
+    //   message += `Output: ${result.costs.output}, Total: ${result.costs.total}`;
+    // }
 
     // Add related articles if available
     if (result.relatedArticles && result.relatedArticles.length > 0) {
