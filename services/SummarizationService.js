@@ -1,7 +1,6 @@
 // ===== services/SummarizationService.js =====
 const axios = require('axios');
 const logger = require('../logger');
-const ArchiveService = require('./ArchiveService');
 const UrlUtils = require('../utils/urlUtils');
 const TokenService = require('./TokenService');
 const CostService = require('./CostService');
@@ -341,52 +340,17 @@ class SummarizationService {
   }
 
   async preprocessUrl(url, message) {
-    if (!UrlUtils.isArchiveUrl(url)) {
-      return url;
-    }
-
-    logger.info(`Processing archive URL: ${url}`);
-    const result = ArchiveService.transformArchiveUrl(url);
-
-    if (result.success) {
-      return result.url;
-    }
-
-    if (this.messageService) {
-      await this.messageService.sendMessage(message.channel, result.userMessage);
-    } else {
-      await message.channel.send(result.userMessage);
-    }
-    
-    if (result.isShortlink) {
-      logger.info(result.userMessage);
-    } else {
-      logger.error(`Archive URL transformation failed: ${result.error}`);
-    }
-
-    return null;
+    // With Linkwarden integration, archive URL handling is deprecated
+    // URLs are now processed through the Linkwarden polling service
+    // This method now simply returns the URL as-is for backward compatibility
+    return url;
   }
 
   async fetchContent(url, message) {
-    if (!url.startsWith('https://archive.today/TEXT/')) {
-      return null; // Let OpenAI fetch it
-    }
-
-    try {
-      logger.info(`Fetching content from: ${url}`);
-      const response = await this.axiosInstance.get(url);
-      logger.info(`Content fetched successfully. Length: ${response.data?.length || 0}`);
-      return response.data;
-    } catch (error) {
-      logger.error(`Failed to fetch content from ${url}: ${error.message}`);
-      const fetchErrorMessage = `Sorry, I could not retrieve the content from the archive link.`;
-      if (this.messageService) {
-        await this.messageService.sendMessage(message.channel, fetchErrorMessage);
-      } else {
-        await message.channel.send(fetchErrorMessage);
-      }
-      return false;
-    }
+    // With Linkwarden integration, content fetching is handled by the polling service
+    // This method now returns null to let OpenAI fetch content for non-Linkwarden flows
+    // When Linkwarden is enabled, this method should not be called for article processing
+    return null;
   }
 
   async generateSummary(content, url, style = null, mood = null, narrator = null, historicalPerspective = null) {
