@@ -15,6 +15,8 @@ Upon startup, the `bot.js` file serves as the main entry point. It performs the 
     - `FollowUpService`: Manages tracking and notifying users about updates to previously summarized articles. It receives `MongoService`, `SummarizationService`, and the Discord client.
     - `SubscriptionService`: Manages user subscriptions to specific topics for personalized news alerts. It receives `MongoService`.
     - `AnalyticsService`: Provides methods for generating various analytics and insights, such as news trends and reading habits. It receives `MongoService`.
+    - `LinkwardenService`: (If enabled) Handles API communication with the Linkwarden instance for fetching archived links.
+    - `LinkwardenPollingService`: (If enabled) Polls Linkwarden at regular intervals to detect new archived articles.
 - **Command Handler Setup**: Initializes the `CommandHandler` and registers all available commands through the `registerCommands` method.
 - **Event Handlers Setup**: Registers listeners for Discord events like `ready`, `messageReactionAdd`, and `messageCreate`.
 - **System Prompt Loading**: Reads the `prompt.txt` file to load the system prompt, which guides the AI's summarization behavior, and sets it in the `SummarizationService`.
@@ -99,8 +101,8 @@ The `processUrl` method in `SummarizationService` orchestrates the entire articl
 2.  **Duplicate Detection**: Checks `MongoService` if the URL has been summarized before. If so, it informs the user and exits.
 3.  **URL Filtering**: Uses `UrlUtils` to skip image/GIF URLs.
 4.  **Fact-Check Integration**: Checks `isQuestionableSource` (based on `config.js`) and reacts with ⚠️ if the source is questionable.
-5.  **URL Preprocessing**: Transforms archive.today URLs using `ArchiveService` if necessary.
-6.  **Content Fetching**: Fetches the article content. If it's an `archive.today/TEXT/` URL, it fetches directly; otherwise, it relies on OpenAI's web fetching capabilities.
+5.  **URL Preprocessing**: Passes URLs through for processing (archive URL handling is deprecated in favor of Linkwarden).
+6.  **Content Fetching**: Relies on OpenAI's web fetching capabilities for direct URL summarization, or uses content from Linkwarden when processing archived links.
 7.  **Language Detection and Translation**: If `autoTranslation` is enabled in `config.js`, it detects the language of the content. If it's not the target language, it translates the content using OpenAI.
 8.  **Summary Generation**: Calls OpenAI (either via `responses` or `chat.completions` API based on `config.openai.method`) to generate the summary. The AI's prompt is dynamically adjusted based on selected `style`, `mood`, `narrator`, or `historicalPerspective`.
 9.  **Summary Enhancement**: Calls `enhanceSummary` to add:
@@ -135,6 +137,22 @@ The `processUrl` method in `SummarizationService` orchestrates the entire articl
     - It re-summarizes the article to get fresh content.
     - It notifies all users who requested a follow-up via direct message.
     - It updates the article's `followUpStatus` to `completed` in `MongoService`.
+
+### 5.3. Linkwarden Polling (`LinkwardenPollingService.js`)
+
+When Linkwarden integration is enabled:
+
+- **Connection Verification**: On startup, verifies connection to Linkwarden API and validates the source collection.
+- **Polling Loop**: At configured intervals (default 60 seconds), polls Linkwarden for new links.
+- **Link Detection**: Fetches links from the designated "Discord Share" collection that:
+    - Have completed archiving (`lastPreserved` is set)
+    - Don't have the "posted" tag yet
+- **Processing Queue**: New links are queued and processed one at a time.
+- **Content Extraction**: Fetches readable content from Linkwarden's archive for summarization.
+- **Summary Generation**: Uses `SummarizationService.processLinkwardenLink` to generate summaries.
+- **Mark as Posted**: After successful processing, adds "posted" tag to prevent re-processing.
+
+This workflow enables archiving of authenticated/paywalled content since the Linkwarden browser extension captures content from the user's authenticated browser session.
 
 ## 6. Data Persistence (`MongoService.js`)
 
