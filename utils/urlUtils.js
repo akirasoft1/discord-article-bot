@@ -2,6 +2,8 @@
 const logger = require('../logger');
 
 class UrlUtils {
+  // Legacy archive hostnames - kept for reference but no longer actively processed
+  // Archive functionality is now handled by Linkwarden integration
   static ARCHIVE_HOSTNAMES = [
     'archive.is', 'archive.today', 'archive.ph', 'archive.li',
     'archive.vn', 'archive.md', 'archive.fo', 'archive.gg', 'archive.wiki'
@@ -10,14 +12,16 @@ class UrlUtils {
   static GIF_HOSTS = ['tenor.com', 'giphy.com', 'imgur.com'];
   static IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
 
+  /**
+   * Check if URL is from a legacy archive service
+   * Note: Archive.today/archive.is integration is deprecated in favor of Linkwarden
+   * This method is kept for backward compatibility but always returns false
+   * when Linkwarden integration is enabled
+   */
   static isArchiveUrl(urlString) {
-    try {
-      const url = new URL(urlString);
-      return this.ARCHIVE_HOSTNAMES.includes(url.hostname);
-    } catch (error) {
-      logger.warn(`Invalid URL: ${urlString} - ${error.message}`);
-      return false;
-    }
+    // Archive URL handling is deprecated - return false to skip special processing
+    // URLs are now archived through Linkwarden browser extension
+    return false;
   }
 
   static isGifHost(url) {
