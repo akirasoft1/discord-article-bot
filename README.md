@@ -1,6 +1,6 @@
 # Discord Article Bot
 
-A powerful Discord bot that monitors for article links in channels, processes them through archive.today for archival, and uses OpenAI-compatible APIs to automatically generate summaries of linked articles with advanced features.
+A powerful Discord bot that monitors for article links in channels, archives them using Linkwarden (self-hosted), and uses OpenAI-compatible APIs to automatically generate summaries of linked articles with advanced features.
 
 ## Features
 
@@ -65,7 +65,7 @@ A powerful Discord bot that monitors for article links in channels, processes th
 ### Core Features
 
 - 📰 **Reaction-based Summarization**: React with 📰 emoji to any message containing URLs to trigger automatic summarization.
-- 🗃️ **Archive.today Integration**: Automatically converts archive links to text-only versions for better processing.
+- 🗃️ **Linkwarden Integration**: Self-hosted archiving solution that supports authenticated/paywalled content via browser extension.
 - 🤖 **AI-Powered Summaries**: Uses OpenAI-compatible APIs (including Ollama) to generate concise 1500-character summaries.
 - 🔍 **Smart URL Detection**: Filters out images and GIF links automatically.
 - 📝 **Configurable System Prompts**: Customize the AI's summarization behavior via `prompt.txt`.
@@ -83,6 +83,7 @@ A powerful Discord bot that monitors for article links in channels, processes th
 - Discord Bot Token ([Discord Developer Portal](https://discord.com/developers/applications))
 - OpenAI API Key or Ollama instance
 - MongoDB database (local or cloud)
+- Linkwarden instance (self-hosted) with browser extension for article archiving
 
 ## Installation
 
@@ -137,7 +138,8 @@ discord-article-bot/
 │   ├── summarization/            # Summarization commands
 │   └── utility/                  # Utility commands
 ├── services/
-│   ├── ArchiveService.js         # Archive.today URL handling
+│   ├── LinkwardenService.js      # Linkwarden API integration
+│   ├── LinkwardenPollingService.js # Monitors Linkwarden for new links
 │   ├── SummarizationService.js   # Main summarization orchestration
 │   ├── TokenService.js           # Token counting and estimation
 │   ├── CostService.js            # Cost calculation and tracking
@@ -153,7 +155,8 @@ discord-article-bot/
 │   └── ReactionHandler.js        # Discord reaction handling
 └── utils/
     ├── urlUtils.js               # URL parsing and validation
-    └── textUtils.js              # Text utility functions
+    ├── textUtils.js              # Text utility functions
+    └── linkwardenRedirect.js     # Linkwarden redirect utilities
 ```
 
 ## Configuration
@@ -213,6 +216,37 @@ discord-article-bot/
 | `AUTO_TRANSLATION_SUPPORTED_LANGUAGES` | `English,Spanish,French,German,Italian,Portuguese` | Supported languages |
 | `LANGUAGE_LEARNING_TARGET_LANGUAGES` | `Spanish,French` | Default languages for learning mode |
 | `LANGUAGE_LEARNING_PRESENTATION_STYLE` | `side-by-side` | How to present multiple languages |
+
+#### Linkwarden Integration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LINKWARDEN_ENABLED` | `false` | Enable Linkwarden integration |
+| `LINKWARDEN_URL` | `http://localhost:3000` | Base URL of your Linkwarden instance |
+| `LINKWARDEN_API_TOKEN` | `` | API token from Linkwarden (Settings → Access Tokens) |
+| `LINKWARDEN_SOURCE_COLLECTION_ID` | `0` | ID of collection to monitor for new links |
+| `LINKWARDEN_POSTED_TAG_NAME` | `posted` | Tag name to mark processed links |
+| `LINKWARDEN_DISCORD_CHANNEL_ID` | `` | Discord channel ID for posting archived articles |
+| `LINKWARDEN_POLL_INTERVAL_MS` | `60000` | How often to poll Linkwarden (milliseconds) |
+
+### Linkwarden Setup
+
+Linkwarden provides self-hosted article archiving with support for authenticated/paywalled content.
+
+1. **Deploy Linkwarden**: Set up your own [Linkwarden](https://linkwarden.app/) instance
+2. **Create a collection**: Create a collection named "Discord Share" for articles to be posted
+3. **Get the collection ID**: Found in the URL when viewing the collection
+4. **Create an API token**: Settings → Access Tokens → Create with "Never" expiry
+5. **Install browser extension**: Install the Linkwarden extension for your browser
+6. **Configure the bot**: Add the environment variables above
+
+**Workflow:**
+1. User browses to an article (can be behind paywall if logged in)
+2. User clicks Linkwarden extension → saves to "Discord Share" collection
+3. Linkwarden archives the article (screenshot, PDF, readable text)
+4. Bot polls Linkwarden and detects new link
+5. Bot generates summary and posts to Discord with link to archived version
+6. Bot marks link as "posted" to avoid duplicates
 
 ### RSS Feed Configuration
 
