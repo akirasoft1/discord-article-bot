@@ -12,6 +12,8 @@ const SubscriptionService = require('./services/SubscriptionService');
 const AnalyticsService = require('./services/AnalyticsService');
 const MessageService = require('./services/MessageService');
 const CommandHandler = require('./commands/CommandHandler');
+const LinkwardenService = require('./services/LinkwardenService');
+const LinkwardenPollingService = require('./services/LinkwardenPollingService');
 
 // Import all command classes
 const SubscribeCommand = require('./commands/subscription/SubscribeCommand');
@@ -60,11 +62,25 @@ class DiscordBot {
     this.followUpService = new FollowUpService(this.summarizationService.mongoService, this.summarizationService, this.client);
     this.subscriptionService = new SubscriptionService(this.summarizationService.mongoService);
     this.analyticsService = new AnalyticsService(this.summarizationService.mongoService);
-    
+
+    // Initialize Linkwarden services for self-hosted article archiving
+    this.linkwardenService = null;
+    this.linkwardenPollingService = null;
+    if (config.linkwarden.enabled) {
+      logger.info('Linkwarden integration is enabled');
+      this.linkwardenService = new LinkwardenService(config);
+      this.linkwardenPollingService = new LinkwardenPollingService(
+        this.linkwardenService,
+        this.summarizationService,
+        this.client,
+        config
+      );
+    }
+
     // Initialize command handler
     this.commandHandler = new CommandHandler();
     this.registerCommands();
-    
+
     this.setupEventHandlers();
   }
 
@@ -125,8 +141,20 @@ class DiscordBot {
       
       logger.info(`Bot is online! Logged in as ${this.client.user.tag}`);
 
+      // Start RSS feed monitoring if enabled
       if (config.bot.rssFeeds.enabled) {
         this.startRssFeedMonitoring();
+      }
+
+      // Start Linkwarden polling service if enabled
+      if (config.linkwarden.enabled && this.linkwardenPollingService) {
+        logger.info('Starting Linkwarden polling service...');
+        const started = await this.linkwardenPollingService.start();
+        if (started) {
+          logger.info('Linkwarden polling service started successfully');
+        } else {
+          logger.error('Failed to start Linkwarden polling service - check configuration');
+        }
       }
     });
 
