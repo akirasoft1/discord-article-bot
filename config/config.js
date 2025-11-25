@@ -137,5 +137,23 @@ module.exports = {
   debug: process.env.DEBUG === 'true',
   mongo: {
     uri: mongoUri
+  },
+  // Linkwarden integration for self-hosted article archiving
+  // Replaces the non-functional archive.today integration
+  linkwarden: {
+    // Enable/disable Linkwarden integration
+    enabled: process.env.LINKWARDEN_ENABLED === 'true',
+    // Base URL of your Linkwarden instance (e.g., https://links.example.com)
+    baseUrl: process.env.LINKWARDEN_URL || 'http://localhost:3000',
+    // API token from Linkwarden (Settings -> Access Tokens)
+    apiToken: process.env.LINKWARDEN_API_TOKEN || '',
+    // Collection ID to monitor for new links (the "Discord Share" collection)
+    sourceCollectionId: parseInt(process.env.LINKWARDEN_SOURCE_COLLECTION_ID || '0', 10),
+    // Tag name to mark links as posted (will be created if it doesn't exist)
+    postedTagName: process.env.LINKWARDEN_POSTED_TAG_NAME || 'posted',
+    // Discord channel ID where archived articles will be posted
+    discordChannelId: process.env.LINKWARDEN_DISCORD_CHANNEL_ID || '',
+    // How often to poll Linkwarden for new links (in milliseconds)
+    pollIntervalMs: parseInt(process.env.LINKWARDEN_POLL_INTERVAL_MS || '60000', 10)
   }
 };
