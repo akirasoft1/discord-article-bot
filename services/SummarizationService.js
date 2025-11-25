@@ -904,6 +904,247 @@ Text: """${text}"""`;
       return null;
     }
   }
+
+  /**
+   * Process a link from Linkwarden (content already archived)
+   * This method is called by LinkwardenPollingService when new archived links are detected
+   * @param {Object} options - Link data from Linkwarden
+   * @param {Object} options.link - The Linkwarden link object
+   * @param {string} options.content - The readable content for summarization
+   * @param {Object} options.archiveUrls - URLs for different archive formats
+   * @param {string[]} options.availableFormats - List of available format names
+   * @param {Object} options.message - Mock message object with channel
+   * @param {Object} options.user - Mock user object
+   */
+  async processLinkwardenLink({ link, content, archiveUrls, availableFormats, message, user }) {
+    if (this.isProcessing) {
+      logger.info('Already processing a URL, queuing Linkwarden link.');
+      return;
+    }
+
+    this.isProcessing = true;
+
+    try {
+      const url = link.url;
+      logger.info(`Processing Linkwarden link: ${url}`);
+
+      // Check for duplicates in our MongoDB
+      const existingArticle = await this.mongoService.findArticleByUrl(url);
+      if (existingArticle) {
+        logger.info(`Linkwarden link already processed in MongoDB: ${url}`);
+        this.isProcessing = false;
+        return;
+      }
+
+      // Use the readable content from Linkwarden for summarization
+      let textContent = content;
+
+      // If no content available, post basic info without summary
+      if (!textContent) {
+        logger.warn(`No readable content available for Linkwarden link: ${url}`);
+        const noContentMessage = this.buildLinkwardenResponse({
+          link,
+          archiveUrls,
+          availableFormats,
+          summary: '_No readable content available for AI summary._',
+          readingTime: 'N/A',
+          topic: link.tags?.[0]?.name || 'N/A',
+          sentiment: 'N/A',
+          sourceCredibility: null,
+          relatedArticles: [],
+          wasTranslated: false,
+          detectedLanguage: 'N/A'
+        });
+        await message.channel.send(noContentMessage);
+
+        // Still persist to avoid re-processing
+        await this.mongoService.persistData({
+          userId: user.id,
+          username: user.tag,
+          url,
+          inputTokens: 0,
+          outputTokens: 0,
+          topic: link.tags?.[0]?.name || 'Unknown',
+          source: 'linkwarden'
+        });
+
+        this.isProcessing = false;
+        return;
+      }
+
+      // Handle translation if needed
+      let wasTranslated = false;
+      let detectedLanguage = 'N/A';
+      if (this.config.bot.autoTranslation.enabled) {
+        const translationResult = await this.detectAndTranslate(textContent);
+        textContent = translationResult.translatedText;
+        wasTranslated = translationResult.wasTranslated;
+        detectedLanguage = translationResult.detectedLanguage;
+      }
+
+      // Generate summary using the existing method
+      const result = await this.generateSummary(textContent, url, null, null, null, null);
+
+      if (!result) {
+        logger.error(`Failed to generate summary for Linkwarden link: ${url}`);
+        const errorMessage = this.buildLinkwardenResponse({
+          link,
+          archiveUrls,
+          availableFormats,
+          summary: '_Summary generation failed. View the archived version for full content._',
+          readingTime: 'N/A',
+          topic: 'N/A',
+          sentiment: 'N/A',
+          sourceCredibility: null,
+          relatedArticles: [],
+          wasTranslated,
+          detectedLanguage
+        });
+        await message.channel.send(errorMessage);
+        this.isProcessing = false;
+        return;
+      }
+
+      // Enhance the summary with topic, sentiment, reading time
+      const enhancedResult = await this.enhanceSummary(result.summary, textContent);
+
+      // Find related articles from our MongoDB
+      let relatedArticles = [];
+      if (enhancedResult.topic) {
+        relatedArticles = await this.mongoService.findRelatedArticles(enhancedResult.topic, url);
+      }
+
+      // Get source credibility rating
+      const sourceCredibility = this.sourceCredibilityService.rateSource(url);
+
+      // Build the Discord message with Linkwarden-specific formatting
+      const responseMessage = this.buildLinkwardenResponse({
+        link,
+        archiveUrls,
+        availableFormats,
+        summary: result.summary,
+        readingTime: enhancedResult.readingTime,
+        topic: enhancedResult.topic,
+        sentiment: enhancedResult.sentiment,
+        sourceCredibility,
+        relatedArticles,
+        wasTranslated,
+        detectedLanguage
+      });
+
+      // Persist to MongoDB for analytics and duplicate detection
+      await this.mongoService.persistData({
+        userId: user.id,
+        username: user.tag,
+        url,
+        inputTokens: result.tokens?.input || 0,
+        outputTokens: result.tokens?.output || 0,
+        topic: enhancedResult.topic,
+        source: 'linkwarden'
+      });
+
+      // Send to Discord
+      await message.channel.send(responseMessage);
+
+      // Check for follow-ups on related topics
+      if (enhancedResult.topic) {
+        await this.checkAndNotifyFollowUps(url, enhancedResult.topic, result.summary);
+      }
+
+      logger.info(`Successfully processed Linkwarden link: ${url}`);
+
+    } catch (error) {
+      logger.error(`Error processing Linkwarden link: ${error.message}`);
+      logger.error(error.stack);
+
+      try {
+        await message.channel.send(`An error occurred while processing the archived article: ${link.name || link.url}`);
+      } catch (sendError) {
+        logger.error(`Failed to send error message: ${sendError.message}`);
+      }
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  /**
+   * Build Discord message for Linkwarden-archived content
+   * @param {Object} options - Message building options
+   * @returns {string} Formatted Discord message
+   */
+  buildLinkwardenResponse({
+    link,
+    archiveUrls,
+    availableFormats,
+    summary,
+    readingTime,
+    topic,
+    sentiment,
+    sourceCredibility,
+    relatedArticles,
+    wasTranslated,
+    detectedLanguage
+  }) {
+    let response = '';
+
+    // Title with link to archived version
+    const title = link.name || 'Archived Article';
+    response += `**${title}**\n\n`;
+
+    // Summary
+    response += `${summary}\n\n`;
+
+    // Archive link (primary call to action)
+    response += `**Archived Version:** <${archiveUrls.linkwardenView}>\n`;
+
+    // Original URL (suppressed embed with angle brackets)
+    if (link.url) {
+      response += `**Original:** <${link.url}>\n`;
+    }
+
+    // Metadata line
+    const metadataParts = [];
+    if (readingTime && readingTime !== 'N/A') {
+      metadataParts.push(`**Reading Time:** ${readingTime}`);
+    }
+    if (topic && topic !== 'N/A') {
+      metadataParts.push(`**Topic:** ${topic}`);
+    }
+    if (sentiment && sentiment !== 'N/A') {
+      metadataParts.push(`**Sentiment:** ${sentiment}`);
+    }
+
+    if (metadataParts.length > 0) {
+      response += `\n${metadataParts.join(' | ')}\n`;
+    }
+
+    // Source credibility
+    if (sourceCredibility) {
+      response += `**Source Rating:** ${sourceCredibility}\n`;
+    }
+
+    // Translation info
+    if (wasTranslated && detectedLanguage !== 'N/A') {
+      response += `*Translated from ${detectedLanguage}*\n`;
+    }
+
+    // Available archive formats
+    if (availableFormats && availableFormats.length > 0) {
+      response += `**Available Formats:** ${availableFormats.join(', ')}\n`;
+    }
+
+    // Related articles (limit to 3)
+    if (relatedArticles && relatedArticles.length > 0) {
+      response += `\n**Related Articles:**\n`;
+      relatedArticles.slice(0, 3).forEach(article => {
+        const articleTitle = article.name || article.url;
+        response += `• ${articleTitle}\n`;
+      });
+    }
+
+    // Trim and return
+    return response.trim();
+  }
 }
 
 module.exports = SummarizationService;
