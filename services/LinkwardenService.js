@@ -7,6 +7,7 @@ class LinkwardenService {
   constructor(config) {
     this.config = config.linkwarden;
     this.baseUrl = this.config.baseUrl;
+    this.externalUrl = this.config.externalUrl || this.baseUrl;
     this.apiToken = this.config.apiToken;
     this.sourceCollectionId = this.config.sourceCollectionId;
     this.postedTagName = this.config.postedTagName || 'posted';
@@ -127,11 +128,19 @@ class LinkwardenService {
       });
 
       if (response.status === 200 && response.data) {
-        logger.info(`Retrieved readable content for link ${linkId} (${response.data.length} chars)`);
+        const contentLength = response.data.length;
+        logger.info(`Retrieved readable content for link ${linkId} (${contentLength} chars)`);
+
+        // Log a preview of the content for debugging (first 200 chars)
+        if (contentLength > 0) {
+          const preview = response.data.substring(0, 200).replace(/\n/g, ' ');
+          logger.debug(`Readable content preview for link ${linkId}: "${preview}..."`);
+        }
+
         return response.data;
       }
 
-      logger.debug(`No readable content available for link ${linkId}`);
+      logger.debug(`No readable content available for link ${linkId} (status: ${response.status})`);
       return null;
     } catch (error) {
       logger.error(`Error fetching readable content for link ${linkId}: ${error.message}`);
@@ -156,10 +165,21 @@ class LinkwardenService {
       });
 
       if (response.status === 200 && response.data) {
-        logger.info(`Retrieved monolith content for link ${linkId}`);
+        const contentLength = response.data.length;
+        logger.info(`Retrieved monolith content for link ${linkId} (${contentLength} chars)`);
+
+        // Check for common paywall/error indicators in the HTML
+        const lowerContent = response.data.toLowerCase();
+        if (lowerContent.includes('subscribe') && lowerContent.includes('paywall') ||
+            lowerContent.includes('sign in to read') ||
+            lowerContent.includes('create a free account')) {
+          logger.warn(`Monolith content for link ${linkId} may contain paywall - detected paywall-related keywords`);
+        }
+
         return response.data;
       }
 
+      logger.debug(`No monolith content available for link ${linkId} (status: ${response.status})`);
       return null;
     } catch (error) {
       logger.error(`Error fetching monolith content for link ${linkId}: ${error.message}`);
@@ -193,7 +213,16 @@ class LinkwardenService {
 
       const updatedTags = [...existingTags, { name: this.postedTagName }];
 
+      // Include id and other fields in the body as the API seems to require 'id' 
+      // and might treat PUT as a full replacement
       await this.client.put(`/api/v1/links/${linkId}`, {
+        id: linkId,
+        name: link.name,
+        description: link.description,
+        url: link.url,
+        type: link.type,
+        collectionId: link.collectionId,
+        collection: link.collection,
         tags: updatedTags
       });
 
@@ -214,7 +243,9 @@ class LinkwardenService {
    * @returns {string}
    */
   buildLinkwardenUrl(link) {
-    return `${this.baseUrl}/links/${link.id}`;
+    // Check if monolith archive (format=4) is available, otherwise fallback to readable (format=2)
+    const format = link.monolith && link.monolith !== 'unavailable' ? 4 : 2;
+    return `${this.externalUrl}/preserved/${link.id}?format=${format}`;
   }
 
   /**
@@ -223,7 +254,7 @@ class LinkwardenService {
    * @returns {Object} Object with URLs for each available format
    */
   buildArchiveUrls(link) {
-    const base = `${this.baseUrl}/api/v1/archives/${link.id}`;
+    const base = `${this.externalUrl}/api/v1/archives/${link.id}`;
 
     return {
       // Screenshot (PNG format = 0)

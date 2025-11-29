@@ -1,9 +1,14 @@
 // bot.js - Cleaned up version
+// IMPORTANT: Tracing must be initialized FIRST before any other modules
+// to ensure all HTTP calls and operations are properly instrumented
+require('./tracing');
+
 const { Client, GatewayIntentBits } = require('discord.js');
 const OpenAI = require('openai');
 const fs = require('fs').promises;
 const config = require('./config/config');
 const logger = require('./logger');
+const { shutdownTracing } = require('./tracing');
 const SummarizationService = require('./services/SummarizationService');
 const ReactionHandler = require('./handlers/ReactionHandler');
 const RssService = require('./services/RssService');
@@ -273,6 +278,30 @@ class DiscordBot {
 if (require.main === module) {
   logger.info('Starting bot from main module');
   const bot = new DiscordBot();
+
+  // Graceful shutdown handler
+  const gracefulShutdown = async (signal) => {
+    logger.info(`Received ${signal}, initiating graceful shutdown...`);
+    try {
+      // Stop Linkwarden polling if active
+      if (bot.linkwardenPollingService) {
+        bot.linkwardenPollingService.stop();
+      }
+      // Destroy Discord client
+      bot.client.destroy();
+      // Shutdown tracing to flush any pending spans
+      await shutdownTracing();
+      logger.info('Graceful shutdown completed');
+      process.exit(0);
+    } catch (error) {
+      logger.error('Error during graceful shutdown:', error);
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
   bot.start().catch(error => {
     logger.error('Unhandled error during bot startup:', error);
     process.exit(1);

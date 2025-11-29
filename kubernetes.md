@@ -542,6 +542,88 @@ If high availability is required, consider:
 - Implementing distributed locking
 - Separating concerns (e.g., separate RSS processor)
 
+## Kustomize-Based Deployment (Recommended)
+
+The repository includes a Kustomize-based deployment structure in `k8s/` for templatized, environment-specific deployments.
+
+### Directory Structure
+
+```
+k8s/
+├── base/                          # Base configuration (shared across environments)
+│   ├── kustomization.yaml         # Kustomize configuration
+│   ├── deployment.yaml            # Main bot deployment
+│   ├── service.yaml               # Service (for internal DNS)
+│   ├── configmap.yaml             # Environment configuration
+│   ├── configmap-prompt.yaml      # System prompt configuration
+│   ├── secret.yaml                # Secret template (DO NOT commit real secrets)
+│   ├── serviceaccount.yaml        # Service account with minimal permissions
+│   └── networkpolicy.yaml         # Network restrictions
+└── overlays/                      # Environment-specific overrides
+    ├── dev/
+    │   └── kustomization.yaml     # Development overrides
+    └── prod/
+        └── kustomization.yaml     # Production overrides
+```
+
+### Quick Start with Kustomize
+
+1. **Preview the generated manifests:**
+   ```bash
+   kubectl kustomize k8s/overlays/dev
+   ```
+
+2. **Deploy to development:**
+   ```bash
+   # Create namespace first
+   kubectl create namespace discord-bot-dev
+
+   # Apply the kustomization
+   kubectl apply -k k8s/overlays/dev
+   ```
+
+3. **Deploy to production:**
+   ```bash
+   # Create namespace first
+   kubectl create namespace discord-bot
+
+   # Apply the kustomization
+   kubectl apply -k k8s/overlays/prod
+   ```
+
+### Customizing for Your Environment
+
+1. **Update the image registry** in `k8s/overlays/prod/kustomization.yaml`:
+   ```yaml
+   images:
+     - name: discord-article-bot
+       newName: your-registry.io/discord-article-bot
+       newTag: v1.0.0
+   ```
+
+2. **Configure secrets** - Replace placeholder values in `k8s/base/secret.yaml` or use a secret management solution:
+   ```bash
+   # Using kubectl to create secrets directly (recommended for production)
+   kubectl create secret generic discord-article-bot-secrets \
+     --from-literal=DISCORD_TOKEN=your-token \
+     --from-literal=OPENAI_API_KEY=your-key \
+     --from-literal=MONGO_PASSWORD=your-password \
+     -n discord-bot
+   ```
+
+3. **Adjust resource limits** by patching in your overlay's `kustomization.yaml`
+
+### Best Practices Applied
+
+The base configuration implements these Kubernetes best practices:
+
+- **Security Context**: Non-root user, read-only filesystem, dropped capabilities
+- **Resource Limits**: CPU and memory requests/limits defined
+- **Network Policies**: Egress-only rules for external API access
+- **Service Account**: Dedicated SA with `automountServiceAccountToken: false`
+- **Probes**: Liveness and readiness probes configured
+- **Recreate Strategy**: Ensures single instance runs at a time
+
 ## Clean Up
 
 To remove all resources:
