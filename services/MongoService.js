@@ -287,6 +287,163 @@ class MongoService {
             return [];
         }
     }
+
+    // ========== Token Usage Tracking ==========
+
+    /**
+     * Record token usage for a Discord user
+     * @param {string} userId - Discord user ID
+     * @param {string} username - Discord username
+     * @param {number} inputTokens - Number of input tokens used
+     * @param {number} outputTokens - Number of output tokens used
+     * @param {string} commandType - Type of command (e.g., 'summarize', 'chat', 'personality')
+     * @param {string} model - Model used (e.g., 'gpt-4o-mini')
+     */
+    async recordTokenUsage(userId, username, inputTokens, outputTokens, commandType, model = 'gpt-4o-mini') {
+        if (!this.db) {
+            logger.error('Cannot record token usage: Not connected to MongoDB.');
+            return false;
+        }
+        try {
+            const collection = this.db.collection('token_usage');
+            await collection.insertOne({
+                userId,
+                username,
+                inputTokens,
+                outputTokens,
+                totalTokens: inputTokens + outputTokens,
+                commandType,
+                model,
+                timestamp: new Date()
+            });
+            logger.debug(`Recorded token usage for user ${username}: ${inputTokens} in, ${outputTokens} out`);
+            return true;
+        } catch (error) {
+            logger.error(`Error recording token usage for user ${userId}: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Get token usage statistics for a specific user
+     * @param {string} userId - Discord user ID
+     * @param {number} days - Number of days to look back (default: 30)
+     * @returns {Object} Usage statistics
+     */
+    async getUserTokenUsage(userId, days = 30) {
+        if (!this.db) {
+            logger.error('Cannot get user token usage: Not connected to MongoDB.');
+            return null;
+        }
+        try {
+            const collection = this.db.collection('token_usage');
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - days);
+
+            const stats = await collection.aggregate([
+                {
+                    $match: {
+                        userId,
+                        timestamp: { $gte: startDate }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$userId',
+                        totalInputTokens: { $sum: '$inputTokens' },
+                        totalOutputTokens: { $sum: '$outputTokens' },
+                        totalTokens: { $sum: '$totalTokens' },
+                        requestCount: { $sum: 1 },
+                        byCommand: {
+                            $push: {
+                                commandType: '$commandType',
+                                tokens: '$totalTokens'
+                            }
+                        }
+                    }
+                }
+            ]).toArray();
+
+            if (stats.length === 0) {
+                return {
+                    userId,
+                    totalInputTokens: 0,
+                    totalOutputTokens: 0,
+                    totalTokens: 0,
+                    requestCount: 0,
+                    commandBreakdown: {}
+                };
+            }
+
+            // Calculate command breakdown
+            const commandBreakdown = {};
+            for (const item of stats[0].byCommand) {
+                if (!commandBreakdown[item.commandType]) {
+                    commandBreakdown[item.commandType] = { count: 0, tokens: 0 };
+                }
+                commandBreakdown[item.commandType].count++;
+                commandBreakdown[item.commandType].tokens += item.tokens;
+            }
+
+            return {
+                userId,
+                totalInputTokens: stats[0].totalInputTokens,
+                totalOutputTokens: stats[0].totalOutputTokens,
+                totalTokens: stats[0].totalTokens,
+                requestCount: stats[0].requestCount,
+                commandBreakdown
+            };
+        } catch (error) {
+            logger.error(`Error getting token usage for user ${userId}: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Get token usage leaderboard (top users by token consumption)
+     * @param {number} days - Number of days to look back (default: 30)
+     * @param {number} limit - Number of users to return (default: 10)
+     * @returns {Array} Top users by token usage
+     */
+    async getTokenUsageLeaderboard(days = 30, limit = 10) {
+        if (!this.db) {
+            logger.error('Cannot get token leaderboard: Not connected to MongoDB.');
+            return [];
+        }
+        try {
+            const collection = this.db.collection('token_usage');
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - days);
+
+            const leaderboard = await collection.aggregate([
+                {
+                    $match: {
+                        timestamp: { $gte: startDate }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$userId',
+                        username: { $first: '$username' },
+                        totalTokens: { $sum: '$totalTokens' },
+                        requestCount: { $sum: 1 }
+                    }
+                },
+                { $sort: { totalTokens: -1 } },
+                { $limit: limit }
+            ]).toArray();
+
+            return leaderboard.map(entry => ({
+                userId: entry._id,
+                username: entry.username,
+                totalTokens: entry.totalTokens,
+                requestCount: entry.requestCount
+            }));
+        } catch (error) {
+            logger.error(`Error getting token leaderboard: ${error.message}`);
+            return [];
+        }
+    }
 }
 
 module.exports = MongoService;
