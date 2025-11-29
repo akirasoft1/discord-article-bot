@@ -8,7 +8,6 @@ const ResponseParser = require('./ResponseParser');
 const TextUtils = require('../utils/textUtils');
 const MongoService = require('./MongoService');
 const SourceCredibilityService = require('./SourceCredibilityService');
-const PollService = require('./PollService');
 const { withSpan, addSpanEvent, setSpanAttributes } = require('../tracing');
 
 class SummarizationService {
@@ -21,7 +20,6 @@ class SummarizationService {
     this.isProcessing = false;
     this.mongoService = new MongoService(config.mongo.uri);
     this.sourceCredibilityService = new SourceCredibilityService(config);
-    this.pollService = new PollService(openaiClient);
     
     // Initialize services
     this.tokenService = new TokenService();
