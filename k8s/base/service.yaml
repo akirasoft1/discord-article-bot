@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: discord-article-bot
+  labels:
+    app.kubernetes.io/name: discord-article-bot
+    app.kubernetes.io/component: bot
+spec:
+  type: ClusterIP
+  # Note: This service is primarily for internal DNS resolution and potential
+  # future health check endpoints. The Discord bot does not expose HTTP endpoints.
+  selector:
+    app.kubernetes.io/name: discord-article-bot
+  ports:
+    - name: health
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

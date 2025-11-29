@@ -2,6 +2,7 @@
 // Polling service that monitors Linkwarden for new archived links
 // and triggers summarization and posting to Discord
 const logger = require('../logger');
+const { withRootSpan, withSpan, addSpanEvent, setSpanAttributes } = require('../tracing');
 
 class LinkwardenPollingService {
   constructor(linkwardenService, summarizationService, discordClient, config) {
@@ -92,35 +93,52 @@ class LinkwardenPollingService {
    * Poll for new links and add them to the processing queue
    */
   async poll() {
-    try {
-      logger.debug('Polling Linkwarden for new links...');
-      const newLinks = await this.linkwardenService.getNewLinks();
+    return withRootSpan('linkwarden.poll', {
+      'linkwarden.collection_id': this.config.linkwarden.sourceCollectionId,
+      'linkwarden.poll_interval_ms': this.config.linkwarden.pollIntervalMs,
+    }, async (span) => {
+      try {
+        logger.debug('Polling Linkwarden for new links...');
+        addSpanEvent('poll.started');
 
-      if (newLinks.length === 0) {
-        logger.debug('No new links to process from Linkwarden');
-        return;
-      }
+        const newLinks = await this.linkwardenService.getNewLinks();
 
-      logger.info(`Found ${newLinks.length} new links from Linkwarden`);
+        span.setAttribute('linkwarden.links_found', newLinks.length);
 
-      // Add to queue and start processing
-      for (const link of newLinks) {
-        // Check if link is already in queue
-        const alreadyQueued = this.processingQueue.some(q => q.id === link.id);
-        if (!alreadyQueued) {
-          this.processingQueue.push(link);
-          logger.debug(`Added link ${link.id} to processing queue`);
+        if (newLinks.length === 0) {
+          logger.debug('No new links to process from Linkwarden');
+          addSpanEvent('poll.no_new_links');
+          return;
         }
-      }
 
-      // Process queue if not already processing
-      if (!this.isProcessing) {
-        await this.processQueue();
+        logger.info(`Found ${newLinks.length} new links from Linkwarden`);
+        addSpanEvent('poll.links_found', { count: newLinks.length });
+
+        // Add to queue and start processing
+        let queuedCount = 0;
+        for (const link of newLinks) {
+          // Check if link is already in queue
+          const alreadyQueued = this.processingQueue.some(q => q.id === link.id);
+          if (!alreadyQueued) {
+            this.processingQueue.push(link);
+            logger.debug(`Added link ${link.id} to processing queue`);
+            queuedCount++;
+          }
+        }
+
+        span.setAttribute('linkwarden.links_queued', queuedCount);
+        span.setAttribute('linkwarden.queue_size', this.processingQueue.length);
+
+        // Process queue if not already processing
+        if (!this.isProcessing) {
+          await this.processQueue();
+        }
+      } catch (error) {
+        logger.error(`Error during Linkwarden poll: ${error.message}`);
+        logger.error(error.stack);
+        throw error; // Re-throw to let withRootSpan record the error
       }
-    } catch (error) {
-      logger.error(`Error during Linkwarden poll: ${error.message}`);
-      logger.error(error.stack);
-    }
+    });
   }
 
   /**
@@ -158,83 +176,167 @@ class LinkwardenPollingService {
    */
   async processLink(link) {
     const linkName = link.name || link.url || `Link ${link.id}`;
-    logger.info(`Processing Linkwarden link: ${linkName}`);
 
-    try {
-      // Get the target Discord channel
-      const channelId = this.config.linkwarden.discordChannelId;
-      const channel = await this.discordClient.channels.fetch(channelId);
+    return withSpan('linkwarden.processLink', {
+      'linkwarden.link.id': link.id,
+      'linkwarden.link.name': linkName,
+      'linkwarden.link.url': link.url,
+      'linkwarden.link.has_textContent': !!link.textContent,
+      'linkwarden.link.readable': link.readable || 'undefined',
+      'linkwarden.link.monolith': link.monolith || 'undefined',
+    }, async (span) => {
+      logger.info(`Processing Linkwarden link: ${linkName}`);
+      addSpanEvent('processLink.started', { link_id: link.id });
 
-      if (!channel || !channel.isTextBased()) {
-        logger.error(`Invalid Discord channel: ${channelId}`);
-        return;
-      }
+      try {
+        // Get the target Discord channel
+        const channelId = this.config.linkwarden.discordChannelId;
+        const channel = await this.discordClient.channels.fetch(channelId);
 
-      // Try to get readable content for summarization
-      let content = link.textContent;
-
-      // If no textContent, try to fetch the readable archive
-      if (!content && link.readable && link.readable !== 'unavailable') {
-        logger.debug(`Fetching readable content for link ${link.id}`);
-        content = await this.linkwardenService.getReadableContent(link.id);
-      }
-
-      // If still no content, try monolith
-      if (!content && link.monolith && link.monolith !== 'unavailable') {
-        logger.debug(`Fetching monolith content for link ${link.id}`);
-        content = await this.linkwardenService.getMonolithContent(link.id);
-        // Strip HTML tags for summarization
-        if (content) {
-          content = this.stripHtml(content);
+        if (!channel || !channel.isTextBased()) {
+          logger.error(`Invalid Discord channel: ${channelId}`);
+          span.setAttribute('error.type', 'invalid_channel');
+          return;
         }
-      }
 
-      // Build archive URLs
-      const archiveUrls = this.linkwardenService.buildArchiveUrls(link);
-      const availableFormats = this.linkwardenService.getAvailableFormats(link);
+        span.setAttribute('discord.channel.id', channelId);
+        span.setAttribute('discord.channel.name', channel.name);
 
-      // Create a mock message object for the summarization service
-      const mockMessage = {
-        channel,
-        reply: async (options) => {
-          if (typeof options === 'string') {
-            return channel.send(options);
+        // Try to get readable content for summarization
+        // Priority order: textContent > readable > monolith (stripped HTML)
+        let content = null;
+        let contentSource = 'none';
+
+        // Log available content types for debugging
+        logger.debug(`Link ${link.id} content availability: textContent=${!!link.textContent}, readable=${link.readable}, monolith=${link.monolith}`);
+
+        // 1. First try textContent (already extracted text)
+        if (link.textContent) {
+          content = link.textContent;
+          contentSource = 'textContent';
+          logger.info(`Using textContent for link ${link.id} (${content.length} chars)`);
+          addSpanEvent('content.extracted', { source: 'textContent', chars: content.length });
+        }
+
+        // 2. If no textContent, try to fetch the readable archive (best for articles)
+        if (!content && link.readable && link.readable !== 'unavailable') {
+          logger.debug(`Fetching readable content for link ${link.id}`);
+          addSpanEvent('content.fetching', { source: 'readable' });
+
+          content = await this.linkwardenService.getReadableContent(link.id);
+          if (content) {
+            contentSource = 'readable';
+            logger.info(`Using readable content for link ${link.id} (${content.length} chars)`);
+            addSpanEvent('content.extracted', { source: 'readable', chars: content.length });
+          } else {
+            logger.warn(`Readable content fetch returned empty for link ${link.id}`);
+            addSpanEvent('content.fetch_failed', { source: 'readable', reason: 'empty_response' });
           }
-          return channel.send(options);
-        },
-        react: () => Promise.resolve()
-      };
+        } else if (!content && (!link.readable || link.readable === 'unavailable')) {
+          logger.debug(`Readable content not available for link ${link.id} (readable=${link.readable})`);
+        }
 
-      // Create a mock user object
-      const mockUser = {
-        id: 'linkwarden-integration',
-        tag: 'Linkwarden',
-        username: 'linkwarden'
-      };
+        // 3. If still no content, try monolith as last resort
+        if (!content && link.monolith && link.monolith !== 'unavailable') {
+          logger.debug(`Fetching monolith content for link ${link.id}`);
+          addSpanEvent('content.fetching', { source: 'monolith' });
 
-      // Process through summarization service
-      await this.summarizationService.processLinkwardenLink({
-        link,
-        content,
-        archiveUrls,
-        availableFormats,
-        message: mockMessage,
-        user: mockUser
-      });
+          const monolithHtml = await this.linkwardenService.getMonolithContent(link.id);
+          if (monolithHtml) {
+            logger.debug(`Monolith HTML retrieved for link ${link.id} (${monolithHtml.length} chars before stripping)`);
+            span.setAttribute('linkwarden.monolith.raw_chars', monolithHtml.length);
 
-      // Mark as posted in Linkwarden
-      const marked = await this.linkwardenService.markAsPosted(link.id);
-      if (!marked) {
-        logger.warn(`Failed to mark link ${link.id} as posted - may be processed again`);
+            content = this.stripHtml(monolithHtml);
+            contentSource = 'monolith';
+            logger.info(`Using monolith content for link ${link.id} (${content.length} chars after HTML stripping)`);
+            addSpanEvent('content.extracted', { source: 'monolith', chars: content.length, raw_chars: monolithHtml.length });
+
+            // Warn if content is suspiciously short after stripping
+            if (content.length < 200) {
+              logger.warn(`Monolith content for link ${link.id} is very short after HTML stripping (${content.length} chars) - may indicate paywall or failed archive`);
+              addSpanEvent('content.warning', { reason: 'short_content_after_strip', chars: content.length });
+              span.setAttribute('linkwarden.content.possible_paywall', true);
+            }
+          } else {
+            logger.warn(`Monolith content fetch returned empty for link ${link.id}`);
+            addSpanEvent('content.fetch_failed', { source: 'monolith', reason: 'empty_response' });
+          }
+        } else if (!content && (!link.monolith || link.monolith === 'unavailable')) {
+          logger.debug(`Monolith content not available for link ${link.id} (monolith=${link.monolith})`);
+        }
+
+        // Set final content attributes on span
+        span.setAttribute('linkwarden.content.source', contentSource);
+        span.setAttribute('linkwarden.content.chars', content ? content.length : 0);
+        span.setAttribute('linkwarden.content.available', !!content);
+
+        // Final content status logging
+        if (!content) {
+          logger.warn(`No content could be extracted for link ${link.id} - summarization will rely on URL/web search`);
+          addSpanEvent('content.none_available', { fallback: 'web_search' });
+        } else if (content.length < 100) {
+          logger.warn(`Extracted content for link ${link.id} is very short (${content.length} chars from ${contentSource}) - may produce poor summary`);
+          addSpanEvent('content.warning', { reason: 'very_short', chars: content.length });
+        } else {
+          logger.info(`Content extraction successful for link ${link.id}: ${content.length} chars from ${contentSource}`);
+        }
+
+        // Build archive URLs
+        const archiveUrls = this.linkwardenService.buildArchiveUrls(link);
+        const availableFormats = this.linkwardenService.getAvailableFormats(link);
+        span.setAttribute('linkwarden.available_formats', availableFormats.join(','));
+
+        // Create a mock message object for the summarization service
+        const mockMessage = {
+          channel,
+          reply: async (options) => {
+            if (typeof options === 'string') {
+              return channel.send(options);
+            }
+            return channel.send(options);
+          },
+          react: () => Promise.resolve()
+        };
+
+        // Create a mock user object
+        const mockUser = {
+          id: 'linkwarden-integration',
+          tag: 'Linkwarden',
+          username: 'linkwarden'
+        };
+
+        // Process through summarization service
+        addSpanEvent('summarization.started');
+        await this.summarizationService.processLinkwardenLink({
+          link,
+          content,
+          archiveUrls,
+          availableFormats,
+          message: mockMessage,
+          user: mockUser
+        });
+        addSpanEvent('summarization.completed');
+
+        // Mark as posted in Linkwarden
+        addSpanEvent('linkwarden.marking_posted');
+        const marked = await this.linkwardenService.markAsPosted(link.id);
+        if (!marked) {
+          logger.warn(`Failed to mark link ${link.id} as posted - may be processed again`);
+          addSpanEvent('linkwarden.mark_posted_failed');
+          span.setAttribute('linkwarden.marked_posted', false);
+        } else {
+          span.setAttribute('linkwarden.marked_posted', true);
+        }
+
+        logger.info(`Successfully processed Linkwarden link: ${linkName}`);
+        addSpanEvent('processLink.completed');
+
+      } catch (error) {
+        logger.error(`Error processing link ${link.id}: ${error.message}`);
+        logger.error(error.stack);
+        throw error; // Re-throw to let withSpan record the error
       }
-
-      logger.info(`Successfully processed Linkwarden link: ${linkName}`);
-
-    } catch (error) {
-      logger.error(`Error processing link ${link.id}: ${error.message}`);
-      logger.error(error.stack);
-      throw error;
-    }
+    });
   }
 
   /**
