@@ -1,0 +1,54 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: discord-article-bot-dev
+
+namespace: discord-bot-dev
+
+resources:
+  - ../../base
+
+# Development-specific labels
+labels:
+  - pairs:
+      environment: development
+    includeSelectors: false
+
+# Development image configuration
+images:
+  - name: discord-article-bot
+    newName: discord-article-bot
+    newTag: dev
+
+# Development-specific patches
+patches:
+  # Enable debug mode
+  - patch: |-
+      - op: replace
+        path: /data/DEBUG
+        value: "true"
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: "debug"
+    target:
+      kind: ConfigMap
+      name: discord-article-bot-config
+
+  # Reduce resource requests for dev
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "128Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "100m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "512Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "500m"
+    target:
+      kind: Deployment
+      name: discord-article-bot

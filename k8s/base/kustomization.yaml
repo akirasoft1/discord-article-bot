@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: discord-article-bot-base
+
+# Common labels applied to all resources
+labels:
+  - pairs:
+      app.kubernetes.io/name: discord-article-bot
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: true
+
+# Resources to include
+resources:
+  - serviceaccount.yaml
+  - configmap.yaml
+  - configmap-prompt.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+
+# Image configuration - override in overlays
+images:
+  - name: discord-article-bot
+    newName: discord-article-bot
+    newTag: latest
+
+# Configuration for ConfigMap/Secret generators (alternative approach)
+# Uncomment to generate configs from files or literals
+# configMapGenerator:
+#   - name: discord-article-bot-config
+#     behavior: merge
+#     literals:
+#       - DEBUG=false
+#       - LOG_LEVEL=info
+
+# secretGenerator:
+#   - name: discord-article-bot-secrets
+#     type: Opaque
+#     files:
+#       - secrets/discord-token
+#       - secrets/openai-api-key

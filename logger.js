@@ -2,7 +2,7 @@
 const winston = require('winston');
 
 const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'debug',  // This controls winston's log level
+  level: (process.env.LOG_LEVEL || 'debug').toLowerCase(),  // This controls winston's log level
   transports: [
     new winston.transports.Console({
       format: winston.format.combine(

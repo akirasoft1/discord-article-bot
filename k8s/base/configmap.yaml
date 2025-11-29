@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: discord-article-bot-config
+  labels:
+    app.kubernetes.io/name: discord-article-bot
+    app.kubernetes.io/component: config
+data:
+  # Core Settings
+  DISCORD_PREFIX: "!"
+  OPENAI_BASE_URL: "https://api.openai.com/v1"
+  OPENAI_METHOD: "response"
+  OPENAI_MODEL: "gpt-4.1-mini"
+  DEBUG: "false"
+  LOG_LEVEL: "info"
+
+  # MongoDB Connection (password injected via secret)
+  MONGO_URI: "mongodb://admin:${MONGO_PASSWORD}@mongodb:27017/discord-bot?authSource=admin"
+
+  # Feature Toggles
+  FACT_CHECKER_ENABLED: "true"
+  SOURCE_CREDIBILITY_ENABLED: "true"
+  RSS_FEEDS_ENABLED: "false"
+  FOLLOW_UP_TRACKER_ENABLED: "false"
+  SUMMARY_STYLES_ENABLED: "false"
+  MOOD_BASED_SUMMARIES_ENABLED: "false"
+  CELEBRITY_NARRATORS_ENABLED: "false"
+  HISTORICAL_PERSPECTIVES_ENABLED: "false"
+  BIAS_DETECTION_ENABLED: "true"
+  ALTERNATIVE_PERSPECTIVES_ENABLED: "false"
+  CONTEXT_PROVIDER_ENABLED: "false"
+  AUTO_TRANSLATION_ENABLED: "false"
+  LANGUAGE_LEARNING_ENABLED: "false"
+  CULTURAL_CONTEXT_ENABLED: "false"
+
+  # Feature Configuration
+  QUESTIONABLE_SOURCES: ""
+  TRUSTED_SOURCES: "{}"
+  RSS_INTERVAL_MINUTES: "60"
+  RSS_FEEDS: "[]"
+  FOLLOW_UP_INTERVAL_MINUTES: "1440"
+  BIAS_THRESHOLD: "0.7"
+  BIAS_TYPES: "political,gender,racial,corporate"
+  CONTEXT_MIN_KEYWORDS: "3"
+  AUTO_TRANSLATION_TARGET_LANGUAGE: "English"
+  AUTO_TRANSLATION_SUPPORTED_LANGUAGES: "English,Spanish,French,German,Italian,Portuguese"
+  LANGUAGE_LEARNING_TARGET_LANGUAGES: "Spanish,French"
+  LANGUAGE_LEARNING_PRESENTATION_STYLE: "side-by-side"
+
+  # Linkwarden Integration (self-hosted article archiving)
+  LINKWARDEN_ENABLED: "true"
+  LINKWARDEN_URL: "http://localhost:3000"
+  LINKWARDEN_SOURCE_COLLECTION_ID: "0"
+  LINKWARDEN_POSTED_TAG_NAME: "posted"
+  LINKWARDEN_DISCORD_CHANNEL_ID: ""
+  LINKWARDEN_POLL_INTERVAL_MS: "60000"
+
+  # Google Cloud / Vertex AI (optional)
+  GOOGLE_CLOUD_PROJECT: ""
+  GOOGLE_CLOUD_LOCATION: "us-central1"
+  GOOGLE_GENAI_USE_VERTEXAI: "false"
+  VERTEXAI_PROJECT: ""
+  VERTEXAI_LOCATION: "us-central1"

@@ -145,6 +145,8 @@ module.exports = {
     enabled: process.env.LINKWARDEN_ENABLED === 'true',
     // Base URL of your Linkwarden instance (e.g., https://links.example.com)
     baseUrl: process.env.LINKWARDEN_URL || 'http://localhost:3000',
+    // External URL for user-facing links (e.g., https://linkwarden.aklabs.io)
+    externalUrl: process.env.LINKWARDEN_EXTERNAL_URL || process.env.LINKWARDEN_URL || 'http://localhost:3000',
     // API token from Linkwarden (Settings -> Access Tokens)
     apiToken: process.env.LINKWARDEN_API_TOKEN || '',
     // Collection ID to monitor for new links (the "Discord Share" collection)

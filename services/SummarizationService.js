@@ -9,6 +9,7 @@ const TextUtils = require('../utils/textUtils');
 const MongoService = require('./MongoService');
 const SourceCredibilityService = require('./SourceCredibilityService');
 const PollService = require('./PollService');
+const { withSpan, addSpanEvent, setSpanAttributes } = require('../tracing');
 
 class SummarizationService {
   constructor(openaiClient, config, discordClient, messageService = null) {
@@ -369,76 +370,105 @@ class SummarizationService {
   }
 
   async generateResponseSummary(content, url, isContentProvided, style, mood, narrator, historicalPerspective) {
-    let tokenData = null;
-    let costData = null;
-    let summary = null;
-    
-    try {
-      const inputText = this.buildInputText(content, url, isContentProvided);
-      let systemPrompt = this.systemPrompt;
+    return withSpan('openai.generateResponseSummary', {
+      'openai.method': 'response',
+      'openai.model': this.config.openai.model,
+      'openai.content_provided': isContentProvided,
+      'openai.style': style || 'default',
+      'openai.mood': mood || 'default',
+      'openai.narrator': narrator || 'none',
+      'openai.historical_perspective': historicalPerspective || 'none',
+    }, async (span) => {
+      let tokenData = null;
+      let costData = null;
+      let summary = null;
 
-      if (style && this.config.bot.summaryStyles.enabled && this.config.bot.summaryStyles.styles[style]) {
-        systemPrompt += ` ${this.config.bot.summaryStyles.styles[style]}`;
-      }
+      try {
+        const inputText = this.buildInputText(content, url, isContentProvided);
+        let systemPrompt = this.systemPrompt;
 
-      if (mood && this.config.bot.moodBasedSummaries.enabled && this.config.bot.moodBasedSummaries.moods[mood]) {
-        systemPrompt += ` ${this.config.bot.moodBasedSummaries.moods[mood]}`;
-      }
+        if (style && this.config.bot.summaryStyles.enabled && this.config.bot.summaryStyles.styles[style]) {
+          systemPrompt += ` ${this.config.bot.summaryStyles.styles[style]}`;
+        }
 
-      if (narrator && this.config.bot.celebrityNarrators.enabled && this.config.bot.celebrityNarrators.narrators[narrator]) {
-        systemPrompt += ` ${this.config.bot.celebrityNarrators.narrators[narrator]}`;
-      }
+        if (mood && this.config.bot.moodBasedSummaries.enabled && this.config.bot.moodBasedSummaries.moods[mood]) {
+          systemPrompt += ` ${this.config.bot.moodBasedSummaries.moods[mood]}`;
+        }
 
-      if (historicalPerspective && this.config.bot.historicalPerspectives.enabled && this.config.bot.historicalPerspectives.perspectives[historicalPerspective]) {
-        systemPrompt += ` ${this.config.bot.historicalPerspectives.perspectives[historicalPerspective]}`;
-      }
-      
-      // Estimate tokens
-      const inputTokenEstimate = this.tokenService.countTokens(inputText);
-      const systemPromptTokens = this.tokenService.countTokens(systemPrompt);
-      const totalInputTokensEstimate = (inputTokenEstimate || 0) + (systemPromptTokens || 0);
-      
-      logger.info(`Estimated input tokens: ${totalInputTokensEstimate} (content: ${inputTokenEstimate}, system: ${systemPromptTokens})`);
+        if (narrator && this.config.bot.celebrityNarrators.enabled && this.config.bot.celebrityNarrators.narrators[narrator]) {
+          systemPrompt += ` ${this.config.bot.celebrityNarrators.narrators[narrator]}`;
+        }
 
-      // Call OpenAI API
-      const response = await this.callOpenAIResponsesAPI(inputText, systemPrompt);
-      
-      // Process usage data if available
-      if (response.usage) {
-        const usageData = this.processUsageData(response.usage, totalInputTokensEstimate);
-        tokenData = usageData.tokens;
-        costData = usageData.costs;
-      } else {
-        logger.warn('No usage data in OpenAI response');
-      }
-      
-      // Extract summary
-      summary = ResponseParser.extractSummaryFromResponse(response);
-      
-      if (!summary) {
-        return null;
-      }
+        if (historicalPerspective && this.config.bot.historicalPerspectives.enabled && this.config.bot.historicalPerspectives.perspectives[historicalPerspective]) {
+          systemPrompt += ` ${this.config.bot.historicalPerspectives.perspectives[historicalPerspective]}`;
+        }
 
-      // Log output token estimation
-      if (response.usage?.output_tokens) {
-        const estimatedOutputTokens = this.tokenService.countTokens(summary);
-        this.tokenService.logTokenUsage(estimatedOutputTokens, response.usage.output_tokens, 'Output');
-      }
+        // Estimate tokens
+        const inputTokenEstimate = this.tokenService.countTokens(inputText);
+        const systemPromptTokens = this.tokenService.countTokens(systemPrompt);
+        const totalInputTokensEstimate = (inputTokenEstimate || 0) + (systemPromptTokens || 0);
 
-      return {
-        summary,
-        tokens: tokenData,
-        costs: costData
-      };
-    } catch (error) {
-      logger.error('OpenAI API error (response method):', error);
-      logger.error('Error stack:', error.stack);
-      if (error.response) {
-        logger.error(`Error response status: ${error.response.status}`);
-        logger.error(`Error response data: ${JSON.stringify(error.response.data)}`);
+        logger.info(`Estimated input tokens: ${totalInputTokensEstimate} (content: ${inputTokenEstimate}, system: ${systemPromptTokens})`);
+        span.setAttribute('openai.estimated_input_tokens', totalInputTokensEstimate);
+        span.setAttribute('openai.content_tokens', inputTokenEstimate || 0);
+        span.setAttribute('openai.system_prompt_tokens', systemPromptTokens || 0);
+
+        // Call OpenAI API
+        addSpanEvent('openai.api_call.started');
+        const response = await this.callOpenAIResponsesAPI(inputText, systemPrompt);
+        addSpanEvent('openai.api_call.completed');
+
+        // Process usage data if available
+        if (response.usage) {
+          const usageData = this.processUsageData(response.usage, totalInputTokensEstimate);
+          tokenData = usageData.tokens;
+          costData = usageData.costs;
+
+          span.setAttribute('openai.actual_input_tokens', response.usage.input_tokens);
+          span.setAttribute('openai.actual_output_tokens', response.usage.output_tokens);
+          span.setAttribute('openai.actual_total_tokens', response.usage.total_tokens);
+          span.setAttribute('openai.cached_tokens', response.usage.input_tokens_details?.cached_tokens || 0);
+          span.setAttribute('openai.cost_cents', costData?.total || 0);
+        } else {
+          logger.warn('No usage data in OpenAI response');
+          addSpanEvent('openai.no_usage_data');
+        }
+
+        // Extract summary
+        summary = ResponseParser.extractSummaryFromResponse(response);
+
+        if (!summary) {
+          span.setAttribute('openai.summary_extracted', false);
+          addSpanEvent('openai.summary_extraction_failed');
+          return null;
+        }
+
+        span.setAttribute('openai.summary_extracted', true);
+        span.setAttribute('openai.summary_length', summary.length);
+
+        // Log output token estimation
+        if (response.usage?.output_tokens) {
+          const estimatedOutputTokens = this.tokenService.countTokens(summary);
+          this.tokenService.logTokenUsage(estimatedOutputTokens, response.usage.output_tokens, 'Output');
+        }
+
+        return {
+          summary,
+          tokens: tokenData,
+          costs: costData
+        };
+      } catch (error) {
+        logger.error('OpenAI API error (response method):', error);
+        logger.error('Error stack:', error.stack);
+        if (error.response) {
+          logger.error(`Error response status: ${error.response.status}`);
+          logger.error(`Error response data: ${JSON.stringify(error.response.data)}`);
+          span.setAttribute('openai.error_status', error.response.status);
+        }
+        span.setAttribute('openai.error_message', error.message);
+        throw error; // Re-throw to let withSpan record the error
       }
-      return null;
-    }
+    });
   }
 
   async generateCompletionSummary(content, url, isContentProvided, style, mood, narrator, historicalPerspective) {
@@ -887,148 +917,197 @@ Text: """${text}"""`;
     }
 
     this.isProcessing = true;
+    const url = link.url;
 
-    try {
-      const url = link.url;
-      logger.info(`Processing Linkwarden link: ${url}`);
+    return withSpan('summarization.processLinkwardenLink', {
+      'article.url': url,
+      'article.link_id': link.id,
+      'article.name': link.name || 'unknown',
+      'article.content_available': !!content,
+      'article.content_length': content ? content.length : 0,
+    }, async (span) => {
+      try {
+        logger.info(`Processing Linkwarden link: ${url}`);
+        addSpanEvent('processLinkwardenLink.started');
 
-      // Check for duplicates in our MongoDB
-      const existingArticle = await this.mongoService.findArticleByUrl(url);
-      if (existingArticle) {
-        logger.info(`Linkwarden link already processed in MongoDB: ${url}`);
-        this.isProcessing = false;
-        return;
-      }
+        // Check for duplicates in our MongoDB
+        addSpanEvent('mongodb.check_duplicate');
+        const existingArticle = await this.mongoService.findArticleByUrl(url);
+        if (existingArticle) {
+          logger.info(`Linkwarden link already processed in MongoDB: ${url}`);
+          span.setAttribute('article.duplicate', true);
+          addSpanEvent('article.duplicate_found', { original_date: existingArticle.createdAt });
+          this.isProcessing = false;
+          return;
+        }
+        span.setAttribute('article.duplicate', false);
 
-      // Use the readable content from Linkwarden for summarization
-      let textContent = content;
+        // Use the readable content from Linkwarden for summarization
+        let textContent = content;
 
-      // If no content available, post basic info without summary
-      if (!textContent) {
-        logger.warn(`No readable content available for Linkwarden link: ${url}`);
-        const noContentMessage = this.buildLinkwardenResponse({
+        // If no content available, post basic info without summary
+        if (!textContent) {
+          logger.warn(`No readable content available for Linkwarden link: ${url}`);
+          span.setAttribute('article.no_content', true);
+          addSpanEvent('content.not_available');
+
+          const noContentMessage = this.buildLinkwardenResponse({
+            link,
+            archiveUrls,
+            availableFormats,
+            summary: '_No readable content available for AI summary._',
+            readingTime: 'N/A',
+            topic: link.tags?.[0]?.name || 'N/A',
+            sentiment: 'N/A',
+            sourceCredibility: null,
+            relatedArticles: [],
+            wasTranslated: false,
+            detectedLanguage: 'N/A'
+          });
+          await message.channel.send(noContentMessage);
+
+          // Still persist to avoid re-processing
+          await this.mongoService.persistData({
+            userId: user.id,
+            username: user.tag,
+            url,
+            inputTokens: 0,
+            outputTokens: 0,
+            topic: link.tags?.[0]?.name || 'Unknown',
+            source: 'linkwarden'
+          });
+
+          this.isProcessing = false;
+          return;
+        }
+
+        // Handle translation if needed
+        let wasTranslated = false;
+        let detectedLanguage = 'N/A';
+        if (this.config.bot.autoTranslation.enabled) {
+          addSpanEvent('translation.detecting_language');
+          const translationResult = await this.detectAndTranslate(textContent);
+          textContent = translationResult.translatedText;
+          wasTranslated = translationResult.wasTranslated;
+          detectedLanguage = translationResult.detectedLanguage;
+          span.setAttribute('article.detected_language', detectedLanguage);
+          span.setAttribute('article.was_translated', wasTranslated);
+          if (wasTranslated) {
+            addSpanEvent('translation.completed', { from: detectedLanguage });
+          }
+        }
+
+        // Generate summary using the existing method
+        addSpanEvent('openai.generate_summary.started');
+        const result = await this.generateSummary(textContent, url, null, null, null, null);
+
+        if (!result) {
+          logger.error(`Failed to generate summary for Linkwarden link: ${url}`);
+          span.setAttribute('summarization.failed', true);
+          addSpanEvent('openai.generate_summary.failed');
+
+          const errorMessage = this.buildLinkwardenResponse({
+            link,
+            archiveUrls,
+            availableFormats,
+            summary: '_Summary generation failed. View the archived version for full content._',
+            readingTime: 'N/A',
+            topic: 'N/A',
+            sentiment: 'N/A',
+            sourceCredibility: null,
+            relatedArticles: [],
+            wasTranslated,
+            detectedLanguage
+          });
+          await message.channel.send(errorMessage);
+          this.isProcessing = false;
+          return;
+        }
+
+        addSpanEvent('openai.generate_summary.completed', {
+          input_tokens: result.tokens?.input || 0,
+          output_tokens: result.tokens?.output || 0,
+        });
+        span.setAttribute('openai.input_tokens', result.tokens?.input || 0);
+        span.setAttribute('openai.output_tokens', result.tokens?.output || 0);
+        span.setAttribute('openai.total_tokens', result.tokens?.total || 0);
+        span.setAttribute('summarization.summary_length', result.summary?.length || 0);
+
+        // Enhance the summary with topic, sentiment, reading time
+        addSpanEvent('openai.enhance_summary.started');
+        const enhancedResult = await this.enhanceSummary(result.summary, textContent);
+        addSpanEvent('openai.enhance_summary.completed', {
+          topic: enhancedResult.topic,
+          sentiment: enhancedResult.sentiment,
+        });
+        span.setAttribute('article.topic', enhancedResult.topic || 'N/A');
+        span.setAttribute('article.sentiment', enhancedResult.sentiment || 'N/A');
+        span.setAttribute('article.reading_time', enhancedResult.readingTime || 'N/A');
+
+        // Find related articles from our MongoDB
+        let relatedArticles = [];
+        if (enhancedResult.topic) {
+          relatedArticles = await this.mongoService.findRelatedArticles(enhancedResult.topic, url);
+          span.setAttribute('article.related_count', relatedArticles.length);
+        }
+
+        // Get source credibility rating
+        const sourceCredibility = this.sourceCredibilityService.rateSource(url);
+        span.setAttribute('article.source_credibility', sourceCredibility || 'unknown');
+
+        // Build the Discord message with Linkwarden-specific formatting
+        const responseMessage = this.buildLinkwardenResponse({
           link,
           archiveUrls,
           availableFormats,
-          summary: '_No readable content available for AI summary._',
-          readingTime: 'N/A',
-          topic: link.tags?.[0]?.name || 'N/A',
-          sentiment: 'N/A',
-          sourceCredibility: null,
-          relatedArticles: [],
-          wasTranslated: false,
-          detectedLanguage: 'N/A'
+          summary: result.summary,
+          readingTime: enhancedResult.readingTime,
+          topic: enhancedResult.topic,
+          sentiment: enhancedResult.sentiment,
+          sourceCredibility,
+          relatedArticles,
+          wasTranslated,
+          detectedLanguage
         });
-        await message.channel.send(noContentMessage);
 
-        // Still persist to avoid re-processing
+        // Persist to MongoDB for analytics and duplicate detection
+        addSpanEvent('mongodb.persist_data');
         await this.mongoService.persistData({
           userId: user.id,
           username: user.tag,
           url,
-          inputTokens: 0,
-          outputTokens: 0,
-          topic: link.tags?.[0]?.name || 'Unknown',
+          inputTokens: result.tokens?.input || 0,
+          outputTokens: result.tokens?.output || 0,
+          topic: enhancedResult.topic,
           source: 'linkwarden'
         });
 
+        // Send to Discord
+        addSpanEvent('discord.send_message');
+        await message.channel.send(responseMessage);
+
+        // Check for follow-ups on related topics
+        if (enhancedResult.topic) {
+          await this.checkAndNotifyFollowUps(url, enhancedResult.topic, result.summary);
+        }
+
+        logger.info(`Successfully processed Linkwarden link: ${url}`);
+        addSpanEvent('processLinkwardenLink.completed');
+
+      } catch (error) {
+        logger.error(`Error processing Linkwarden link: ${error.message}`);
+        logger.error(error.stack);
+
+        try {
+          await message.channel.send(`An error occurred while processing the archived article: ${link.name || link.url}`);
+        } catch (sendError) {
+          logger.error(`Failed to send error message: ${sendError.message}`);
+        }
+        throw error; // Re-throw to let withSpan record the error
+      } finally {
         this.isProcessing = false;
-        return;
       }
-
-      // Handle translation if needed
-      let wasTranslated = false;
-      let detectedLanguage = 'N/A';
-      if (this.config.bot.autoTranslation.enabled) {
-        const translationResult = await this.detectAndTranslate(textContent);
-        textContent = translationResult.translatedText;
-        wasTranslated = translationResult.wasTranslated;
-        detectedLanguage = translationResult.detectedLanguage;
-      }
-
-      // Generate summary using the existing method
-      const result = await this.generateSummary(textContent, url, null, null, null, null);
-
-      if (!result) {
-        logger.error(`Failed to generate summary for Linkwarden link: ${url}`);
-        const errorMessage = this.buildLinkwardenResponse({
-          link,
-          archiveUrls,
-          availableFormats,
-          summary: '_Summary generation failed. View the archived version for full content._',
-          readingTime: 'N/A',
-          topic: 'N/A',
-          sentiment: 'N/A',
-          sourceCredibility: null,
-          relatedArticles: [],
-          wasTranslated,
-          detectedLanguage
-        });
-        await message.channel.send(errorMessage);
-        this.isProcessing = false;
-        return;
-      }
-
-      // Enhance the summary with topic, sentiment, reading time
-      const enhancedResult = await this.enhanceSummary(result.summary, textContent);
-
-      // Find related articles from our MongoDB
-      let relatedArticles = [];
-      if (enhancedResult.topic) {
-        relatedArticles = await this.mongoService.findRelatedArticles(enhancedResult.topic, url);
-      }
-
-      // Get source credibility rating
-      const sourceCredibility = this.sourceCredibilityService.rateSource(url);
-
-      // Build the Discord message with Linkwarden-specific formatting
-      const responseMessage = this.buildLinkwardenResponse({
-        link,
-        archiveUrls,
-        availableFormats,
-        summary: result.summary,
-        readingTime: enhancedResult.readingTime,
-        topic: enhancedResult.topic,
-        sentiment: enhancedResult.sentiment,
-        sourceCredibility,
-        relatedArticles,
-        wasTranslated,
-        detectedLanguage
-      });
-
-      // Persist to MongoDB for analytics and duplicate detection
-      await this.mongoService.persistData({
-        userId: user.id,
-        username: user.tag,
-        url,
-        inputTokens: result.tokens?.input || 0,
-        outputTokens: result.tokens?.output || 0,
-        topic: enhancedResult.topic,
-        source: 'linkwarden'
-      });
-
-      // Send to Discord
-      await message.channel.send(responseMessage);
-
-      // Check for follow-ups on related topics
-      if (enhancedResult.topic) {
-        await this.checkAndNotifyFollowUps(url, enhancedResult.topic, result.summary);
-      }
-
-      logger.info(`Successfully processed Linkwarden link: ${url}`);
-
-    } catch (error) {
-      logger.error(`Error processing Linkwarden link: ${error.message}`);
-      logger.error(error.stack);
-
-      try {
-        await message.channel.send(`An error occurred while processing the archived article: ${link.name || link.url}`);
-      } catch (sendError) {
-        logger.error(`Failed to send error message: ${sendError.message}`);
-      }
-    } finally {
-      this.isProcessing = false;
-    }
+    });
   }
 
   /**

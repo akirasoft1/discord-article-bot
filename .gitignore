@@ -1,8 +1,5 @@
 # Node.js specific files
 node_modules/
-deployment*.yaml
-secret.yaml
-Dockerfile
 npm-debug.log
 yarn-error.log
 
@@ -26,5 +23,5 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 
-bot_slash.js
-configmap.yaml
+#overlays/
+k8s/overlays/deployed/
