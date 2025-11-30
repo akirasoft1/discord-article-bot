@@ -1,18 +1,17 @@
-// commands/chat/ChatCommand.js
+// commands/chat/ResumeChatCommand.js
 const BaseCommand = require('../base/BaseCommand');
 
-class ChatCommand extends BaseCommand {
+class ResumeChatCommand extends BaseCommand {
   constructor(chatService) {
     super({
-      name: 'chat',
-      aliases: ['c', 'talk'],
-      description: 'Chat with a personality',
+      name: 'chatresume',
+      aliases: ['resumechat'],
+      description: 'Resume an expired conversation with a personality',
       category: 'chat',
-      usage: '!chat <personality> <message>',
+      usage: '!chatresume <personality> <message>',
       examples: [
-        '!chat noir-detective What do you think about AI?',
-        '!chat grumpy-historian Tell me about the internet',
-        '!c sports-bro How is the weather today?'
+        '!chatresume noir-detective Where were we?',
+        '!chatresume grumpy-historian Continue from before'
       ],
       args: [
         { name: 'personality', required: true, type: 'string' },
@@ -25,9 +24,9 @@ class ChatCommand extends BaseCommand {
   async execute(message, args) {
     if (args.length < 2) {
       const personalities = this.chatService.listPersonalities();
-      const list = personalities.map(p => `${p.emoji} **${p.id}** - ${p.description}`).join('\n');
+      const list = personalities.map(p => `${p.emoji} **${p.id}**`).join(', ');
       return message.reply({
-        content: `**Usage:** \`!chat <personality> <message>\`\n\n**Available Personalities:**\n${list}`,
+        content: `**Usage:** \`!chatresume <personality> <message>\`\n\nResume an expired conversation and continue chatting.\n\nAvailable: ${list}`,
         allowedMentions: { repliedUser: false }
       });
     }
@@ -38,11 +37,10 @@ class ChatCommand extends BaseCommand {
     // Show typing indicator
     await message.channel.sendTyping();
 
-    // Pass channel and guild for conversation memory
     const channelId = message.channel.id;
     const guildId = message.guild?.id || null;
 
-    const result = await this.chatService.chat(personalityId, userMessage, message.author, channelId, guildId);
+    const result = await this.chatService.resumeChat(personalityId, userMessage, message.author, channelId, guildId);
 
     if (!result.success) {
       if (result.availablePersonalities) {
@@ -52,21 +50,14 @@ class ChatCommand extends BaseCommand {
           allowedMentions: { repliedUser: false }
         });
       }
-      // Handle specific error reasons with helpful messages
-      if (result.reason === 'expired' || result.reason === 'message_limit' || result.reason === 'token_limit') {
-        return message.reply({
-          content: result.error,
-          allowedMentions: { repliedUser: false }
-        });
-      }
       return message.reply({
-        content: `Error: ${result.error}`,
+        content: result.error,
         allowedMentions: { repliedUser: false }
       });
     }
 
-    // Format response with personality header
-    const response = `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`;
+    // Format response with personality header and resumed indicator
+    const response = `${result.personality.emoji} **${result.personality.name}** *(conversation resumed)*\n\n${result.message}`;
 
     // Split if too long for Discord
     if (response.length > 2000) {
@@ -98,7 +89,6 @@ class ChatCommand extends BaseCommand {
         break;
       }
 
-      // Find a good break point
       let breakPoint = remaining.lastIndexOf('\n', maxLength);
       if (breakPoint === -1 || breakPoint < maxLength / 2) {
         breakPoint = remaining.lastIndexOf(' ', maxLength);
@@ -115,4 +105,4 @@ class ChatCommand extends BaseCommand {
   }
 }
 
-module.exports = ChatCommand;
+module.exports = ResumeChatCommand;
