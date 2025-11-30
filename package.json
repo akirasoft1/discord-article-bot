@@ -16,15 +16,15 @@
     "@opentelemetry/sdk-node": "^0.56.0",
     "@opentelemetry/sdk-trace-base": "^1.29.0",
     "@opentelemetry/semantic-conventions": "^1.28.0",
-    "axios": "^1.9.0",
+    "axios": "^1.13.2",
     "discord-article-archiver-bot": "file:",
-    "discord.js": "^14.19.3",
+    "discord.js": "^14.25.1",
     "dotenv": "^16.5.0",
-    "mongodb": "^6.17.0",
+    "mongodb": "^6.21.0",
     "openai": "^5.2.0",
-    "tiktoken": "^1.0.17",
-    "winston": "^3.17.0",
-    "rss-parser": "^3.13.0"
+    "rss-parser": "^3.13.0",
+    "tiktoken": "^1.0.22",
+    "winston": "^3.18.3"
   },
   "devDependencies": {
     "jest": "^29.7.0"

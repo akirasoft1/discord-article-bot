@@ -10,8 +10,8 @@ class TokenService {
 
   initializeEncoder() {
     try {
-      // Using gpt-3.5-turbo as a proxy since gpt-4.1-mini isn't in tiktoken
-      this.encoder = encoding_for_model('gpt-3.5-turbo');
+      // Using gpt-5 tokenizer (supported in tiktoken 1.0.22+)
+      this.encoder = encoding_for_model('gpt-5');
       logger.info('Tiktoken encoder initialized successfully');
     } catch (error) {
       logger.error('Failed to initialize tiktoken encoder:', error);
