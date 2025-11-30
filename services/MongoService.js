@@ -444,6 +444,315 @@ class MongoService {
             return [];
         }
     }
+
+    // ========== Chat Conversation Memory ==========
+
+    /**
+     * Generate conversation ID from channel and personality
+     * @param {string} channelId - Discord channel ID
+     * @param {string} personalityId - Personality identifier
+     * @returns {string} Composite conversation ID
+     */
+    _getConversationId(channelId, personalityId) {
+        return `${channelId}_${personalityId}`;
+    }
+
+    /**
+     * Get or create a conversation for a channel + personality
+     * @param {string} channelId - Discord channel ID
+     * @param {string} personalityId - Personality identifier
+     * @param {string} guildId - Discord guild/server ID
+     * @returns {Object} Conversation document
+     */
+    async getOrCreateConversation(channelId, personalityId, guildId) {
+        if (!this.db) {
+            logger.error('Cannot get/create conversation: Not connected to MongoDB.');
+            return null;
+        }
+        try {
+            const collection = this.db.collection('chat_conversations');
+            const conversationId = this._getConversationId(channelId, personalityId);
+
+            // Try to find existing active conversation
+            let conversation = await collection.findOne({
+                conversationId,
+                status: 'active'
+            });
+
+            if (!conversation) {
+                // Create new conversation
+                const newConversation = {
+                    conversationId,
+                    channelId,
+                    guildId,
+                    personalityId,
+                    messages: [],
+                    status: 'active',
+                    lastActivity: new Date(),
+                    messageCount: 0,
+                    totalTokens: 0,
+                    createdAt: new Date()
+                };
+                await collection.insertOne(newConversation);
+                conversation = newConversation;
+                logger.info(`Created new conversation: ${conversationId}`);
+            }
+
+            return conversation;
+        } catch (error) {
+            logger.error(`Error getting/creating conversation: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Add a message to a conversation
+     * @param {string} channelId - Discord channel ID
+     * @param {string} personalityId - Personality identifier
+     * @param {string} role - Message role ('user' or 'assistant')
+     * @param {string} content - Message content
+     * @param {string} userId - Discord user ID (for user messages)
+     * @param {string} username - Discord username (for user messages)
+     * @param {number} tokens - Token count for this message
+     * @returns {boolean} Success status
+     */
+    async addMessageToConversation(channelId, personalityId, role, content, userId = null, username = null, tokens = 0) {
+        if (!this.db) {
+            logger.error('Cannot add message: Not connected to MongoDB.');
+            return false;
+        }
+        try {
+            const collection = this.db.collection('chat_conversations');
+            const conversationId = this._getConversationId(channelId, personalityId);
+
+            const message = {
+                role,
+                content,
+                timestamp: new Date()
+            };
+
+            if (role === 'user' && userId) {
+                message.userId = userId;
+                message.username = username;
+            }
+
+            await collection.updateOne(
+                { conversationId, status: 'active' },
+                {
+                    $push: { messages: message },
+                    $inc: { messageCount: 1, totalTokens: tokens },
+                    $set: { lastActivity: new Date() }
+                }
+            );
+
+            logger.debug(`Added ${role} message to conversation ${conversationId}`);
+            return true;
+        } catch (error) {
+            logger.error(`Error adding message to conversation: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Get conversation history for API calls
+     * @param {string} channelId - Discord channel ID
+     * @param {string} personalityId - Personality identifier
+     * @returns {Object|null} Conversation with messages or null
+     */
+    async getConversationHistory(channelId, personalityId) {
+        if (!this.db) {
+            logger.error('Cannot get conversation history: Not connected to MongoDB.');
+            return null;
+        }
+        try {
+            const collection = this.db.collection('chat_conversations');
+            const conversationId = this._getConversationId(channelId, personalityId);
+
+            const conversation = await collection.findOne({ conversationId });
+            return conversation;
+        } catch (error) {
+            logger.error(`Error getting conversation history: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Get conversation status
+     * @param {string} channelId - Discord channel ID
+     * @param {string} personalityId - Personality identifier
+     * @returns {Object} Status info { exists, status, lastActivity, messageCount, totalTokens }
+     */
+    async getConversationStatus(channelId, personalityId) {
+        if (!this.db) {
+            logger.error('Cannot get conversation status: Not connected to MongoDB.');
+            return { exists: false };
+        }
+        try {
+            const collection = this.db.collection('chat_conversations');
+            const conversationId = this._getConversationId(channelId, personalityId);
+
+            const conversation = await collection.findOne({ conversationId });
+
+            if (!conversation) {
+                return { exists: false };
+            }
+
+            return {
+                exists: true,
+                status: conversation.status,
+                lastActivity: conversation.lastActivity,
+                messageCount: conversation.messageCount,
+                totalTokens: conversation.totalTokens
+            };
+        } catch (error) {
+            logger.error(`Error getting conversation status: ${error.message}`);
+            return { exists: false };
+        }
+    }
+
+    /**
+     * Reset a conversation (clear messages, mark as reset)
+     * @param {string} channelId - Discord channel ID
+     * @param {string} personalityId - Personality identifier
+     * @returns {boolean} Success status
+     */
+    async resetConversation(channelId, personalityId) {
+        if (!this.db) {
+            logger.error('Cannot reset conversation: Not connected to MongoDB.');
+            return false;
+        }
+        try {
+            const collection = this.db.collection('chat_conversations');
+            const conversationId = this._getConversationId(channelId, personalityId);
+
+            // Mark existing conversation as reset
+            await collection.updateOne(
+                { conversationId, status: 'active' },
+                { $set: { status: 'reset', resetAt: new Date() } }
+            );
+
+            logger.info(`Reset conversation: ${conversationId}`);
+            return true;
+        } catch (error) {
+            logger.error(`Error resetting conversation: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Expire a conversation due to idle timeout
+     * @param {string} channelId - Discord channel ID
+     * @param {string} personalityId - Personality identifier
+     * @returns {boolean} Success status
+     */
+    async expireConversation(channelId, personalityId) {
+        if (!this.db) {
+            logger.error('Cannot expire conversation: Not connected to MongoDB.');
+            return false;
+        }
+        try {
+            const collection = this.db.collection('chat_conversations');
+            const conversationId = this._getConversationId(channelId, personalityId);
+
+            await collection.updateOne(
+                { conversationId, status: 'active' },
+                { $set: { status: 'expired', expiredAt: new Date() } }
+            );
+
+            logger.info(`Expired conversation: ${conversationId}`);
+            return true;
+        } catch (error) {
+            logger.error(`Error expiring conversation: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Resume an expired conversation
+     * @param {string} channelId - Discord channel ID
+     * @param {string} personalityId - Personality identifier
+     * @returns {boolean} Success status
+     */
+    async resumeConversation(channelId, personalityId) {
+        if (!this.db) {
+            logger.error('Cannot resume conversation: Not connected to MongoDB.');
+            return false;
+        }
+        try {
+            const collection = this.db.collection('chat_conversations');
+            const conversationId = this._getConversationId(channelId, personalityId);
+
+            const result = await collection.updateOne(
+                { conversationId, status: 'expired' },
+                {
+                    $set: { status: 'active', resumedAt: new Date() },
+                    $unset: { expiredAt: '' }
+                }
+            );
+
+            if (result.matchedCount === 0) {
+                logger.warn(`No expired conversation found to resume: ${conversationId}`);
+                return false;
+            }
+
+            logger.info(`Resumed conversation: ${conversationId}`);
+            return true;
+        } catch (error) {
+            logger.error(`Error resuming conversation: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Update conversation token count
+     * @param {string} channelId - Discord channel ID
+     * @param {string} personalityId - Personality identifier
+     * @param {number} tokens - Tokens to add
+     * @returns {boolean} Success status
+     */
+    async updateConversationTokenCount(channelId, personalityId, tokens) {
+        if (!this.db) {
+            logger.error('Cannot update token count: Not connected to MongoDB.');
+            return false;
+        }
+        try {
+            const collection = this.db.collection('chat_conversations');
+            const conversationId = this._getConversationId(channelId, personalityId);
+
+            await collection.updateOne(
+                { conversationId, status: 'active' },
+                {
+                    $inc: { totalTokens: tokens },
+                    $set: { lastActivity: new Date() }
+                }
+            );
+
+            return true;
+        } catch (error) {
+            logger.error(`Error updating token count: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Check if conversation has exceeded idle timeout
+     * @param {string} channelId - Discord channel ID
+     * @param {string} personalityId - Personality identifier
+     * @param {number} timeoutMinutes - Idle timeout in minutes (default: 30)
+     * @returns {boolean} True if conversation is idle/expired
+     */
+    async isConversationIdle(channelId, personalityId, timeoutMinutes = 30) {
+        const status = await this.getConversationStatus(channelId, personalityId);
+
+        if (!status.exists) return false;
+        if (status.status !== 'active') return true;
+
+        const lastActivity = new Date(status.lastActivity);
+        const now = new Date();
+        const diffMinutes = (now - lastActivity) / (1000 * 60);
+
+        return diffMinutes > timeoutMinutes;
+    }
 }
 
 module.exports = MongoService;
