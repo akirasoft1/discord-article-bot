@@ -145,6 +145,16 @@ class SummarizationService {
         topic: enhancedResult.topic, // Persist the topic
       });
 
+      // Record token usage for this user
+      await this.mongoService.recordTokenUsage(
+        user.id,
+        user.tag || user.username,
+        result.tokens.input,
+        result.tokens.output,
+        'summarize',
+        this.config.openai.model
+      );
+
       // Check and notify for follow-ups
       if (enhancedResult.topic) {
         await this.checkAndNotifyFollowUps(url, enhancedResult.topic, result.summary);
@@ -1079,6 +1089,16 @@ Text: """${text}"""`;
           topic: enhancedResult.topic,
           source: 'linkwarden'
         });
+
+        // Record token usage for this user
+        await this.mongoService.recordTokenUsage(
+          user.id,
+          user.tag || user.username,
+          result.tokens?.input || 0,
+          result.tokens?.output || 0,
+          'summarize_linkwarden',
+          this.config.openai.model
+        );
 
         // Send to Discord
         addSpanEvent('discord.send_message');

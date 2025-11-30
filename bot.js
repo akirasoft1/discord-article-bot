@@ -17,11 +17,14 @@ const MessageService = require('./services/MessageService');
 const CommandHandler = require('./commands/CommandHandler');
 const LinkwardenService = require('./services/LinkwardenService');
 const LinkwardenPollingService = require('./services/LinkwardenPollingService');
+const ChatService = require('./services/ChatService');
 
 // Import command classes
 const SummarizeCommand = require('./commands/summarization/SummarizeCommand');
 const ReSummarizeCommand = require('./commands/summarization/ReSummarizeCommand');
 const HelpCommand = require('./commands/utility/HelpCommand');
+const ChatCommand = require('./commands/chat/ChatCommand');
+const PersonalitiesCommand = require('./commands/chat/PersonalitiesCommand');
 
 class DiscordBot {
   constructor() {
@@ -47,6 +50,7 @@ class DiscordBot {
     this.reactionHandler = new ReactionHandler(this.summarizationService, this.summarizationService.mongoService);
     this.rssService = new RssService(this.summarizationService.mongoService, this.summarizationService, this.client);
     this.followUpService = new FollowUpService(this.summarizationService.mongoService, this.summarizationService, this.client);
+    this.chatService = new ChatService(this.openaiClient, config, this.summarizationService.mongoService);
 
     // Initialize Linkwarden services for self-hosted article archiving
     this.linkwardenService = null;
@@ -84,6 +88,10 @@ class DiscordBot {
     // Register summarization commands
     this.commandHandler.register(new SummarizeCommand(this.summarizationService));
     this.commandHandler.register(new ReSummarizeCommand(this.summarizationService));
+
+    // Register chat/personality commands
+    this.commandHandler.register(new ChatCommand(this.chatService));
+    this.commandHandler.register(new PersonalitiesCommand(this.chatService));
 
     // Register utility commands
     this.commandHandler.register(new HelpCommand(this.commandHandler));
