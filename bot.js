@@ -25,6 +25,8 @@ const ReSummarizeCommand = require('./commands/summarization/ReSummarizeCommand'
 const HelpCommand = require('./commands/utility/HelpCommand');
 const ChatCommand = require('./commands/chat/ChatCommand');
 const PersonalitiesCommand = require('./commands/chat/PersonalitiesCommand');
+const ResetChatCommand = require('./commands/chat/ResetChatCommand');
+const ResumeChatCommand = require('./commands/chat/ResumeChatCommand');
 
 class DiscordBot {
   constructor() {
@@ -92,6 +94,8 @@ class DiscordBot {
     // Register chat/personality commands
     this.commandHandler.register(new ChatCommand(this.chatService));
     this.commandHandler.register(new PersonalitiesCommand(this.chatService));
+    this.commandHandler.register(new ResetChatCommand(this.chatService));
+    this.commandHandler.register(new ResumeChatCommand(this.chatService));
 
     // Register utility commands
     this.commandHandler.register(new HelpCommand(this.commandHandler));
