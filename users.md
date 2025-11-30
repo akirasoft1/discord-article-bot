@@ -53,7 +53,7 @@ Bypasses duplicate detection to get a fresh summary of an article that was previ
 
 ## Personality Chat
 
-Chat with unique AI personalities for fun, creative conversations!
+Chat with unique AI personalities for fun, creative conversations! The bot remembers your conversation history within each channel.
 
 ### List Available Personalities
 
@@ -67,13 +67,48 @@ Shows all available personalities with their descriptions.
 **Command**: `!chat <personality-id> <message>`
 **Aliases**: `!c`, `!talk`
 
-Have a conversation with a specific personality.
+Have a conversation with a specific personality. The personality remembers previous messages in this channel from all users!
 
 **Examples**:
 ```
 !chat noir-detective What do you think about modern technology?
 !c grumpy-historian Tell me about the internet
 !talk sports-bro How's the weather today?
+```
+
+### Conversation Memory
+
+Personalities remember your conversation! Here's how it works:
+
+- **Channel-scoped**: Each channel has its own conversation with each personality
+- **Multi-user**: Everyone in the channel shares the same conversation - the personality knows who said what
+- **Limits**: Conversations have limits to manage resources:
+  - Maximum 100 messages per conversation
+  - Maximum 150,000 tokens per conversation
+  - Conversations expire after 30 minutes of inactivity
+
+### Resume an Expired Conversation
+
+**Command**: `!chatresume <personality-id> <message>`
+**Aliases**: `!resumechat`
+
+If a conversation expires due to inactivity, you can pick up where you left off.
+
+**Example**:
+```
+!chatresume noir-detective Where were we?
+```
+
+### Reset a Conversation (Admin Only)
+
+**Command**: `!chatreset <personality-id>`
+**Aliases**: `!resetchat`, `!cr`
+
+Clear a conversation's history and start fresh. Requires the "bot admin" role.
+
+**Example**:
+```
+!chatreset noir-detective
 ```
 
 ### Available Personalities
@@ -101,6 +136,7 @@ React to a bot's summary message with the 📚 (books) emoji to mark that articl
 - Many commands have shorter aliases (e.g., `!sum` instead of `!summarize`)
 - If the bot detects a questionable source, it will add a ⚠️ warning
 - Personalities maintain their character throughout conversations - try asking them about different topics!
+- Multiple users can participate in the same personality conversation - it's like a group chat with a character!
 
 ---
 
@@ -113,3 +149,5 @@ React to a bot's summary message with the 📚 (books) emoji to mark that articl
 | `!resum <url>` | Re-summarize (bypass duplicate check) |
 | `!personalities` | List chat personalities |
 | `!chat <id> <msg>` | Chat with a personality |
+| `!chatresume <id> <msg>` | Resume an expired conversation |
+| `!chatreset <id>` | Reset conversation (admin only) |
