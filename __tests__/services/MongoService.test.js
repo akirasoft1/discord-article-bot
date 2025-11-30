@@ -192,4 +192,277 @@ describe('MongoService', () => {
       expect(result).toEqual([]);
     });
   });
+
+  // ========== Chat Conversation Memory Tests ==========
+
+  describe('Chat Conversation Memory', () => {
+    beforeEach(() => {
+      // Reset mock for conversation tests
+      mockCollection.findOne = jest.fn();
+      mockCollection.updateOne = jest.fn().mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
+    });
+
+    describe('_getConversationId', () => {
+      it('should generate composite ID from channel and personality', () => {
+        const id = mongoService._getConversationId('channel123', 'noir-detective');
+        expect(id).toBe('channel123_noir-detective');
+      });
+    });
+
+    describe('getOrCreateConversation', () => {
+      it('should return existing active conversation', async () => {
+        const existingConversation = {
+          conversationId: 'channel123_noir-detective',
+          channelId: 'channel123',
+          personalityId: 'noir-detective',
+          status: 'active',
+          messages: [{ role: 'user', content: 'Hello' }]
+        };
+        mockCollection.findOne.mockResolvedValue(existingConversation);
+
+        const result = await mongoService.getOrCreateConversation('channel123', 'noir-detective', 'guild456');
+
+        expect(result).toEqual(existingConversation);
+        expect(mockCollection.insertOne).not.toHaveBeenCalled();
+      });
+
+      it('should create new conversation if none exists', async () => {
+        mockCollection.findOne.mockResolvedValue(null);
+
+        const result = await mongoService.getOrCreateConversation('channel123', 'noir-detective', 'guild456');
+
+        expect(result).toMatchObject({
+          conversationId: 'channel123_noir-detective',
+          channelId: 'channel123',
+          guildId: 'guild456',
+          personalityId: 'noir-detective',
+          messages: [],
+          status: 'active',
+          messageCount: 0,
+          totalTokens: 0
+        });
+        expect(mockCollection.insertOne).toHaveBeenCalled();
+      });
+
+      it('should return null if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.getOrCreateConversation('channel123', 'noir-detective', 'guild456');
+        expect(result).toBeNull();
+      });
+    });
+
+    describe('addMessageToConversation', () => {
+      it('should add user message with userId and username', async () => {
+        const result = await mongoService.addMessageToConversation(
+          'channel123',
+          'noir-detective',
+          'user',
+          'Hello detective!',
+          'user789',
+          'Alice',
+          50
+        );
+
+        expect(result).toBe(true);
+        expect(mockCollection.updateOne).toHaveBeenCalledWith(
+          { conversationId: 'channel123_noir-detective', status: 'active' },
+          expect.objectContaining({
+            $push: { messages: expect.objectContaining({
+              role: 'user',
+              content: 'Hello detective!',
+              userId: 'user789',
+              username: 'Alice'
+            })},
+            $inc: { messageCount: 1, totalTokens: 50 }
+          })
+        );
+      });
+
+      it('should add assistant message without userId', async () => {
+        const result = await mongoService.addMessageToConversation(
+          'channel123',
+          'noir-detective',
+          'assistant',
+          'The rain fell hard that night...',
+          null,
+          null,
+          75
+        );
+
+        expect(result).toBe(true);
+        expect(mockCollection.updateOne).toHaveBeenCalledWith(
+          { conversationId: 'channel123_noir-detective', status: 'active' },
+          expect.objectContaining({
+            $push: { messages: expect.objectContaining({
+              role: 'assistant',
+              content: 'The rain fell hard that night...'
+            })}
+          })
+        );
+      });
+
+      it('should return false if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.addMessageToConversation(
+          'channel123', 'noir-detective', 'user', 'Hello', 'user789', 'Alice'
+        );
+        expect(result).toBe(false);
+      });
+    });
+
+    describe('getConversationHistory', () => {
+      it('should return conversation with messages', async () => {
+        const conversation = {
+          conversationId: 'channel123_noir-detective',
+          messages: [
+            { role: 'user', content: 'Hello' },
+            { role: 'assistant', content: 'Hi there' }
+          ]
+        };
+        mockCollection.findOne.mockResolvedValue(conversation);
+
+        const result = await mongoService.getConversationHistory('channel123', 'noir-detective');
+
+        expect(result).toEqual(conversation);
+      });
+
+      it('should return null if no conversation exists', async () => {
+        mockCollection.findOne.mockResolvedValue(null);
+
+        const result = await mongoService.getConversationHistory('channel123', 'noir-detective');
+
+        expect(result).toBeNull();
+      });
+    });
+
+    describe('getConversationStatus', () => {
+      it('should return status info for existing conversation', async () => {
+        const conversation = {
+          status: 'active',
+          lastActivity: new Date('2024-01-15T10:30:00Z'),
+          messageCount: 5,
+          totalTokens: 500
+        };
+        mockCollection.findOne.mockResolvedValue(conversation);
+
+        const result = await mongoService.getConversationStatus('channel123', 'noir-detective');
+
+        expect(result).toEqual({
+          exists: true,
+          status: 'active',
+          lastActivity: expect.any(Date),
+          messageCount: 5,
+          totalTokens: 500
+        });
+      });
+
+      it('should return exists: false for non-existent conversation', async () => {
+        mockCollection.findOne.mockResolvedValue(null);
+
+        const result = await mongoService.getConversationStatus('channel123', 'noir-detective');
+
+        expect(result).toEqual({ exists: false });
+      });
+    });
+
+    describe('resetConversation', () => {
+      it('should mark conversation as reset', async () => {
+        const result = await mongoService.resetConversation('channel123', 'noir-detective');
+
+        expect(result).toBe(true);
+        expect(mockCollection.updateOne).toHaveBeenCalledWith(
+          { conversationId: 'channel123_noir-detective', status: 'active' },
+          { $set: { status: 'reset', resetAt: expect.any(Date) } }
+        );
+      });
+    });
+
+    describe('expireConversation', () => {
+      it('should mark conversation as expired', async () => {
+        const result = await mongoService.expireConversation('channel123', 'noir-detective');
+
+        expect(result).toBe(true);
+        expect(mockCollection.updateOne).toHaveBeenCalledWith(
+          { conversationId: 'channel123_noir-detective', status: 'active' },
+          { $set: { status: 'expired', expiredAt: expect.any(Date) } }
+        );
+      });
+    });
+
+    describe('resumeConversation', () => {
+      it('should reactivate expired conversation', async () => {
+        mockCollection.updateOne.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
+
+        const result = await mongoService.resumeConversation('channel123', 'noir-detective');
+
+        expect(result).toBe(true);
+        expect(mockCollection.updateOne).toHaveBeenCalledWith(
+          { conversationId: 'channel123_noir-detective', status: 'expired' },
+          {
+            $set: { status: 'active', resumedAt: expect.any(Date) },
+            $unset: { expiredAt: '' }
+          }
+        );
+      });
+
+      it('should return false if no expired conversation found', async () => {
+        mockCollection.updateOne.mockResolvedValue({ matchedCount: 0, modifiedCount: 0 });
+
+        const result = await mongoService.resumeConversation('channel123', 'noir-detective');
+
+        expect(result).toBe(false);
+      });
+    });
+
+    describe('isConversationIdle', () => {
+      it('should return false for non-existent conversation', async () => {
+        mockCollection.findOne.mockResolvedValue(null);
+
+        const result = await mongoService.isConversationIdle('channel123', 'noir-detective');
+
+        expect(result).toBe(false);
+      });
+
+      it('should return true for already expired conversation', async () => {
+        mockCollection.findOne.mockResolvedValue({
+          status: 'expired',
+          lastActivity: new Date()
+        });
+
+        const result = await mongoService.isConversationIdle('channel123', 'noir-detective');
+
+        expect(result).toBe(true);
+      });
+
+      it('should return true if last activity exceeds timeout', async () => {
+        const oldDate = new Date();
+        oldDate.setMinutes(oldDate.getMinutes() - 45); // 45 minutes ago
+        mockCollection.findOne.mockResolvedValue({
+          status: 'active',
+          lastActivity: oldDate,
+          messageCount: 5,
+          totalTokens: 500
+        });
+
+        const result = await mongoService.isConversationIdle('channel123', 'noir-detective', 30);
+
+        expect(result).toBe(true);
+      });
+
+      it('should return false if last activity within timeout', async () => {
+        const recentDate = new Date();
+        recentDate.setMinutes(recentDate.getMinutes() - 10); // 10 minutes ago
+        mockCollection.findOne.mockResolvedValue({
+          status: 'active',
+          lastActivity: recentDate,
+          messageCount: 5,
+          totalTokens: 500
+        });
+
+        const result = await mongoService.isConversationIdle('channel123', 'noir-detective', 30);
+
+        expect(result).toBe(false);
+      });
+    });
+  });
 });
