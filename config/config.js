@@ -1,6 +1,8 @@
 // config/config.js
 const dotenv = require('dotenv');
-dotenv.config();
+// quiet: true suppresses dotenv's default logging in v17+
+// We use Winston for logging instead
+dotenv.config({ quiet: true });
 
 
 // Validate required environment variables
