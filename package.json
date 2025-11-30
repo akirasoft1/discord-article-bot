@@ -19,7 +19,7 @@
     "axios": "^1.13.2",
     "discord-article-archiver-bot": "file:",
     "discord.js": "^14.25.1",
-    "dotenv": "^16.5.0",
+    "dotenv": "^17.2.3",
     "mongodb": "^6.21.0",
     "openai": "^6.9.1",
     "rss-parser": "^3.13.0",
