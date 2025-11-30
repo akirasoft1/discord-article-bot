@@ -30,6 +30,16 @@
 - **Extensible System**: Add new personalities via `.js` files
 - **Per-user Token Tracking**: Usage recorded per personality
 
+### Conversation Memory
+- **Channel-Scoped Memory**: All users in a channel share a conversation with each personality
+- **Multi-User Awareness**: Personalities know who said what (`[Username]: message` format)
+- **Conversation Limits**:
+  - Maximum 100 messages per conversation
+  - Maximum 150,000 tokens per conversation
+  - 30-minute idle timeout
+- **Resume Capability**: `!chatresume` to continue expired conversations
+- **Admin Reset**: `!chatreset` for "bot admin" role to clear conversations
+
 ### Monitoring & Observability
 - **OpenTelemetry Tracing**: Distributed tracing for Dynatrace
 - **Token Usage Tracking**: Per-user consumption in MongoDB
@@ -45,7 +55,7 @@
 ## Planned Features
 
 ### Memory & Context
-- [ ] Conversation memory for personality chats
+- [x] Conversation memory for personality chats
 - [ ] User preference persistence
 
 ### Enhanced Personalities

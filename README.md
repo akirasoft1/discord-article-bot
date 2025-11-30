@@ -23,6 +23,9 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
   - 🤔 **Erik the Existentialist** - Philosophy grad student who spirals into existential questions
   - 📯 **Bartholomew the Bold** - Medieval town crier announcing everything as proclamations
 - **Extensible**: Add new personalities by dropping a `.js` file in `personalities/`
+- **Channel-Scoped Memory**: All users in a channel share a conversation with each personality
+- **Conversation Limits**: 100 messages, 150k tokens, or 30 min idle timeout
+- **Resume/Reset**: Continue expired conversations or reset them (admin only)
 
 ### Additional Features
 
@@ -89,7 +92,9 @@ discord-article-bot/
 │   │   └── ReSummarizeCommand.js # !resummarize
 │   ├── chat/
 │   │   ├── ChatCommand.js        # !chat
-│   │   └── PersonalitiesCommand.js # !personalities
+│   │   ├── PersonalitiesCommand.js # !personalities
+│   │   ├── ResetChatCommand.js   # !chatreset (admin)
+│   │   └── ResumeChatCommand.js  # !chatresume
 │   └── utility/
 │       └── HelpCommand.js        # !help
 ├── personalities/                # Personality definitions
@@ -112,7 +117,8 @@ discord-article-bot/
 │   └── ReactionHandler.js        # Discord reactions
 └── utils/
     ├── urlUtils.js
-    └── textUtils.js
+    ├── textUtils.js
+    └── tokenCounter.js           # Token counting for limits
 ```
 
 ## Configuration
@@ -158,6 +164,8 @@ discord-article-bot/
 |---------|---------|-------------|
 | `!chat <personality> <message>` | `!c`, `!talk` | Chat with a personality |
 | `!personalities` | `!chars` | List available personalities |
+| `!chatresume <personality> <message>` | `!resumechat` | Resume an expired conversation |
+| `!chatreset <personality>` | `!resetchat`, `!cr` | Reset a conversation (admin only) |
 
 ### Utility
 | Command | Aliases | Description |
