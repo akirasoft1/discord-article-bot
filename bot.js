@@ -13,32 +13,14 @@ const SummarizationService = require('./services/SummarizationService');
 const ReactionHandler = require('./handlers/ReactionHandler');
 const RssService = require('./services/RssService');
 const FollowUpService = require('./services/FollowUpService');
-const SubscriptionService = require('./services/SubscriptionService');
-const AnalyticsService = require('./services/AnalyticsService');
 const MessageService = require('./services/MessageService');
 const CommandHandler = require('./commands/CommandHandler');
 const LinkwardenService = require('./services/LinkwardenService');
 const LinkwardenPollingService = require('./services/LinkwardenPollingService');
 
-// Import all command classes
-const SubscribeCommand = require('./commands/subscription/SubscribeCommand');
-const UnsubscribeCommand = require('./commands/subscription/UnsubscribeCommand');
-const MySubscriptionsCommand = require('./commands/subscription/MySubscriptionsCommand');
-const NewsTrendsCommand = require('./commands/analytics/NewsTrendsCommand');
-const MyReadingHabitsCommand = require('./commands/analytics/MyReadingHabitsCommand');
-const PopularSourcesCommand = require('./commands/analytics/PopularSourcesCommand');
-const ControversyMeterCommand = require('./commands/analytics/ControversyMeterCommand');
+// Import command classes
 const SummarizeCommand = require('./commands/summarization/SummarizeCommand');
 const ReSummarizeCommand = require('./commands/summarization/ReSummarizeCommand');
-const MoodSummarizeCommand = require('./commands/summarization/MoodSummarizeCommand');
-const NarrateSummarizeCommand = require('./commands/summarization/NarrateSummarizeCommand');
-const HistoricalSummarizeCommand = require('./commands/summarization/HistoricalSummarizeCommand');
-const PerspectiveSummarizeCommand = require('./commands/summarization/PerspectiveSummarizeCommand');
-const LearnLanguageCommand = require('./commands/summarization/LearnLanguageCommand');
-const CulturalSummarizeCommand = require('./commands/summarization/CulturalSummarizeCommand');
-const SummarizeWithContextCommand = require('./commands/summarization/SummarizeWithContextCommand');
-const PollCommand = require('./commands/utility/PollCommand');
-const DiscussionQuestionsCommand = require('./commands/utility/DiscussionQuestionsCommand');
 const HelpCommand = require('./commands/utility/HelpCommand');
 
 class DiscordBot {
@@ -65,8 +47,6 @@ class DiscordBot {
     this.reactionHandler = new ReactionHandler(this.summarizationService, this.summarizationService.mongoService);
     this.rssService = new RssService(this.summarizationService.mongoService, this.summarizationService, this.client);
     this.followUpService = new FollowUpService(this.summarizationService.mongoService, this.summarizationService, this.client);
-    this.subscriptionService = new SubscriptionService(this.summarizationService.mongoService);
-    this.analyticsService = new AnalyticsService(this.summarizationService.mongoService);
 
     // Initialize Linkwarden services for self-hosted article archiving
     this.linkwardenService = null;
@@ -101,31 +81,11 @@ class DiscordBot {
   }
 
   registerCommands() {
-    // Register subscription commands
-    this.commandHandler.register(new SubscribeCommand(this.subscriptionService));
-    this.commandHandler.register(new UnsubscribeCommand(this.subscriptionService));
-    this.commandHandler.register(new MySubscriptionsCommand(this.subscriptionService));
-
-    // Register analytics commands
-    this.commandHandler.register(new NewsTrendsCommand(this.analyticsService));
-    this.commandHandler.register(new MyReadingHabitsCommand(this.analyticsService));
-    this.commandHandler.register(new PopularSourcesCommand(this.analyticsService));
-    this.commandHandler.register(new ControversyMeterCommand(this.analyticsService));
-
     // Register summarization commands
     this.commandHandler.register(new SummarizeCommand(this.summarizationService));
     this.commandHandler.register(new ReSummarizeCommand(this.summarizationService));
-    this.commandHandler.register(new MoodSummarizeCommand(this.summarizationService));
-    this.commandHandler.register(new NarrateSummarizeCommand(this.summarizationService));
-    this.commandHandler.register(new HistoricalSummarizeCommand(this.summarizationService));
-    this.commandHandler.register(new PerspectiveSummarizeCommand(this.summarizationService));
-    this.commandHandler.register(new LearnLanguageCommand(this.summarizationService));
-    this.commandHandler.register(new CulturalSummarizeCommand(this.summarizationService));
-    this.commandHandler.register(new SummarizeWithContextCommand(this.summarizationService));
 
     // Register utility commands
-    this.commandHandler.register(new PollCommand(this.summarizationService));
-    this.commandHandler.register(new DiscussionQuestionsCommand(this.summarizationService));
     this.commandHandler.register(new HelpCommand(this.commandHandler));
 
     logger.info(`Registered ${this.commandHandler.getAllCommands().length} commands`);
