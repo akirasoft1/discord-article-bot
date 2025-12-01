@@ -66,30 +66,18 @@ Address users by name when relevant. Do not announce when new users join the con
       return { allowed: true, reason: null };
     }
 
-    // Check if conversation is already expired or reset
-    if (status.status === 'expired') {
-      return {
-        allowed: false,
-        reason: 'expired',
-        message: `This conversation expired after ${LIMITS.IDLE_TIMEOUT_MINUTES} minutes of inactivity. Use \`!chatresume ${personalityId} <message>\` to continue where you left off.`
-      };
+    // Expired or reset conversations should start fresh with !chat
+    // Users can use !chatresume to continue an expired conversation with history
+    if (status.status === 'expired' || status.status === 'reset') {
+      return { allowed: true, reason: null, startFresh: true };
     }
 
-    if (status.status === 'reset') {
-      // Reset conversations should start fresh
-      return { allowed: true, reason: null };
-    }
-
-    // Check idle timeout
+    // Check idle timeout - if idle, expire and allow fresh start
     const isIdle = await this.mongoService.isConversationIdle(channelId, personalityId, LIMITS.IDLE_TIMEOUT_MINUTES);
     if (isIdle) {
       // Expire the conversation
       await this.mongoService.expireConversation(channelId, personalityId);
-      return {
-        allowed: false,
-        reason: 'expired',
-        message: `This conversation expired after ${LIMITS.IDLE_TIMEOUT_MINUTES} minutes of inactivity. Use \`!chatresume ${personalityId} <message>\` to continue where you left off.`
-      };
+      return { allowed: true, reason: null, startFresh: true };
     }
 
     // Check message count limit
@@ -152,6 +140,12 @@ Address users by name when relevant. Do not announce when new users join the con
             emoji: personality.emoji
           }
         };
+      }
+
+      // If starting fresh (expired/reset conversation), reset it first
+      if (limitCheck.startFresh) {
+        await this.mongoService.resetConversation(channelId, personalityId);
+        logger.info(`Starting fresh conversation with ${personalityId} in channel ${channelId} (previous was expired/reset)`);
       }
 
       // Get or create conversation
