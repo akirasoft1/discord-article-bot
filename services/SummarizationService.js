@@ -587,7 +587,6 @@ class SummarizationService {
       model: this.config.openai.model, // Use model from config
       instructions: systemMessage?.content || '',
       input: inputText,
-      temperature: 0.7,
     });
 
     const duration = Date.now() - startTime;
@@ -673,7 +672,6 @@ Text: """${summary}"""`;
       const response = await this.openaiClient.responses.create({
         model: 'gpt-5-mini',
         input: enhancementPrompt,
-        temperature: 0.2,
       });
 
       const [topic, sentiment] = response.output_text.split('\n').map(line => line.split(': ')[1]);
@@ -706,7 +704,6 @@ Bias Analysis:`;
       const response = await this.openaiClient.responses.create({
         model: 'gpt-5-mini',
         input: biasPrompt,
-        temperature: 0.5,
       });
 
       return response.output_text.trim();
@@ -752,7 +749,6 @@ Quote:`;
       const response = await this.openaiClient.responses.create({
         model: 'gpt-5-mini',
         input: quotePrompt,
-        temperature: 0.7,
       });
 
       return response.output_text.trim();
@@ -807,7 +803,6 @@ Quote:`;
       const response = await this.openaiClient.responses.create({
         model: 'gpt-5-mini',
         input: contextPrompt,
-        temperature: 0.5,
       });
       return response.output_text.trim();
     } catch (error) {
@@ -829,7 +824,6 @@ Text: """${text}"""`;
       const langResponse = await this.openaiClient.responses.create({
         model: 'gpt-5-mini',
         input: languageDetectionPrompt,
-        temperature: 0.1,
       });
       const detectedLanguage = langResponse.output_text.trim();
 
@@ -842,7 +836,6 @@ Text: """${text}"""`;
         const transResponse = await this.openaiClient.responses.create({
           model: 'gpt-5-mini',
           input: translationPrompt,
-          temperature: 0.3,
         });
         const translatedText = transResponse.output_text.trim();
         return { translatedText, detectedLanguage, wasTranslated: true };
@@ -868,7 +861,6 @@ Text: """${text}"""`;
         const response = await this.openaiClient.responses.create({
           model: 'gpt-5-mini',
           input: translationPrompt,
-          temperature: 0.7,
         });
         summaries[lang] = response.output_text.trim();
       } catch (error) {

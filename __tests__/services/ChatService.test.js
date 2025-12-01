@@ -152,8 +152,7 @@ describe('ChatService', () => {
         expect.objectContaining({
           model: 'gpt-5-mini',
           instructions: expect.stringContaining('You are a test character'),
-          input: expect.stringContaining('[OtherUser]: Previous message'),
-          temperature: 0.9
+          input: expect.stringContaining('[OtherUser]: Previous message')
         })
       );
       // Verify input also contains the new message
