@@ -670,7 +670,7 @@ class SummarizationService {
 Text: """${summary}"""`;
 
       const response = await this.openaiClient.responses.create({
-        model: 'gpt-5-mini',
+        model: 'gpt-5.1',
         input: enhancementPrompt,
       });
 
@@ -702,7 +702,7 @@ Text: """${text}"""
 Bias Analysis:`;
 
       const response = await this.openaiClient.responses.create({
-        model: 'gpt-5-mini',
+        model: 'gpt-5.1',
         input: biasPrompt,
       });
 
@@ -747,7 +747,7 @@ Text: """${text}"""
 Quote:`;
 
       const response = await this.openaiClient.responses.create({
-        model: 'gpt-5-mini',
+        model: 'gpt-5.1',
         input: quotePrompt,
       });
 
@@ -801,7 +801,7 @@ Quote:`;
     try {
       const contextPrompt = `${this.config.bot.contextProvider.prompt} ${topic}`;
       const response = await this.openaiClient.responses.create({
-        model: 'gpt-5-mini',
+        model: 'gpt-5.1',
         input: contextPrompt,
       });
       return response.output_text.trim();
@@ -822,7 +822,7 @@ Quote:`;
 Text: """${text}"""`;
 
       const langResponse = await this.openaiClient.responses.create({
-        model: 'gpt-5-mini',
+        model: 'gpt-5.1',
         input: languageDetectionPrompt,
       });
       const detectedLanguage = langResponse.output_text.trim();
@@ -834,7 +834,7 @@ Text: """${text}"""`;
 Text: """${text}"""`;
 
         const transResponse = await this.openaiClient.responses.create({
-          model: 'gpt-5-mini',
+          model: 'gpt-5.1',
           input: translationPrompt,
         });
         const translatedText = transResponse.output_text.trim();
@@ -859,7 +859,7 @@ Text: """${text}"""`;
       try {
         const translationPrompt = `Summarize the following article in ${lang}.\n\nArticle: """${content}"""`;
         const response = await this.openaiClient.responses.create({
-          model: 'gpt-5-mini',
+          model: 'gpt-5.1',
           input: translationPrompt,
         });
         summaries[lang] = response.output_text.trim();
