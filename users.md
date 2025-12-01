@@ -73,7 +73,7 @@ Have a conversation with a specific personality. The personality remembers previ
 ```
 !chat noir-detective What do you think about modern technology?
 !c grumpy-historian Tell me about the internet
-!talk sports-bro How's the weather today?
+!talk irc-gamer Remember dial-up?
 ```
 
 ### Reply to Continue Conversation
@@ -129,9 +129,8 @@ Clear a conversation's history and start fresh. Only bot admins (configured via 
 |----|------|-------------|
 | `grumpy-historian` | 📚 Professor Grimsworth | An irritable history professor who relates everything to obscure historical events and sighs about how "we've seen this before" |
 | `noir-detective` | 🕵️ Jack Shadows | A hardboiled 1940s detective who narrates everything in classic noir prose |
-| `sports-bro` | 🏈 Chad McCommentary | An enthusiastic sports commentator who treats all topics like live game coverage |
 | `existential` | 🤔 Erik the Existentialist | A philosophy grad student who spirals every topic into questions about existence and meaning |
-| `medieval-herald` | 📯 Bartholomew the Bold | A medieval town crier who announces everything as royal proclamations |
+| `irc-gamer` | 💾 x0r_kid | A 90s IRC gamer kid with leet speak, abbreviations, and old-school internet vibes |
 
 ---
 
