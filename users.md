@@ -76,6 +76,18 @@ Have a conversation with a specific personality. The personality remembers previ
 !talk sports-bro How's the weather today?
 ```
 
+### Reply to Continue Conversation
+
+You can also **reply directly** to a bot's personality message to continue the conversation without using commands! Just use Discord's reply feature on any personality chat message.
+
+**Example**:
+1. Use `!chat noir-detective Tell me a story`
+2. The bot responds as Jack Shadows
+3. Reply to that message with "What happened next?"
+4. The conversation continues naturally!
+
+Note: If the conversation has expired (30+ minutes of inactivity), the personality will respond in-character that they've forgotten what you were discussing and prompt you to start a new conversation.
+
 ### Conversation Memory
 
 Personalities remember your conversation! Here's how it works:
@@ -123,6 +135,20 @@ Clear a conversation's history and start fresh. Only bot admins (configured via 
 
 ---
 
+## Ask Follow-up Questions About Articles
+
+After the bot summarizes an article, you can **reply directly** to the summary message to ask follow-up questions about the article. The bot will use the summary context to answer your questions.
+
+**Example**:
+1. Share an article link or use `!sum <url>`
+2. The bot provides a summary
+3. Reply to the summary with "What are the main takeaways?"
+4. The bot answers based on the article summary
+
+This is great for clarifying points or getting more details without re-reading the entire article!
+
+---
+
 ## Follow-up Tracker
 
 React to a bot's summary message with the 📚 (books) emoji to mark that article for follow-up. You'll receive a notification if new related articles are summarized.
@@ -134,6 +160,7 @@ React to a bot's summary message with the 📚 (books) emoji to mark that articl
 - The bot's command prefix is `!` (configurable by server admin)
 - Use `!help` to see all available commands
 - Many commands have shorter aliases (e.g., `!sum` instead of `!summarize`)
+- **Reply to bot messages** to continue personality chats or ask follow-up questions about summaries
 - If the bot detects a questionable source, it will add a ⚠️ warning
 - Personalities maintain their character throughout conversations - try asking them about different topics!
 - Multiple users can participate in the same personality conversation - it's like a group chat with a character!
