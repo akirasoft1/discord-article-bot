@@ -1,5 +1,6 @@
 // commands/chat/ResetChatCommand.js
 const BaseCommand = require('../base/BaseCommand');
+const config = require('../../config/config');
 
 class ResetChatCommand extends BaseCommand {
   constructor(chatService) {
@@ -21,22 +22,13 @@ class ResetChatCommand extends BaseCommand {
   }
 
   async execute(message, args) {
-    // Check for "bot admin" role
-    const member = message.member;
-    if (!member) {
-      return message.reply({
-        content: 'This command can only be used in a server.',
-        allowedMentions: { repliedUser: false }
-      });
-    }
+    // Check if user is a bot admin (by user ID from config)
+    const userId = message.author.id;
+    const isAdmin = config.discord.adminUserIds.includes(userId);
 
-    const hasAdminRole = member.roles.cache.some(role =>
-      role.name.toLowerCase() === 'bot admin'
-    );
-
-    if (!hasAdminRole) {
+    if (!isAdmin) {
       return message.reply({
-        content: 'Only users with the "bot admin" role can reset conversations.',
+        content: 'Only bot admins can reset conversations.',
         allowedMentions: { repliedUser: false }
       });
     }

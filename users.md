@@ -104,7 +104,7 @@ If a conversation expires due to inactivity, you can pick up where you left off.
 **Command**: `!chatreset <personality-id>`
 **Aliases**: `!resetchat`, `!cr`
 
-Clear a conversation's history and start fresh. Requires the "bot admin" role.
+Clear a conversation's history and start fresh. Only bot admins (configured via `BOT_ADMIN_USER_IDS`) can use this command.
 
 **Example**:
 ```
