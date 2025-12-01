@@ -3,7 +3,7 @@
 
 const logger = require('../logger');
 const personalityManager = require('../personalities');
-const { countTokens, countMessageTokens, wouldExceedLimit } = require('../utils/tokenCounter');
+const { countTokens, wouldExceedLimit } = require('../utils/tokenCounter');
 
 // Conversation limits
 const LIMITS = {
@@ -163,21 +163,21 @@ Address users by name when relevant. Do not announce when new users join the con
 
       logger.info(`Chat request from ${user.username} using personality: ${personality.name} (channel: ${channelId})`);
 
-      // Build messages array with history
+      // Build system prompt and format history
       const systemPrompt = this._buildGroupSystemPrompt(personality);
       const historyMessages = this._formatMessagesForAPI(conversation.messages || []);
 
       // Format current user message
       const formattedUserMessage = `[${user.username}]: ${userMessage}`;
 
-      const messages = [
-        { role: 'system', content: systemPrompt },
-        ...historyMessages,
-        { role: 'user', content: formattedUserMessage }
-      ];
+      // Build input text from history for responses API
+      const historyText = historyMessages.length > 0
+        ? historyMessages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n') + '\n\n'
+        : '';
+      const inputText = `${historyText}User: ${formattedUserMessage}`;
 
       // Check if adding this message would exceed token limit
-      const estimatedTokens = countMessageTokens(messages);
+      const estimatedTokens = countTokens(systemPrompt) + countTokens(inputText);
       if (wouldExceedLimit(0, estimatedTokens, LIMITS.MAX_TOKENS)) {
         return {
           success: false,
@@ -191,17 +191,17 @@ Address users by name when relevant. Do not announce when new users join the con
         };
       }
 
-      // Call OpenAI API
-      const response = await this.openaiClient.chat.completions.create({
-        model: this.config.openai.model || 'gpt-4o-mini',
-        messages,
-        max_tokens: 1000,
+      // Call OpenAI Responses API
+      const response = await this.openaiClient.responses.create({
+        model: this.config.openai.model || 'gpt-5-mini',
+        instructions: systemPrompt,
+        input: inputText,
         temperature: 0.9,
       });
 
-      const assistantMessage = response.choices[0]?.message?.content;
-      const inputTokens = response.usage?.prompt_tokens || 0;
-      const outputTokens = response.usage?.completion_tokens || 0;
+      const assistantMessage = response.output_text;
+      const inputTokens = response.usage?.input_tokens || 0;
+      const outputTokens = response.usage?.output_tokens || 0;
       const totalTokens = inputTokens + outputTokens;
 
       // Store user message in conversation (with original content, not formatted)
@@ -233,7 +233,7 @@ Address users by name when relevant. Do not announce when new users join the con
         inputTokens,
         outputTokens,
         `chat_${personalityId}`,
-        this.config.openai.model || 'gpt-4o-mini'
+        this.config.openai.model || 'gpt-5-mini'
       );
 
       logger.info(`Chat response generated: ${inputTokens} in, ${outputTokens} out (conversation: ${conversation.messageCount + 2} messages)`);
@@ -274,19 +274,16 @@ Address users by name when relevant. Do not announce when new users join the con
     try {
       logger.info(`Stateless chat request from ${user.username} using personality: ${personality.name}`);
 
-      const response = await this.openaiClient.chat.completions.create({
-        model: this.config.openai.model || 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: personality.systemPrompt },
-          { role: 'user', content: userMessage }
-        ],
-        max_tokens: 1000,
+      const response = await this.openaiClient.responses.create({
+        model: this.config.openai.model || 'gpt-5-mini',
+        instructions: personality.systemPrompt,
+        input: userMessage,
         temperature: 0.9,
       });
 
-      const assistantMessage = response.choices[0]?.message?.content;
-      const inputTokens = response.usage?.prompt_tokens || 0;
-      const outputTokens = response.usage?.completion_tokens || 0;
+      const assistantMessage = response.output_text;
+      const inputTokens = response.usage?.input_tokens || 0;
+      const outputTokens = response.usage?.output_tokens || 0;
 
       // Record token usage if mongoService available
       if (this.mongoService) {
@@ -296,7 +293,7 @@ Address users by name when relevant. Do not announce when new users join the con
           inputTokens,
           outputTokens,
           `chat_${personality.id}`,
-          this.config.openai.model || 'gpt-4o-mini'
+          this.config.openai.model || 'gpt-5-mini'
         );
       }
 
