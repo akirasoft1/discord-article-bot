@@ -97,7 +97,7 @@ describe('ReplyHandler', () => {
 
     mockConfig = {
       openai: {
-        model: 'gpt-5-mini'
+        model: 'gpt-5.1'
       }
     };
 
@@ -338,17 +338,18 @@ describe('ReplyHandler', () => {
       expect(mockChatService.chat).not.toHaveBeenCalled();
     });
 
-    it('should handle idle conversation as expired', async () => {
+    it('should let chatService handle idle conversations (start fresh)', async () => {
       mockChatService.mongoService.getConversationStatus.mockResolvedValue({
         exists: true,
         status: 'active'
       });
-      mockChatService.mongoService.isConversationIdle.mockResolvedValue(true);
+      // Note: isConversationIdle is no longer checked in ReplyHandler
+      // chatService.chat() handles idle detection and starts fresh if needed
 
       await replyHandler.handlePersonalityChatReply(mockMessage, personalityInfo);
 
-      // Should call OpenAI for in-character "forgotten" response
-      expect(mockOpenAIClient.responses.create).toHaveBeenCalled();
+      // Should continue to chatService (which will handle idle internally)
+      expect(mockChatService.chat).toHaveBeenCalled();
     });
 
     it('should format response with personality header', async () => {
@@ -387,7 +388,7 @@ describe('ReplyHandler', () => {
 
       expect(mockOpenAIClient.responses.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'gpt-5-mini',
+          model: 'gpt-5.1',
           instructions: expect.stringContaining('This is a great summary'),
           input: 'What are the main points?'
         })
@@ -420,7 +421,7 @@ describe('ReplyHandler', () => {
         100,
         50,
         'summarize_followup',
-        'gpt-5-mini'
+        'gpt-5.1'
       );
     });
   });

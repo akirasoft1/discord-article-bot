@@ -187,7 +187,7 @@ Address users by name when relevant. Do not announce when new users join the con
 
       // Call OpenAI Responses API
       const response = await this.openaiClient.responses.create({
-        model: this.config.openai.model || 'gpt-5-mini',
+        model: this.config.openai.model || 'gpt-5.1',
         instructions: systemPrompt,
         input: inputText,
       });
@@ -226,7 +226,7 @@ Address users by name when relevant. Do not announce when new users join the con
         inputTokens,
         outputTokens,
         `chat_${personalityId}`,
-        this.config.openai.model || 'gpt-5-mini'
+        this.config.openai.model || 'gpt-5.1'
       );
 
       logger.info(`Chat response generated: ${inputTokens} in, ${outputTokens} out (conversation: ${conversation.messageCount + 2} messages)`);
@@ -268,7 +268,7 @@ Address users by name when relevant. Do not announce when new users join the con
       logger.info(`Stateless chat request from ${user.username} using personality: ${personality.name}`);
 
       const response = await this.openaiClient.responses.create({
-        model: this.config.openai.model || 'gpt-5-mini',
+        model: this.config.openai.model || 'gpt-5.1',
         instructions: personality.systemPrompt,
         input: userMessage,
       });
@@ -285,7 +285,7 @@ Address users by name when relevant. Do not announce when new users join the con
           inputTokens,
           outputTokens,
           `chat_${personality.id}`,
-          this.config.openai.model || 'gpt-5-mini'
+          this.config.openai.model || 'gpt-5.1'
         );
       }
 
