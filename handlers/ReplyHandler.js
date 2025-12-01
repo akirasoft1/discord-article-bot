@@ -176,9 +176,12 @@ class ReplyHandler {
     // expired or reset (not just idle - idle conversations get auto-renewed by !chat)
     const status = await this.chatService.mongoService.getConversationStatus(channelId, personalityInfo.id);
 
+    logger.debug(`Reply handler - conversation status for ${personalityInfo.id} in ${channelId}: ${JSON.stringify(status)}`);
+
     // Only show forgotten message for explicitly expired/reset conversations
     // For idle conversations, chatService.chat() will handle them (start fresh)
     if (status.exists && (status.status === 'expired' || status.status === 'reset')) {
+      logger.info(`Conversation ${personalityInfo.id} is ${status.status}, showing expired message`);
       // Conversation was explicitly expired or reset - respond in character about forgetting
       await this.handleExpiredConversationReply(message, personalityInfo);
       return;

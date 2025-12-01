@@ -591,7 +591,16 @@ class MongoService {
             const collection = this.db.collection('chat_conversations');
             const conversationId = this._getConversationId(channelId, personalityId);
 
-            const conversation = await collection.findOne({ conversationId });
+            // First try to find an active conversation (prioritize active over expired/reset)
+            let conversation = await collection.findOne({ conversationId, status: 'active' });
+
+            // If no active conversation, look for any conversation (expired/reset)
+            if (!conversation) {
+                conversation = await collection.findOne(
+                    { conversationId },
+                    { sort: { createdAt: -1 } }  // Get the most recent one
+                );
+            }
 
             if (!conversation) {
                 return { exists: false };
