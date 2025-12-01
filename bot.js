@@ -11,6 +11,7 @@ const logger = require('./logger');
 const { shutdownTracing } = require('./tracing');
 const SummarizationService = require('./services/SummarizationService');
 const ReactionHandler = require('./handlers/ReactionHandler');
+const ReplyHandler = require('./handlers/ReplyHandler');
 const RssService = require('./services/RssService');
 const FollowUpService = require('./services/FollowUpService');
 const MessageService = require('./services/MessageService');
@@ -53,6 +54,7 @@ class DiscordBot {
     this.rssService = new RssService(this.summarizationService.mongoService, this.summarizationService, this.client);
     this.followUpService = new FollowUpService(this.summarizationService.mongoService, this.summarizationService, this.client);
     this.chatService = new ChatService(this.openaiClient, config, this.summarizationService.mongoService);
+    this.replyHandler = new ReplyHandler(this.chatService, this.summarizationService, this.openaiClient, config);
 
     // Initialize Linkwarden services for self-hosted article archiving
     this.linkwardenService = null;
@@ -168,6 +170,21 @@ class DiscordBot {
 
     this.client.on('messageCreate', async message => {
       if (message.author.bot) return;
+
+      // Check if this is a reply to a bot message
+      if (message.reference && message.reference.messageId) {
+        try {
+          const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
+          if (referencedMessage && referencedMessage.author.id === this.client.user.id) {
+            const handled = await this.replyHandler.handleReply(message, referencedMessage);
+            if (handled) return; // Reply was handled, don't process as command
+          }
+        } catch (error) {
+          logger.error(`Error fetching referenced message: ${error.message}`);
+        }
+      }
+
+      // Handle commands
       if (!message.content.startsWith(config.discord.prefix)) return;
 
       const args = message.content.slice(config.discord.prefix.length).trim().split(/ +/);
