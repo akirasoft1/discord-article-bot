@@ -297,9 +297,9 @@ class MongoService {
      * @param {number} inputTokens - Number of input tokens used
      * @param {number} outputTokens - Number of output tokens used
      * @param {string} commandType - Type of command (e.g., 'summarize', 'chat', 'personality')
-     * @param {string} model - Model used (e.g., 'gpt-4o-mini')
+     * @param {string} model - Model used (e.g., 'gpt-5-mini')
      */
-    async recordTokenUsage(userId, username, inputTokens, outputTokens, commandType, model = 'gpt-4o-mini') {
+    async recordTokenUsage(userId, username, inputTokens, outputTokens, commandType, model = 'gpt-5-mini') {
         if (!this.db) {
             logger.error('Cannot record token usage: Not connected to MongoDB.');
             return false;

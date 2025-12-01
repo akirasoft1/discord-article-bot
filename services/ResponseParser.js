@@ -44,11 +44,12 @@ class ResponseParser {
   }
 
   /**
-   * Extract summary from completion API format
+   * Extract summary from responses API format (unified method)
+   * Note: This method now handles the responses API format since we've migrated from completions API
    */
-  static extractSummaryFromCompletion(completion) {
-    const summary = completion.choices[0]?.message?.content?.trim() || null;
-    return summary ? this.sanitizeLinks(summary) : null;
+  static extractSummaryFromCompletion(response) {
+    // Use the same extraction logic as extractSummaryFromResponse
+    return this.extractSummaryFromResponse(response);
   }
 
   /**

@@ -100,19 +100,13 @@ ${content}
 
 Compressed version (MUST be under 2000 characters):`;
 
-      const response = await this.openaiClient.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'user',
-            content: compressionPrompt
-          }
-        ],
-        max_tokens: 800, // Limit tokens to help ensure shorter response
+      const response = await this.openaiClient.responses.create({
+        model: 'gpt-5-mini',
+        input: compressionPrompt,
         temperature: 0.3 // Lower temperature for more consistent compression
       });
 
-      const compressedContent = response.choices[0].message.content.trim();
+      const compressedContent = response.output_text.trim();
       
       logger.info(`Message compression: ${content.length} → ${compressedContent.length} characters`);
       

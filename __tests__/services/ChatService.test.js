@@ -12,7 +12,6 @@ jest.mock('../../logger', () => ({
 // Mock the token counter
 jest.mock('../../utils/tokenCounter', () => ({
   countTokens: jest.fn(() => 10),
-  countMessageTokens: jest.fn(() => 100),
   wouldExceedLimit: jest.fn(() => false)
 }));
 
@@ -46,17 +45,15 @@ describe('ChatService', () => {
     jest.clearAllMocks();
 
     mockOpenAIClient = {
-      chat: {
-        completions: {
-          create: jest.fn().mockResolvedValue({
-            choices: [{ message: { content: 'Test response from personality' } }],
-            usage: {
-              prompt_tokens: 100,
-              completion_tokens: 50,
-              total_tokens: 150
-            }
-          })
-        }
+      responses: {
+        create: jest.fn().mockResolvedValue({
+          output_text: 'Test response from personality',
+          usage: {
+            input_tokens: 100,
+            output_tokens: 50,
+            total_tokens: 150
+          }
+        })
       }
     };
 
@@ -81,7 +78,7 @@ describe('ChatService', () => {
 
     mockConfig = {
       openai: {
-        model: 'gpt-4o-mini'
+        model: 'gpt-5-mini'
       }
     };
 
@@ -115,7 +112,7 @@ describe('ChatService', () => {
         100,
         50,
         'chat_test-personality',
-        'gpt-4o-mini'
+        'gpt-5-mini'
       );
     });
 
@@ -150,17 +147,19 @@ describe('ChatService', () => {
       const result = await chatService.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
 
       expect(result.success).toBe(true);
-      // Verify messages array was built with history
-      expect(mockOpenAIClient.chat.completions.create).toHaveBeenCalledWith(
+      // Verify responses API was called with input text containing history
+      expect(mockOpenAIClient.responses.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          messages: expect.arrayContaining([
-            expect.objectContaining({ role: 'system' }),
-            expect.objectContaining({ role: 'user', content: '[OtherUser]: Previous message' }),
-            expect.objectContaining({ role: 'assistant', content: 'Previous response' }),
-            expect.objectContaining({ role: 'user', content: '[TestUser]: Hello!' })
-          ])
+          model: 'gpt-5-mini',
+          instructions: expect.stringContaining('You are a test character'),
+          input: expect.stringContaining('[OtherUser]: Previous message'),
+          temperature: 0.9
         })
       );
+      // Verify input also contains the new message
+      const callArgs = mockOpenAIClient.responses.create.mock.calls[0][0];
+      expect(callArgs.input).toContain('[TestUser]: Hello!');
+      expect(callArgs.input).toContain('Previous response');
     });
 
     it('should store messages in conversation', async () => {
