@@ -16,12 +16,11 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 ### Personality Chat
 
 - **Character Conversations**: Chat with unique AI personalities
-- **5 Built-in Personalities**:
+- **4 Built-in Personalities**:
   - 📚 **Professor Grimsworth** - Grumpy historian who relates everything to obscure historical events
   - 🕵️ **Jack Shadows** - Hardboiled 1940s detective with noir prose
-  - 🏈 **Chad McCommentary** - Enthusiastic sports commentator
   - 🤔 **Erik the Existentialist** - Philosophy grad student who spirals into existential questions
-  - 📯 **Bartholomew the Bold** - Medieval town crier announcing everything as proclamations
+  - 💾 **x0r_kid** - 90s IRC gamer kid with leet speak and old-school internet vibes
 - **Extensible**: Add new personalities by dropping a `.js` file in `personalities/`
 - **Channel-Scoped Memory**: All users in a channel share a conversation with each personality
 - **Reply to Continue**: Reply directly to bot messages to continue conversations naturally
@@ -103,9 +102,8 @@ discord-article-bot/
 │   ├── index.js                  # Personality manager
 │   ├── grumpy-historian.js
 │   ├── noir-detective.js
-│   ├── sports-bro.js
 │   ├── existential-philosopher.js
-│   └── medieval-herald.js
+│   └── irc-gamer.js
 ├── services/
 │   ├── SummarizationService.js   # Main summarization logic
 │   ├── ChatService.js            # Personality chat handling
