@@ -99,22 +99,16 @@ describe('PersonalityManager', () => {
       expect(personality.emoji).toBe('🕵️');
     });
 
-    it('should have sports-bro personality', () => {
-      const personality = personalityManager.get('sports-bro');
-      expect(personality).not.toBeNull();
-      expect(personality.emoji).toBe('🏈');
-    });
-
     it('should have existential personality', () => {
       const personality = personalityManager.get('existential');
       expect(personality).not.toBeNull();
       expect(personality.emoji).toBe('🤔');
     });
 
-    it('should have medieval-herald personality', () => {
-      const personality = personalityManager.get('medieval-herald');
+    it('should have irc-gamer personality', () => {
+      const personality = personalityManager.get('irc-gamer');
       expect(personality).not.toBeNull();
-      expect(personality.emoji).toBe('📯');
+      expect(personality.emoji).toBe('💾');
     });
   });
 });
