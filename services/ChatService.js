@@ -71,7 +71,7 @@ Address users by name when relevant. Do not announce when new users join the con
       return {
         allowed: false,
         reason: 'expired',
-        message: `This conversation expired after ${LIMITS.IDLE_TIMEOUT_MINUTES} minutes of inactivity. Use \`!chat resume ${personalityId} <message>\` to continue where you left off.`
+        message: `This conversation expired after ${LIMITS.IDLE_TIMEOUT_MINUTES} minutes of inactivity. Use \`!chatresume ${personalityId} <message>\` to continue where you left off.`
       };
     }
 
@@ -88,7 +88,7 @@ Address users by name when relevant. Do not announce when new users join the con
       return {
         allowed: false,
         reason: 'expired',
-        message: `This conversation expired after ${LIMITS.IDLE_TIMEOUT_MINUTES} minutes of inactivity. Use \`!chat resume ${personalityId} <message>\` to continue where you left off.`
+        message: `This conversation expired after ${LIMITS.IDLE_TIMEOUT_MINUTES} minutes of inactivity. Use \`!chatresume ${personalityId} <message>\` to continue where you left off.`
       };
     }
 
