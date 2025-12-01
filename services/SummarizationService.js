@@ -578,18 +578,22 @@ class SummarizationService {
   async callCompletionAPI(messages) {
     const startTime = Date.now();
 
-    const completion = await this.openaiClient.chat.completions.create({
+    // Convert messages array to responses API format
+    const systemMessage = messages.find(m => m.role === 'system');
+    const userMessages = messages.filter(m => m.role !== 'system');
+    const inputText = userMessages.map(m => m.content).join('\n\n');
+
+    const response = await this.openaiClient.responses.create({
       model: this.config.openai.model, // Use model from config
-      messages: messages,
+      instructions: systemMessage?.content || '',
+      input: inputText,
       temperature: 0.7,
-      top_p: 0.95,
-      max_tokens: this.config.bot.maxSummaryLength,
     });
 
     const duration = Date.now() - startTime;
-    logger.info(`API Response received (completion method) - Duration: ${duration}ms`);
-    
-    return completion;
+    logger.info(`API Response received (responses method) - Duration: ${duration}ms`);
+
+    return response;
   }
 
   processUsageData(usage, estimatedTokens) {
@@ -666,14 +670,13 @@ class SummarizationService {
 
 Text: """${summary}"""`;
 
-      const response = await this.openaiClient.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: enhancementPrompt }],
-        max_tokens: 50,
+      const response = await this.openaiClient.responses.create({
+        model: 'gpt-5-mini',
+        input: enhancementPrompt,
         temperature: 0.2,
       });
 
-      const [topic, sentiment] = response.choices[0].message.content.split('\n').map(line => line.split(': ')[1]);
+      const [topic, sentiment] = response.output_text.split('\n').map(line => line.split(': ')[1]);
 
       return {
         readingTime,
@@ -700,14 +703,13 @@ Text: """${text}"""
 
 Bias Analysis:`;
 
-      const response = await this.openaiClient.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: biasPrompt }],
-        max_tokens: 200,
+      const response = await this.openaiClient.responses.create({
+        model: 'gpt-5-mini',
+        input: biasPrompt,
         temperature: 0.5,
       });
 
-      return response.choices[0].message.content.trim();
+      return response.output_text.trim();
     } catch (error) {
       logger.error('Failed to analyze bias:', error);
       return 'N/A';
@@ -747,14 +749,13 @@ Text: """${text}"""
 
 Quote:`;
 
-      const response = await this.openaiClient.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: quotePrompt }],
-        max_tokens: 150,
+      const response = await this.openaiClient.responses.create({
+        model: 'gpt-5-mini',
+        input: quotePrompt,
         temperature: 0.7,
       });
 
-      return response.choices[0].message.content.trim();
+      return response.output_text.trim();
     } catch (error) {
       logger.error('Failed to extract quote:', error);
       return null;
@@ -803,13 +804,12 @@ Quote:`;
 
     try {
       const contextPrompt = `${this.config.bot.contextProvider.prompt} ${topic}`;
-      const response = await this.openaiClient.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: contextPrompt }],
-        max_tokens: 200,
+      const response = await this.openaiClient.responses.create({
+        model: 'gpt-5-mini',
+        input: contextPrompt,
         temperature: 0.5,
       });
-      return response.choices[0].message.content.trim();
+      return response.output_text.trim();
     } catch (error) {
       logger.error(`Failed to provide context for topic ${topic}: ${error.message}`);
       return null;
@@ -826,13 +826,12 @@ Quote:`;
 
 Text: """${text}"""`;
 
-      const langResponse = await this.openaiClient.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: languageDetectionPrompt }],
-        max_tokens: 200,
+      const langResponse = await this.openaiClient.responses.create({
+        model: 'gpt-5-mini',
+        input: languageDetectionPrompt,
         temperature: 0.1,
       });
-      const detectedLanguage = langResponse.choices[0].message.content.trim();
+      const detectedLanguage = langResponse.output_text.trim();
 
       if (detectedLanguage.toLowerCase() !== this.config.bot.autoTranslation.targetLanguage.toLowerCase()) {
         logger.info(`Detected language: ${detectedLanguage}. Translating to ${this.config.bot.autoTranslation.targetLanguage}.`);
@@ -840,13 +839,12 @@ Text: """${text}"""`;
 
 Text: """${text}"""`;
 
-        const transResponse = await this.openaiClient.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: translationPrompt }],
-          max_tokens: 2000,
+        const transResponse = await this.openaiClient.responses.create({
+          model: 'gpt-5-mini',
+          input: translationPrompt,
           temperature: 0.3,
         });
-        const translatedText = transResponse.choices[0].message.content.trim();
+        const translatedText = transResponse.output_text.trim();
         return { translatedText, detectedLanguage, wasTranslated: true };
       } else {
         logger.info(`Detected language: ${detectedLanguage}. No translation needed.`);
@@ -867,13 +865,12 @@ Text: """${text}"""`;
     for (const lang of targetLanguages) {
       try {
         const translationPrompt = `Summarize the following article in ${lang}.\n\nArticle: """${content}"""`;
-        const response = await this.openaiClient.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: translationPrompt }],
-          max_tokens: this.config.bot.maxSummaryLength,
+        const response = await this.openaiClient.responses.create({
+          model: 'gpt-5-mini',
+          input: translationPrompt,
           temperature: 0.7,
         });
-        summaries[lang] = response.choices[0].message.content.trim();
+        summaries[lang] = response.output_text.trim();
       } catch (error) {
         logger.error(`Failed to generate ${lang} summary: ${error.message}`);
         summaries[lang] = `Could not generate summary in ${lang}.`;
