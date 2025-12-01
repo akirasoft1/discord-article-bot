@@ -36,7 +36,9 @@ module.exports = {
   discord: {
     token: process.env.DISCORD_TOKEN,
     intents: ['Guilds', 'GuildMessages', 'GuildMessageReactions', 'MessageContent'],
-    prefix: process.env.DISCORD_PREFIX || '!'
+    prefix: process.env.DISCORD_PREFIX || '!',
+    // Bot admin user IDs (comma-separated) - these users can run admin commands like !chatreset
+    adminUserIds: process.env.BOT_ADMIN_USER_IDS ? process.env.BOT_ADMIN_USER_IDS.split(',').map(id => id.trim()) : []
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY,
