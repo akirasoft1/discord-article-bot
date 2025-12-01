@@ -103,7 +103,6 @@ Compressed version (MUST be under 2000 characters):`;
       const response = await this.openaiClient.responses.create({
         model: 'gpt-5-mini',
         input: compressionPrompt,
-        temperature: 0.3 // Lower temperature for more consistent compression
       });
 
       const compressedContent = response.output_text.trim();

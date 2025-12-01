@@ -196,7 +196,6 @@ Address users by name when relevant. Do not announce when new users join the con
         model: this.config.openai.model || 'gpt-5-mini',
         instructions: systemPrompt,
         input: inputText,
-        temperature: 0.9,
       });
 
       const assistantMessage = response.output_text;
@@ -278,7 +277,6 @@ Address users by name when relevant. Do not announce when new users join the con
         model: this.config.openai.model || 'gpt-5-mini',
         instructions: personality.systemPrompt,
         input: userMessage,
-        temperature: 0.9,
       });
 
       const assistantMessage = response.output_text;
