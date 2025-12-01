@@ -199,7 +199,7 @@ describe('ChatService', () => {
   describe('chat - limit enforcement', () => {
     const mockUser = { id: 'user123', username: 'TestUser' };
 
-    it('should block chat when conversation is expired', async () => {
+    it('should start fresh when conversation is expired', async () => {
       mockMongoService.getConversationStatus.mockResolvedValue({
         exists: true,
         status: 'expired',
@@ -209,9 +209,9 @@ describe('ChatService', () => {
 
       const result = await chatService.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
 
-      expect(result.success).toBe(false);
-      expect(result.reason).toBe('expired');
-      expect(result.error).toContain('expired');
+      // Should reset the expired conversation and start fresh
+      expect(mockMongoService.resetConversation).toHaveBeenCalledWith('channel123', 'test-personality');
+      expect(result.success).toBe(true);
     });
 
     it('should block chat when message limit reached', async () => {
@@ -246,7 +246,7 @@ describe('ChatService', () => {
       expect(result.error).toContain('token limit');
     });
 
-    it('should expire idle conversation', async () => {
+    it('should expire idle conversation and start fresh', async () => {
       mockMongoService.getConversationStatus.mockResolvedValue({
         exists: true,
         status: 'active',
@@ -258,9 +258,10 @@ describe('ChatService', () => {
 
       const result = await chatService.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
 
+      // Should expire and then reset to start fresh
       expect(mockMongoService.expireConversation).toHaveBeenCalled();
-      expect(result.success).toBe(false);
-      expect(result.reason).toBe('expired');
+      expect(mockMongoService.resetConversation).toHaveBeenCalledWith('channel123', 'test-personality');
+      expect(result.success).toBe(true);
     });
   });
 
