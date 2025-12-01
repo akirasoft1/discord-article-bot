@@ -170,21 +170,21 @@ class ReplyHandler {
     // Show typing indicator
     await message.channel.sendTyping();
 
-    // Check conversation status first
+    // For replies, we let chatService.chat() handle the conversation logic
+    // It will check for idle timeout and either continue or start fresh
+    // We only show the "forgotten" message if the conversation was explicitly
+    // expired or reset (not just idle - idle conversations get auto-renewed by !chat)
     const status = await this.chatService.mongoService.getConversationStatus(channelId, personalityInfo.id);
 
-    // Check if idle (expired)
-    const isIdle = status.exists ?
-      await this.chatService.mongoService.isConversationIdle(channelId, personalityInfo.id, 30) :
-      false;
-
-    if (status.exists && (status.status === 'expired' || status.status === 'reset' || isIdle)) {
-      // Conversation is expired - respond in character about forgetting
+    // Only show forgotten message for explicitly expired/reset conversations
+    // For idle conversations, chatService.chat() will handle them (start fresh)
+    if (status.exists && (status.status === 'expired' || status.status === 'reset')) {
+      // Conversation was explicitly expired or reset - respond in character about forgetting
       await this.handleExpiredConversationReply(message, personalityInfo);
       return;
     }
 
-    // Continue the conversation
+    // Continue the conversation (or start fresh if idle - chatService handles this)
     const result = await this.chatService.chat(
       personalityInfo.id,
       userMessage,
