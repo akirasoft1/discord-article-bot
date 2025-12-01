@@ -78,7 +78,7 @@ describe('ChatService', () => {
 
     mockConfig = {
       openai: {
-        model: 'gpt-5-mini'
+        model: 'gpt-5.1'
       }
     };
 
@@ -112,7 +112,7 @@ describe('ChatService', () => {
         100,
         50,
         'chat_test-personality',
-        'gpt-5-mini'
+        'gpt-5.1'
       );
     });
 
@@ -150,7 +150,7 @@ describe('ChatService', () => {
       // Verify responses API was called with input text containing history
       expect(mockOpenAIClient.responses.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'gpt-5-mini',
+          model: 'gpt-5.1',
           instructions: expect.stringContaining('You are a test character'),
           input: expect.stringContaining('[OtherUser]: Previous message')
         })

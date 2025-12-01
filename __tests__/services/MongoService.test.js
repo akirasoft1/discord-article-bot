@@ -53,7 +53,7 @@ describe('MongoService', () => {
         100,
         50,
         'summarize',
-        'gpt-5-mini'
+        'gpt-5.1'
       );
 
       expect(result).toBe(true);
@@ -65,7 +65,7 @@ describe('MongoService', () => {
           outputTokens: 50,
           totalTokens: 150,
           commandType: 'summarize',
-          model: 'gpt-5-mini',
+          model: 'gpt-5.1',
           timestamp: expect.any(Date)
         })
       );
@@ -82,7 +82,7 @@ describe('MongoService', () => {
 
       expect(mockCollection.insertOne).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'gpt-5-mini'
+          model: 'gpt-5.1'
         })
       );
     });

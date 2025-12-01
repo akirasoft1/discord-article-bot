@@ -97,7 +97,7 @@ describe('ReplyHandler', () => {
 
     mockConfig = {
       openai: {
-        model: 'gpt-5-mini'
+        model: 'gpt-5.1'
       }
     };
 
@@ -387,7 +387,7 @@ describe('ReplyHandler', () => {
 
       expect(mockOpenAIClient.responses.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'gpt-5-mini',
+          model: 'gpt-5.1',
           instructions: expect.stringContaining('This is a great summary'),
           input: 'What are the main points?'
         })
@@ -420,7 +420,7 @@ describe('ReplyHandler', () => {
         100,
         50,
         'summarize_followup',
-        'gpt-5-mini'
+        'gpt-5.1'
       );
     });
   });

@@ -248,7 +248,7 @@ Respond IN CHARACTER explaining that you don't remember what you were discussing
 
     try {
       const response = await this.openaiClient.responses.create({
-        model: this.config.openai.model || 'gpt-5-mini',
+        model: this.config.openai.model || 'gpt-5.1',
         instructions: forgetPrompt,
         input: message.content,
       });
@@ -297,7 +297,7 @@ Answer the user's follow-up question based on the summary provided. If the quest
 
     try {
       const response = await this.openaiClient.responses.create({
-        model: this.config.openai.model || 'gpt-5-mini',
+        model: this.config.openai.model || 'gpt-5.1',
         instructions: systemPrompt,
         input: userQuestion,
       });
@@ -312,7 +312,7 @@ Answer the user's follow-up question based on the summary provided. If the quest
           response.usage?.input_tokens || 0,
           response.usage?.output_tokens || 0,
           'summarize_followup',
-          this.config.openai.model || 'gpt-5-mini'
+          this.config.openai.model || 'gpt-5.1'
         );
       }
 
