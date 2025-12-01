@@ -24,11 +24,13 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
   - 📯 **Bartholomew the Bold** - Medieval town crier announcing everything as proclamations
 - **Extensible**: Add new personalities by dropping a `.js` file in `personalities/`
 - **Channel-Scoped Memory**: All users in a channel share a conversation with each personality
+- **Reply to Continue**: Reply directly to bot messages to continue conversations naturally
 - **Conversation Limits**: 100 messages, 150k tokens, or 30 min idle timeout
 - **Resume/Reset**: Continue expired conversations or reset them (admin only)
 
 ### Additional Features
 
+- **Article Follow-up Questions**: Reply to summaries to ask follow-up questions about the article
 - **RSS Feed Monitoring**: Auto-post articles from configured feeds
 - **Follow-up Tracker**: Mark stories for updates
 - **OpenTelemetry Tracing**: Distributed tracing for Dynatrace integration
@@ -114,7 +116,8 @@ discord-article-bot/
 │   ├── CostService.js            # Cost tracking
 │   └── ...
 ├── handlers/
-│   └── ReactionHandler.js        # Discord reactions
+│   ├── ReactionHandler.js        # Discord reactions
+│   └── ReplyHandler.js           # Reply handling for chats and summaries
 └── utils/
     ├── urlUtils.js
     ├── textUtils.js
