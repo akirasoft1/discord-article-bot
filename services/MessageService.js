@@ -101,7 +101,7 @@ ${content}
 Compressed version (MUST be under 2000 characters):`;
 
       const response = await this.openaiClient.responses.create({
-        model: 'gpt-5-mini',
+        model: 'gpt-5.1',
         input: compressionPrompt,
       });
 
