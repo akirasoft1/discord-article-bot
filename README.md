@@ -137,7 +137,8 @@ discord-article-bot/
 |----------|---------|-------------|
 | `DISCORD_PREFIX` | `!` | Command prefix |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API endpoint |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Model for summarization |
+| `OPENAI_MODEL` | `gpt-5-mini` | Model for summarization |
+| `BOT_ADMIN_USER_IDS` | `` | Comma-separated Discord user IDs for bot admins |
 | `DEBUG` | `false` | Enable verbose logging |
 
 ### Linkwarden Configuration
