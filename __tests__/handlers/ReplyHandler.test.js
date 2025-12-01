@@ -338,17 +338,18 @@ describe('ReplyHandler', () => {
       expect(mockChatService.chat).not.toHaveBeenCalled();
     });
 
-    it('should handle idle conversation as expired', async () => {
+    it('should let chatService handle idle conversations (start fresh)', async () => {
       mockChatService.mongoService.getConversationStatus.mockResolvedValue({
         exists: true,
         status: 'active'
       });
-      mockChatService.mongoService.isConversationIdle.mockResolvedValue(true);
+      // Note: isConversationIdle is no longer checked in ReplyHandler
+      // chatService.chat() handles idle detection and starts fresh if needed
 
       await replyHandler.handlePersonalityChatReply(mockMessage, personalityInfo);
 
-      // Should call OpenAI for in-character "forgotten" response
-      expect(mockOpenAIClient.responses.create).toHaveBeenCalled();
+      // Should continue to chatService (which will handle idle internally)
+      expect(mockChatService.chat).toHaveBeenCalled();
     });
 
     it('should format response with personality header', async () => {
