@@ -76,7 +76,7 @@ class DiscordBot {
     this.imagenService = null;
     if (config.imagen.enabled && config.imagen.apiKey) {
       try {
-        this.imagenService = new ImagenService(config);
+        this.imagenService = new ImagenService(config, this.summarizationService.mongoService);
         logger.info('Imagen (image generation) service initialized');
       } catch (error) {
         logger.warn(`Failed to initialize Imagen service: ${error.message}`);

@@ -6,8 +6,9 @@ const logger = require('../logger');
 const VALID_ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
 
 class ImagenService {
-  constructor(config) {
+  constructor(config, mongoService = null) {
     this.config = config;
+    this.mongoService = mongoService;
 
     // Validate configuration
     if (!config.imagen.enabled) {
@@ -157,6 +158,20 @@ class ImagenService {
         this.setCooldown(user.id);
       }
 
+      // Record successful generation in MongoDB
+      if (this.mongoService && user) {
+        await this.mongoService.recordImageGeneration(
+          user.id,
+          user.tag || user.username,
+          trimmedPrompt,
+          aspectRatio,
+          this.config.imagen.model,
+          true,
+          null,
+          buffer.length
+        );
+      }
+
       return {
         success: true,
         buffer,
@@ -167,16 +182,31 @@ class ImagenService {
     } catch (error) {
       logger.error(`Image generation error: ${error.message}`);
 
+      let errorMessage;
       // Handle specific error types
       if (error.message.includes('rate limit') || error.message.includes('quota')) {
-        return { success: false, error: 'API rate limit exceeded. Please try again later.' };
+        errorMessage = 'API rate limit exceeded. Please try again later.';
+      } else if (error.message.includes('safety') || error.message.includes('blocked')) {
+        errorMessage = 'Your prompt was blocked by safety filters. Please try a different prompt.';
+      } else {
+        errorMessage = `Image generation failed: ${error.message}`;
       }
 
-      if (error.message.includes('safety') || error.message.includes('blocked')) {
-        return { success: false, error: 'Your prompt was blocked by safety filters. Please try a different prompt.' };
+      // Record failed generation in MongoDB
+      if (this.mongoService && user) {
+        await this.mongoService.recordImageGeneration(
+          user.id,
+          user.tag || user.username,
+          trimmedPrompt,
+          aspectRatio,
+          this.config.imagen.model,
+          false,
+          errorMessage,
+          0
+        );
       }
 
-      return { success: false, error: `Image generation failed: ${error.message}` };
+      return { success: false, error: errorMessage };
     }
   }
 

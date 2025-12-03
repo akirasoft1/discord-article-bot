@@ -762,6 +762,121 @@ class MongoService {
 
         return diffMinutes > timeoutMinutes;
     }
+
+    // ==================== IMAGE GENERATION TRACKING ====================
+
+    /**
+     * Record an image generation request
+     * @param {string} userId - Discord user ID
+     * @param {string} username - Discord username
+     * @param {string} prompt - The prompt used for generation
+     * @param {string} aspectRatio - The aspect ratio used
+     * @param {string} model - The model used (e.g., 'gemini-3-pro-image-preview')
+     * @param {boolean} success - Whether generation was successful
+     * @param {string} error - Error message if generation failed
+     * @param {number} imageSizeBytes - Size of generated image in bytes (if successful)
+     * @returns {boolean} Success status
+     */
+    async recordImageGeneration(userId, username, prompt, aspectRatio, model, success, error = null, imageSizeBytes = 0) {
+        if (!this.db) {
+            logger.error('Cannot record image generation: Not connected to MongoDB.');
+            return false;
+        }
+        try {
+            const collection = this.db.collection('image_generations');
+            await collection.insertOne({
+                userId,
+                username,
+                prompt,
+                aspectRatio,
+                model,
+                success,
+                error,
+                imageSizeBytes,
+                timestamp: new Date()
+            });
+            logger.debug(`Recorded image generation for user ${username}: ${success ? 'success' : 'failed'}`);
+            return true;
+        } catch (err) {
+            logger.error(`Error recording image generation for user ${userId}: ${err.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Get image generation statistics for a specific user
+     * @param {string} userId - Discord user ID
+     * @param {number} days - Number of days to look back (default: 30)
+     * @returns {Object} Generation statistics
+     */
+    async getImageGenerationStats(userId, days = 30) {
+        if (!this.db) {
+            logger.error('Cannot get image generation stats: Not connected to MongoDB.');
+            return { totalGenerations: 0, successfulGenerations: 0, failedGenerations: 0, totalBytes: 0 };
+        }
+        try {
+            const collection = this.db.collection('image_generations');
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - days);
+
+            const pipeline = [
+                {
+                    $match: {
+                        userId,
+                        timestamp: { $gte: cutoffDate }
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalGenerations: { $sum: 1 },
+                        successfulGenerations: {
+                            $sum: { $cond: ['$success', 1, 0] }
+                        },
+                        failedGenerations: {
+                            $sum: { $cond: ['$success', 0, 1] }
+                        },
+                        totalBytes: { $sum: '$imageSizeBytes' }
+                    }
+                }
+            ];
+
+            const results = await collection.aggregate(pipeline).toArray();
+            if (results.length === 0) {
+                return { totalGenerations: 0, successfulGenerations: 0, failedGenerations: 0, totalBytes: 0 };
+            }
+
+            const { totalGenerations, successfulGenerations, failedGenerations, totalBytes } = results[0];
+            return { totalGenerations, successfulGenerations, failedGenerations, totalBytes };
+        } catch (error) {
+            logger.error(`Error getting image generation stats for user ${userId}: ${error.message}`);
+            return { totalGenerations: 0, successfulGenerations: 0, failedGenerations: 0, totalBytes: 0 };
+        }
+    }
+
+    /**
+     * Get recent image generations for a user
+     * @param {string} userId - Discord user ID
+     * @param {number} limit - Maximum number of records to return (default: 10)
+     * @returns {Array} Recent image generations
+     */
+    async getRecentImageGenerations(userId, limit = 10) {
+        if (!this.db) {
+            logger.error('Cannot get recent image generations: Not connected to MongoDB.');
+            return [];
+        }
+        try {
+            const collection = this.db.collection('image_generations');
+            return await collection
+                .find({ userId })
+                .sort({ timestamp: -1 })
+                .limit(limit)
+                .toArray();
+        } catch (error) {
+            logger.error(`Error getting recent image generations for user ${userId}: ${error.message}`);
+            return [];
+        }
+    }
 }
 
 module.exports = MongoService;
