@@ -209,14 +209,17 @@ describe('ImagineCommand', () => {
       );
     });
 
-    it('should include prompt in success message', async () => {
+    it('should send image without prompt text in message', async () => {
       await command.execute(mockMessage, ['A', 'sunset'], mockContext);
 
       expect(mockMessage.reply).toHaveBeenCalledWith(
         expect.objectContaining({
-          content: expect.stringContaining('A beautiful sunset')
+          files: expect.any(Array)
         })
       );
+      // Verify no content field with prompt
+      const replyCall = mockMessage.reply.mock.calls[0][0];
+      expect(replyCall.content).toBeUndefined();
     });
 
     it('should reply with error message on failure', async () => {
