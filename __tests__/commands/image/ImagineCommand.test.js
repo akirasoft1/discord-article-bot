@@ -29,7 +29,10 @@ describe('ImagineCommand', () => {
       }),
       isOnCooldown: jest.fn().mockReturnValue(false),
       getRemainingCooldown: jest.fn().mockReturnValue(0),
-      getValidAspectRatios: jest.fn().mockReturnValue(['1:1', '16:9', '9:16'])
+      getValidAspectRatios: jest.fn().mockReturnValue(['1:1', '16:9', '9:16']),
+      isImageUrl: jest.fn().mockImplementation(url => {
+        return url && (url.endsWith('.png') || url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.gif') || url.endsWith('.webp'));
+      })
     };
 
     mockMessage = {
@@ -149,7 +152,7 @@ describe('ImagineCommand', () => {
 
       expect(mockImagenService.generateImage).toHaveBeenCalledWith(
         'A beautiful sunset',
-        { aspectRatio: null },
+        { aspectRatio: null, referenceImageUrl: null },
         mockMessage.author
       );
     });
@@ -159,7 +162,7 @@ describe('ImagineCommand', () => {
 
       expect(mockImagenService.generateImage).toHaveBeenCalledWith(
         'A sunset',
-        { aspectRatio: '16:9' },
+        { aspectRatio: '16:9', referenceImageUrl: null },
         mockMessage.author
       );
     });
@@ -256,6 +259,89 @@ describe('ImagineCommand', () => {
       const filename = command.generateFilename('jpg');
 
       expect(filename).toMatch(/\.jpg$/);
+    });
+  });
+
+  describe('reference image support', () => {
+    describe('parseArgs with image URL', () => {
+      it('should extract image URL from prompt', () => {
+        const result = command.parseArgs(
+          ['Make', 'this', 'look', 'like', 'a', 'painting', 'https://example.com/photo.png'],
+          mockImagenService
+        );
+
+        expect(result.prompt).toBe('Make this look like a painting');
+        expect(result.referenceImageUrl).toBe('https://example.com/photo.png');
+      });
+
+      it('should handle image URL at the beginning', () => {
+        const result = command.parseArgs(
+          ['https://example.com/image.jpg', 'Turn', 'into', 'watercolor'],
+          mockImagenService
+        );
+
+        expect(result.prompt).toBe('Turn into watercolor');
+        expect(result.referenceImageUrl).toBe('https://example.com/image.jpg');
+      });
+
+      it('should handle image URL in the middle', () => {
+        const result = command.parseArgs(
+          ['Edit', 'https://example.com/photo.jpeg', 'to', 'add', 'sunset'],
+          mockImagenService
+        );
+
+        expect(result.prompt).toBe('Edit to add sunset');
+        expect(result.referenceImageUrl).toBe('https://example.com/photo.jpeg');
+      });
+
+      it('should handle prompt without image URL', () => {
+        const result = command.parseArgs(
+          ['A', 'beautiful', 'sunset'],
+          mockImagenService
+        );
+
+        expect(result.prompt).toBe('A beautiful sunset');
+        expect(result.referenceImageUrl).toBeNull();
+      });
+
+      it('should ignore non-image URLs', () => {
+        const result = command.parseArgs(
+          ['A', 'website', 'like', 'https://example.com/page.html'],
+          mockImagenService
+        );
+
+        expect(result.prompt).toBe('A website like https://example.com/page.html');
+        expect(result.referenceImageUrl).toBeNull();
+      });
+
+      it('should handle both image URL and aspect ratio', () => {
+        const result = command.parseArgs(
+          ['https://example.com/photo.png', 'Make', 'darker', '--ratio', '16:9'],
+          mockImagenService
+        );
+
+        expect(result.prompt).toBe('Make darker');
+        expect(result.referenceImageUrl).toBe('https://example.com/photo.png');
+        expect(result.aspectRatio).toBe('16:9');
+      });
+    });
+
+    describe('execute with reference image', () => {
+      it('should pass reference image URL to generateImage', async () => {
+        await command.execute(
+          mockMessage,
+          ['https://example.com/photo.png', 'Make', 'this', 'a', 'painting'],
+          mockContext
+        );
+
+        expect(mockImagenService.generateImage).toHaveBeenCalledWith(
+          'Make this a painting',
+          expect.objectContaining({
+            referenceImageUrl: 'https://example.com/photo.png'
+          }),
+          mockMessage.author
+        );
+      });
     });
   });
 });
