@@ -629,4 +629,154 @@ describe('MongoService', () => {
       });
     });
   });
+
+  describe('Video Generation Tracking', () => {
+    describe('recordVideoGeneration', () => {
+      it('should record video generation successfully', async () => {
+        const videoCollection = mongoService.db.collection('video_generations');
+
+        const result = await mongoService.recordVideoGeneration(
+          'user123',
+          'TestUser#1234',
+          'A flower blooming',
+          8,
+          '16:9',
+          'veo-3.1-fast-generate-001',
+          true,
+          null,
+          5000000
+        );
+
+        expect(result).toBe(true);
+        expect(videoCollection.insertOne).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: 'user123',
+            username: 'TestUser#1234',
+            prompt: 'A flower blooming',
+            duration: 8,
+            aspectRatio: '16:9',
+            model: 'veo-3.1-fast-generate-001',
+            success: true,
+            error: null,
+            videoSizeBytes: 5000000
+          })
+        );
+      });
+
+      it('should record failed video generation', async () => {
+        const videoCollection = mongoService.db.collection('video_generations');
+
+        const result = await mongoService.recordVideoGeneration(
+          'user456',
+          'FailUser#5678',
+          'Bad prompt',
+          6,
+          '9:16',
+          'veo-3.1-fast-generate-001',
+          false,
+          'Safety filter blocked',
+          0
+        );
+
+        expect(result).toBe(true);
+        expect(videoCollection.insertOne).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: 'user456',
+            success: false,
+            error: 'Safety filter blocked',
+            videoSizeBytes: 0
+          })
+        );
+      });
+
+      it('should return false if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.recordVideoGeneration(
+          'user123', 'TestUser', 'prompt', 8, '16:9', 'model', true, null, 1000
+        );
+
+        expect(result).toBe(false);
+      });
+    });
+
+    describe('getVideoGenerationStats', () => {
+      it('should return stats for user', async () => {
+        const mockStats = [{
+          totalGenerations: 5,
+          successfulGenerations: 4,
+          failedGenerations: 1,
+          totalBytes: 25000000,
+          totalDurationSeconds: 36
+        }];
+
+        const videoCollection = mongoService.db.collection('video_generations');
+        videoCollection.aggregate.mockReturnValue({
+          toArray: jest.fn().mockResolvedValue(mockStats)
+        });
+
+        const result = await mongoService.getVideoGenerationStats('user123', 30);
+
+        expect(result.totalGenerations).toBe(5);
+        expect(result.successfulGenerations).toBe(4);
+        expect(result.failedGenerations).toBe(1);
+        expect(result.totalBytes).toBe(25000000);
+        expect(result.totalDurationSeconds).toBe(36);
+      });
+
+      it('should return zeros if no generations found', async () => {
+        const videoCollection = mongoService.db.collection('video_generations');
+        videoCollection.aggregate.mockReturnValue({
+          toArray: jest.fn().mockResolvedValue([])
+        });
+
+        const result = await mongoService.getVideoGenerationStats('newuser', 30);
+
+        expect(result.totalGenerations).toBe(0);
+        expect(result.successfulGenerations).toBe(0);
+        expect(result.totalDurationSeconds).toBe(0);
+      });
+
+      it('should return default stats if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.getVideoGenerationStats('user123');
+
+        expect(result).toEqual({
+          totalGenerations: 0,
+          successfulGenerations: 0,
+          failedGenerations: 0,
+          totalBytes: 0
+        });
+      });
+    });
+
+    describe('getRecentVideoGenerations', () => {
+      it('should return recent generations for user', async () => {
+        const mockGenerations = [
+          { prompt: 'Video 1', duration: 8 },
+          { prompt: 'Video 2', duration: 6 }
+        ];
+
+        const videoCollection = mongoService.db.collection('video_generations');
+        videoCollection.find = jest.fn().mockReturnValue({
+          sort: jest.fn().mockReturnValue({
+            limit: jest.fn().mockReturnValue({
+              toArray: jest.fn().mockResolvedValue(mockGenerations)
+            })
+          })
+        });
+
+        const result = await mongoService.getRecentVideoGenerations('user123', 10);
+
+        expect(result).toEqual(mockGenerations);
+        expect(videoCollection.find).toHaveBeenCalledWith({ userId: 'user123' });
+      });
+
+      it('should return empty array if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.getRecentVideoGenerations('user123');
+
+        expect(result).toEqual([]);
+      });
+    });
+  });
 });
