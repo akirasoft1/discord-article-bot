@@ -24,6 +24,7 @@ describe('ImagenService', () => {
   let imagenService;
   let mockConfig;
   let mockGeminiModel;
+  let mockMongoService;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -39,7 +40,11 @@ describe('ImagenService', () => {
       }
     };
 
-    imagenService = new ImagenService(mockConfig);
+    mockMongoService = {
+      recordImageGeneration: jest.fn().mockResolvedValue(true)
+    };
+
+    imagenService = new ImagenService(mockConfig, mockMongoService);
 
     // Get reference to the mocked model
     const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -261,6 +266,55 @@ describe('ImagenService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('No image');
+    });
+
+    it('should record successful generation in MongoDB', async () => {
+      const mockImageData = Buffer.from('fake-image-data').toString('base64');
+
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: mockImageData
+                }
+              }]
+            }
+          }]
+        }
+      });
+
+      await imagenService.generateImage('A beautiful sunset', {}, mockUser);
+
+      expect(mockMongoService.recordImageGeneration).toHaveBeenCalledWith(
+        'user123',
+        'TestUser#1234',
+        'A beautiful sunset',
+        '1:1',
+        'gemini-3-pro-image-preview',
+        true,
+        null,
+        expect.any(Number)
+      );
+    });
+
+    it('should record failed generation in MongoDB', async () => {
+      mockGeminiModel.generateContent.mockRejectedValue(new Error('API rate limit exceeded'));
+
+      await imagenService.generateImage('A sunset', {}, mockUser);
+
+      expect(mockMongoService.recordImageGeneration).toHaveBeenCalledWith(
+        'user123',
+        'TestUser#1234',
+        'A sunset',
+        '1:1',
+        'gemini-3-pro-image-preview',
+        false,
+        expect.stringContaining('rate limit'),
+        0
+      );
     });
   });
 
