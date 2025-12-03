@@ -19,6 +19,7 @@ const CommandHandler = require('./commands/CommandHandler');
 const LinkwardenService = require('./services/LinkwardenService');
 const LinkwardenPollingService = require('./services/LinkwardenPollingService');
 const ChatService = require('./services/ChatService');
+const ImagenService = require('./services/ImagenService');
 
 // Import command classes
 const SummarizeCommand = require('./commands/summarization/SummarizeCommand');
@@ -28,6 +29,7 @@ const ChatCommand = require('./commands/chat/ChatCommand');
 const PersonalitiesCommand = require('./commands/chat/PersonalitiesCommand');
 const ResetChatCommand = require('./commands/chat/ResetChatCommand');
 const ResumeChatCommand = require('./commands/chat/ResumeChatCommand');
+const ImagineCommand = require('./commands/image/ImagineCommand');
 
 class DiscordBot {
   constructor() {
@@ -70,6 +72,19 @@ class DiscordBot {
       );
     }
 
+    // Initialize Imagen (image generation) service
+    this.imagenService = null;
+    if (config.imagen.enabled && config.imagen.apiKey) {
+      try {
+        this.imagenService = new ImagenService(config);
+        logger.info('Imagen (image generation) service initialized');
+      } catch (error) {
+        logger.warn(`Failed to initialize Imagen service: ${error.message}`);
+      }
+    } else {
+      logger.info('Imagen (image generation) is disabled or API key not configured');
+    }
+
     // Initialize command handler
     this.commandHandler = new CommandHandler();
     this.registerCommands();
@@ -101,6 +116,12 @@ class DiscordBot {
 
     // Register utility commands
     this.commandHandler.register(new HelpCommand(this.commandHandler));
+
+    // Register image generation commands
+    if (this.imagenService) {
+      this.commandHandler.register(new ImagineCommand(this.imagenService));
+      logger.info('Imagen command registered');
+    }
 
     logger.info(`Registered ${this.commandHandler.getAllCommands().length} commands`);
   }
