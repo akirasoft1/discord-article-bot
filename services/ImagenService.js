@@ -1,9 +1,22 @@
 // services/ImagenService.js
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const axios = require('axios');
 const logger = require('../logger');
 
 // Valid aspect ratios supported by Gemini image generation
 const VALID_ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+
+// Supported image extensions for reference images
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+
+// Map file extensions to MIME types
+const EXTENSION_TO_MIME = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp'
+};
 
 class ImagenService {
   constructor(config, mongoService = null) {
@@ -74,10 +87,105 @@ class ImagenService {
   }
 
   /**
+   * Check if a string is a URL pointing to an image
+   * @param {string} str - String to check
+   * @returns {boolean} True if it's an image URL
+   */
+  isImageUrl(str) {
+    if (!str || typeof str !== 'string') return false;
+
+    try {
+      const url = new URL(str);
+      const pathname = url.pathname.toLowerCase();
+      return IMAGE_EXTENSIONS.some(ext => pathname.endsWith(ext));
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get MIME type from URL extension
+   * @param {string} url - Image URL
+   * @returns {string} MIME type
+   */
+  getMimeTypeFromUrl(url) {
+    try {
+      const pathname = new URL(url).pathname.toLowerCase();
+      for (const [ext, mime] of Object.entries(EXTENSION_TO_MIME)) {
+        if (pathname.endsWith(ext)) {
+          return mime;
+        }
+      }
+    } catch {
+      // Ignore URL parsing errors
+    }
+    return 'image/png'; // Default fallback
+  }
+
+  /**
+   * Fetch an image from a URL and return it as base64
+   * @param {string} imageUrl - URL of the image to fetch
+   * @returns {Promise<{success: boolean, data?: string, mimeType?: string, error?: string}>}
+   */
+  async fetchImageAsBase64(imageUrl) {
+    try {
+      logger.debug(`Fetching reference image from: ${imageUrl}`);
+
+      const response = await axios.get(imageUrl, {
+        responseType: 'arraybuffer',
+        timeout: 30000, // 30 second timeout
+        maxContentLength: 10 * 1024 * 1024, // 10MB max
+        headers: {
+          'User-Agent': 'Discord-Article-Bot/1.0'
+        }
+      });
+
+      // Get MIME type from headers
+      let mimeType = response.headers['content-type'];
+
+      // If content-type is missing or not an image, try to infer from URL
+      if (!mimeType || !mimeType.startsWith('image/')) {
+        // Check if URL has a known image extension
+        if (this.isImageUrl(imageUrl)) {
+          mimeType = this.getMimeTypeFromUrl(imageUrl);
+        }
+      }
+
+      // Validate it's actually an image
+      if (!mimeType || !mimeType.startsWith('image/')) {
+        return {
+          success: false,
+          error: `URL does not point to a valid image (content-type: ${response.headers['content-type'] || 'unknown'})`
+        };
+      }
+
+      // Convert to base64
+      const buffer = Buffer.from(response.data);
+      const base64Data = buffer.toString('base64');
+
+      logger.debug(`Successfully fetched image: ${mimeType}, ${buffer.length} bytes`);
+
+      return {
+        success: true,
+        data: base64Data,
+        mimeType
+      };
+
+    } catch (error) {
+      logger.error(`Failed to fetch reference image: ${error.message}`);
+      return {
+        success: false,
+        error: `Failed to fetch reference image: ${error.message}`
+      };
+    }
+  }
+
+  /**
    * Generate an image from a text prompt
    * @param {string} prompt - Text description of the desired image
    * @param {Object} options - Generation options
    * @param {string} options.aspectRatio - Aspect ratio (default: config default)
+   * @param {string} options.referenceImageUrl - URL of a reference image (optional)
    * @param {Object} user - Discord user object for tracking
    * @returns {Promise<{success: boolean, buffer?: Buffer, mimeType?: string, error?: string, prompt?: string}>}
    */
@@ -97,16 +205,40 @@ class ImagenService {
 
     const trimmedPrompt = prompt.trim();
 
+    // Fetch reference image if provided
+    let referenceImage = null;
+    if (options.referenceImageUrl) {
+      const fetchResult = await this.fetchImageAsBase64(options.referenceImageUrl);
+      if (!fetchResult.success) {
+        return { success: false, error: fetchResult.error };
+      }
+      referenceImage = fetchResult;
+      logger.info(`Using reference image from: ${options.referenceImageUrl}`);
+    }
+
     try {
       logger.info(`Generating image for prompt: "${trimmedPrompt.substring(0, 50)}..." with aspect ratio: ${aspectRatio}`);
 
       // Build the request with aspect ratio hint in the prompt
       const enhancedPrompt = `${trimmedPrompt}\n\nAspect ratio: ${aspectRatio}`;
 
+      // Build parts array - text prompt and optional reference image
+      const parts = [{ text: enhancedPrompt }];
+
+      // Add reference image if provided
+      if (referenceImage) {
+        parts.push({
+          inlineData: {
+            mimeType: referenceImage.mimeType,
+            data: referenceImage.data
+          }
+        });
+      }
+
       const result = await this.model.generateContent({
         contents: [{
           role: 'user',
-          parts: [{ text: enhancedPrompt }]
+          parts
         }]
       });
 

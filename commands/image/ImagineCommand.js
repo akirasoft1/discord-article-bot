@@ -9,11 +9,13 @@ class ImagineCommand extends BaseCommand {
       aliases: ['img', 'generate', 'image'],
       description: 'Generate an image from a text prompt using AI',
       category: 'image',
-      usage: '!imagine <prompt> [--ratio <aspect_ratio>]',
+      usage: '!imagine <prompt> [image_url] [--ratio <aspect_ratio>]',
       examples: [
         '!imagine A sunset over mountains with purple clouds',
         '!imagine A cyberpunk city at night --ratio 16:9',
-        '!img A cute robot making coffee -r 1:1'
+        '!img A cute robot making coffee -r 1:1',
+        '!imagine https://example.com/photo.jpg Make this look like a painting',
+        '!img Turn this into anime style https://example.com/image.png --ratio 16:9'
       ],
       args: [
         { name: 'prompt', required: true, type: 'string' }
@@ -23,13 +25,15 @@ class ImagineCommand extends BaseCommand {
   }
 
   /**
-   * Parse command arguments to extract prompt and options
+   * Parse command arguments to extract prompt, reference image URL, and options
    * @param {string[]} args - Command arguments
-   * @returns {{prompt: string, aspectRatio: string|null}}
+   * @param {Object} imagenService - ImagenService instance for URL detection
+   * @returns {{prompt: string, aspectRatio: string|null, referenceImageUrl: string|null}}
    */
-  parseArgs(args) {
+  parseArgs(args, imagenService = null) {
     let prompt = [];
     let aspectRatio = null;
+    let referenceImageUrl = null;
     let i = 0;
 
     while (i < args.length) {
@@ -43,6 +47,10 @@ class ImagineCommand extends BaseCommand {
         } else {
           i++;
         }
+      } else if (imagenService && imagenService.isImageUrl && imagenService.isImageUrl(arg)) {
+        // This is an image URL - extract it for reference
+        referenceImageUrl = arg;
+        i++;
       } else {
         prompt.push(arg);
         i++;
@@ -51,7 +59,8 @@ class ImagineCommand extends BaseCommand {
 
     return {
       prompt: prompt.join(' '),
-      aspectRatio
+      aspectRatio,
+      referenceImageUrl
     };
   }
 
@@ -90,16 +99,17 @@ class ImagineCommand extends BaseCommand {
     }
 
     // Parse arguments
-    const { prompt, aspectRatio } = this.parseArgs(args);
+    const { prompt, aspectRatio, referenceImageUrl } = this.parseArgs(args, imagenService);
 
     // Show usage if no prompt
     if (!prompt) {
       const validRatios = imagenService.getValidAspectRatios().join(', ');
       return message.reply({
-        content: `**Usage:** \`!imagine <prompt> [--ratio <aspect_ratio>]\`\n\n` +
+        content: `**Usage:** \`!imagine <prompt> [image_url] [--ratio <aspect_ratio>]\`\n\n` +
                  `**Examples:**\n` +
                  `• \`!imagine A sunset over mountains\`\n` +
-                 `• \`!imagine A cyberpunk city --ratio 16:9\`\n\n` +
+                 `• \`!imagine A cyberpunk city --ratio 16:9\`\n` +
+                 `• \`!imagine https://example.com/photo.jpg Make this a painting\`\n\n` +
                  `**Valid aspect ratios:** ${validRatios}`,
         allowedMentions: { repliedUser: false }
       });
@@ -118,11 +128,14 @@ class ImagineCommand extends BaseCommand {
     await message.channel.sendTyping();
 
     // Generate image
-    logger.info(`Image generation requested by ${message.author.tag}: "${prompt.substring(0, 50)}..."`);
+    const logMessage = referenceImageUrl
+      ? `Image generation (with reference) requested by ${message.author.tag}: "${prompt.substring(0, 50)}..."`
+      : `Image generation requested by ${message.author.tag}: "${prompt.substring(0, 50)}..."`;
+    logger.info(logMessage);
 
     const result = await imagenService.generateImage(
       prompt,
-      { aspectRatio },
+      { aspectRatio, referenceImageUrl },
       message.author
     );
 

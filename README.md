@@ -197,6 +197,13 @@ discord-article-bot/
 |---------|---------|-------------|
 | `!imagine <prompt>` | `!img`, `!generate` | Generate an image from a prompt |
 | `!imagine <prompt> --ratio 16:9` | | Generate with custom aspect ratio |
+| `!imagine <image_url> <prompt>` | | Edit/transform a reference image |
+
+**Examples:**
+- `!imagine A sunset over mountains` - Generate from text
+- `!imagine A cyberpunk city --ratio 16:9` - With aspect ratio
+- `!imagine https://example.com/photo.jpg Make this a watercolor painting` - Edit image
+- `!img Turn this into anime style https://example.com/image.png -r 16:9` - Edit with ratio
 
 **Supported Aspect Ratios:** 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
 
