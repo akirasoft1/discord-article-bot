@@ -27,6 +27,25 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - **Conversation Limits**: 100 messages, 150k tokens, or 30 min idle timeout
 - **Resume/Reset**: Continue expired conversations or reset them (admin only)
 
+### Image Generation (Nano Banana)
+
+- **AI Image Generation**: Generate images from text prompts using Google's Gemini API
+- **Reference Image Support**: Use existing images or Discord emojis as reference
+- **Aspect Ratio Support**: 10 supported ratios (1:1, 16:9, 9:16, etc.)
+- **Per-User Cooldowns**: Configurable cooldown to prevent abuse
+- **Usage Tracking**: All generations tracked in MongoDB
+- **Safety Filters**: Relies on Gemini's built-in content safety
+
+### Video Generation (Veo)
+
+- **AI Video Generation**: Generate videos from first and last frame images using Google's Veo 3.1
+- **Frame-to-Frame**: Provide two images and a prompt to generate a smooth transition video
+- **Duration Options**: 4, 6, or 8 second videos
+- **Aspect Ratios**: 16:9 (landscape) or 9:16 (portrait)
+- **Discord Emoji Support**: Use Discord emojis as frame images
+- **Progress Updates**: Real-time status updates during generation
+- **Usage Tracking**: All generations tracked in MongoDB
+
 ### Additional Features
 
 - **Article Follow-up Questions**: Reply to summaries to ask follow-up questions about the article
@@ -41,6 +60,9 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - OpenAI API Key or Ollama instance
 - MongoDB database
 - Linkwarden instance (optional, for article archiving)
+- Google Gemini API Key (optional, for image generation)
+- Google Cloud Project with Vertex AI enabled (optional, for video generation)
+- Google Cloud Storage bucket (optional, for video generation)
 
 ## Installation
 
@@ -96,6 +118,10 @@ discord-article-bot/
 │   │   ├── PersonalitiesCommand.js # !personalities
 │   │   ├── ResetChatCommand.js   # !chatreset (admin)
 │   │   └── ResumeChatCommand.js  # !chatresume
+│   ├── image/
+│   │   └── ImagineCommand.js     # !imagine
+│   ├── video/
+│   │   └── VideogenCommand.js    # !videogen
 │   └── utility/
 │       └── HelpCommand.js        # !help
 ├── personalities/                # Personality definitions
@@ -107,6 +133,8 @@ discord-article-bot/
 ├── services/
 │   ├── SummarizationService.js   # Main summarization logic
 │   ├── ChatService.js            # Personality chat handling
+│   ├── ImagenService.js          # Gemini image generation
+│   ├── VeoService.js             # Vertex AI video generation
 │   ├── LinkwardenService.js      # Linkwarden API
 │   ├── LinkwardenPollingService.js
 │   ├── MongoService.js           # Database operations
@@ -183,6 +211,24 @@ discord-article-bot/
 - `!img Turn this into anime style https://example.com/image.png -r 16:9` - Edit with ratio
 
 **Supported Aspect Ratios:** 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
+
+### Video Generation
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `!videogen <first_url> <last_url> <prompt>` | `!vg`, `!veo`, `!video` | Generate a video from two frame images |
+| `!videogen ... --duration 6` | | Set video duration (4, 6, or 8 seconds) |
+| `!videogen ... --ratio 9:16` | | Set aspect ratio (16:9 or 9:16) |
+
+**Examples:**
+- `!videogen https://example.com/morning.jpg https://example.com/night.jpg Day turning to night` - Basic usage
+- `!vg https://example.com/start.png https://example.com/end.png A flower blooming -d 6` - With duration
+- `!video <:emoji1:123> <:emoji2:456> The emoji transforming -r 9:16` - Using Discord emojis
+
+**Requirements:**
+- Two PNG or JPEG images (first and last frame)
+- A text prompt describing the transition
+- Google Cloud service account with Vertex AI permissions
+- GCS bucket for video output storage
 
 ### Utility
 | Command | Aliases | Description |
