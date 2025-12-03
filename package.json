@@ -1,6 +1,6 @@
 {
   "name": "discord-article-archiver-bot",
-  "version": "0.92.1",
+  "version": "0.95.1",
   "license": "MIT",
   "description": "A Discord bot that integrates with Linkwarden for self-hosted article archiving and uses OpenAI-compatible APIs to automatically generate summaries of archived articles with support for authenticated/paywalled content.",
   "main": "bot.js",
@@ -9,6 +9,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/auto-instrumentations-node": "^0.52.0",
     "@opentelemetry/exporter-trace-otlp-proto": "^0.56.0",
