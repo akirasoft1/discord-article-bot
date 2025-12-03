@@ -20,6 +20,11 @@ jest.mock('@google/generative-ai', () => {
   };
 });
 
+// Mock axios for image fetching
+jest.mock('axios', () => ({
+  get: jest.fn()
+}));
+
 describe('ImagenService', () => {
   let imagenService;
   let mockConfig;
@@ -342,6 +347,169 @@ describe('ImagenService', () => {
 
     it('should return 0 remaining for users not on cooldown', () => {
       expect(imagenService.getRemainingCooldown('newuser456')).toBe(0);
+    });
+  });
+
+  describe('reference image support', () => {
+    const mockUser = {
+      id: 'user123',
+      username: 'TestUser',
+      tag: 'TestUser#1234'
+    };
+    const axios = require('axios');
+
+    beforeEach(() => {
+      axios.get.mockReset();
+    });
+
+    describe('isImageUrl', () => {
+      it('should detect PNG image URLs', () => {
+        expect(imagenService.isImageUrl('https://example.com/image.png')).toBe(true);
+      });
+
+      it('should detect JPG image URLs', () => {
+        expect(imagenService.isImageUrl('https://example.com/photo.jpg')).toBe(true);
+      });
+
+      it('should detect JPEG image URLs', () => {
+        expect(imagenService.isImageUrl('https://example.com/photo.jpeg')).toBe(true);
+      });
+
+      it('should detect GIF image URLs', () => {
+        expect(imagenService.isImageUrl('https://example.com/animation.gif')).toBe(true);
+      });
+
+      it('should detect WEBP image URLs', () => {
+        expect(imagenService.isImageUrl('https://example.com/image.webp')).toBe(true);
+      });
+
+      it('should handle URLs with query parameters', () => {
+        expect(imagenService.isImageUrl('https://example.com/image.png?size=large')).toBe(true);
+      });
+
+      it('should be case insensitive', () => {
+        expect(imagenService.isImageUrl('https://example.com/image.PNG')).toBe(true);
+        expect(imagenService.isImageUrl('https://example.com/image.JPG')).toBe(true);
+      });
+
+      it('should return false for non-image URLs', () => {
+        expect(imagenService.isImageUrl('https://example.com/page.html')).toBe(false);
+        expect(imagenService.isImageUrl('https://example.com/video.mp4')).toBe(false);
+      });
+
+      it('should return false for non-URLs', () => {
+        expect(imagenService.isImageUrl('not a url')).toBe(false);
+        expect(imagenService.isImageUrl('')).toBe(false);
+      });
+    });
+
+    describe('fetchImageAsBase64', () => {
+      it('should fetch and encode image as base64', async () => {
+        const fakeImageBuffer = Buffer.from('fake-image-data');
+        axios.get.mockResolvedValue({
+          data: fakeImageBuffer,
+          headers: { 'content-type': 'image/png' }
+        });
+
+        const result = await imagenService.fetchImageAsBase64('https://example.com/image.png');
+
+        expect(result.success).toBe(true);
+        expect(result.data).toBe(fakeImageBuffer.toString('base64'));
+        expect(result.mimeType).toBe('image/png');
+      });
+
+      it('should infer mime type from URL if not in headers', async () => {
+        const fakeImageBuffer = Buffer.from('fake-image-data');
+        axios.get.mockResolvedValue({
+          data: fakeImageBuffer,
+          headers: {}
+        });
+
+        const result = await imagenService.fetchImageAsBase64('https://example.com/photo.jpg');
+
+        expect(result.success).toBe(true);
+        expect(result.mimeType).toBe('image/jpeg');
+      });
+
+      it('should handle fetch errors', async () => {
+        axios.get.mockRejectedValue(new Error('Network error'));
+
+        const result = await imagenService.fetchImageAsBase64('https://example.com/image.png');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('fetch');
+      });
+
+      it('should reject non-image content types for non-image URLs', async () => {
+        axios.get.mockResolvedValue({
+          data: Buffer.from('not an image'),
+          headers: { 'content-type': 'text/html' }
+        });
+
+        // URL without image extension, so it relies on content-type header
+        const result = await imagenService.fetchImageAsBase64('https://example.com/image');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('does not point to a valid image');
+      });
+    });
+
+    describe('generateImage with reference image', () => {
+      it('should include reference image in API call', async () => {
+        const fakeImageBuffer = Buffer.from('reference-image-data');
+        const mockOutputImage = Buffer.from('generated-image').toString('base64');
+
+        axios.get.mockResolvedValue({
+          data: fakeImageBuffer,
+          headers: { 'content-type': 'image/png' }
+        });
+
+        mockGeminiModel.generateContent.mockResolvedValue({
+          response: {
+            candidates: [{
+              content: {
+                parts: [{
+                  inlineData: {
+                    mimeType: 'image/png',
+                    data: mockOutputImage
+                  }
+                }]
+              }
+            }]
+          }
+        });
+
+        const result = await imagenService.generateImage(
+          'Make this image look like a painting',
+          { referenceImageUrl: 'https://example.com/photo.png' },
+          mockUser
+        );
+
+        expect(result.success).toBe(true);
+        expect(axios.get).toHaveBeenCalledWith(
+          'https://example.com/photo.png',
+          expect.objectContaining({ responseType: 'arraybuffer' })
+        );
+
+        // Verify the API was called with both text and image parts
+        const callArgs = mockGeminiModel.generateContent.mock.calls[0][0];
+        expect(callArgs.contents[0].parts).toHaveLength(2);
+        expect(callArgs.contents[0].parts[0]).toHaveProperty('text');
+        expect(callArgs.contents[0].parts[1]).toHaveProperty('inlineData');
+      });
+
+      it('should return error if reference image fetch fails', async () => {
+        axios.get.mockRejectedValue(new Error('Image not found'));
+
+        const result = await imagenService.generateImage(
+          'Make this image look like a painting',
+          { referenceImageUrl: 'https://example.com/missing.png' },
+          mockUser
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('fetch');
+      });
     });
   });
 });
