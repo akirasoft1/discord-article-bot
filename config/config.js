@@ -178,5 +178,31 @@ module.exports = {
     maxPromptLength: parseInt(process.env.IMAGEN_MAX_PROMPT_LENGTH || '1000', 10),
     // Cooldown between image generations per user (in seconds)
     cooldownSeconds: parseInt(process.env.IMAGEN_COOLDOWN_SECONDS || '30', 10)
+  },
+  // Veo - Google Vertex AI video generation (first & last frame)
+  veo: {
+    // Enable/disable video generation
+    enabled: process.env.VEO_ENABLED === 'true',
+    // Google Cloud project ID for Vertex AI
+    projectId: process.env.GOOGLE_CLOUD_PROJECT || '',
+    // Google Cloud location for Vertex AI
+    location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
+    // Model to use for video generation
+    // Options: 'veo-3.1-fast-generate-001' (fast), 'veo-3.1-generate-001' (quality)
+    model: process.env.VEO_MODEL || 'veo-3.1-fast-generate-001',
+    // GCS bucket for storing generated videos (must be in same region as Vertex AI)
+    gcsBucket: process.env.VEO_GCS_BUCKET || '',
+    // Default video duration in seconds (4, 6, or 8)
+    defaultDuration: parseInt(process.env.VEO_DEFAULT_DURATION || '8', 10),
+    // Default aspect ratio for generated videos (16:9 or 9:16)
+    defaultAspectRatio: process.env.VEO_DEFAULT_ASPECT_RATIO || '16:9',
+    // Maximum prompt length in characters
+    maxPromptLength: parseInt(process.env.VEO_MAX_PROMPT_LENGTH || '1000', 10),
+    // Cooldown between video generations per user (in seconds)
+    cooldownSeconds: parseInt(process.env.VEO_COOLDOWN_SECONDS || '60', 10),
+    // Maximum time to wait for video generation (in seconds)
+    maxWaitSeconds: parseInt(process.env.VEO_MAX_WAIT_SECONDS || '300', 10),
+    // Polling interval for checking operation status (in milliseconds)
+    pollIntervalMs: parseInt(process.env.VEO_POLL_INTERVAL_MS || '5000', 10)
   }
 };
