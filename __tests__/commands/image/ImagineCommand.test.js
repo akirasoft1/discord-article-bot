@@ -32,6 +32,21 @@ describe('ImagineCommand', () => {
       getValidAspectRatios: jest.fn().mockReturnValue(['1:1', '16:9', '9:16']),
       isImageUrl: jest.fn().mockImplementation(url => {
         return url && (url.endsWith('.png') || url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.gif') || url.endsWith('.webp'));
+      }),
+      extractDiscordAssetUrl: jest.fn().mockImplementation(str => {
+        // Match custom emoji format: <:name:id> or <a:name:id>
+        const emojiMatch = str.match(/^<(a)?:(\w+):(\d+)>$/);
+        if (emojiMatch) {
+          const animated = emojiMatch[1] === 'a';
+          const id = emojiMatch[3];
+          const ext = animated ? 'gif' : 'png';
+          return `https://cdn.discordapp.com/emojis/${id}.${ext}?size=256`;
+        }
+        // Match raw snowflake ID
+        if (/^\d{17,19}$/.test(str)) {
+          return `https://cdn.discordapp.com/emojis/${str}.png?size=256`;
+        }
+        return null;
       })
     };
 
@@ -338,6 +353,79 @@ describe('ImagineCommand', () => {
           'Make this a painting',
           expect.objectContaining({
             referenceImageUrl: 'https://example.com/photo.png'
+          }),
+          mockMessage.author
+        );
+      });
+    });
+  });
+
+  describe('Discord emoji support', () => {
+    describe('parseArgs with Discord emoji', () => {
+      it('should extract and convert custom emoji to CDN URL', () => {
+        const result = command.parseArgs(
+          ['<:blobsad:396521773144866826>', 'Make', 'this', 'bigger'],
+          mockImagenService
+        );
+
+        expect(result.prompt).toBe('Make this bigger');
+        expect(result.referenceImageUrl).toBe('https://cdn.discordapp.com/emojis/396521773144866826.png?size=256');
+      });
+
+      it('should extract and convert animated emoji to CDN URL', () => {
+        const result = command.parseArgs(
+          ['<a:ablobpanic:506956736113147909>', 'Turn', 'into', 'a', 'painting'],
+          mockImagenService
+        );
+
+        expect(result.prompt).toBe('Turn into a painting');
+        expect(result.referenceImageUrl).toBe('https://cdn.discordapp.com/emojis/506956736113147909.gif?size=256');
+      });
+
+      it('should extract and convert raw emoji ID to CDN URL', () => {
+        const result = command.parseArgs(
+          ['1222630577900097627', 'Make', 'realistic'],
+          mockImagenService
+        );
+
+        expect(result.prompt).toBe('Make realistic');
+        expect(result.referenceImageUrl).toBe('https://cdn.discordapp.com/emojis/1222630577900097627.png?size=256');
+      });
+
+      it('should handle emoji with aspect ratio option', () => {
+        const result = command.parseArgs(
+          ['<:blobsad:396521773144866826>', 'Enhance', '--ratio', '16:9'],
+          mockImagenService
+        );
+
+        expect(result.prompt).toBe('Enhance');
+        expect(result.referenceImageUrl).toBe('https://cdn.discordapp.com/emojis/396521773144866826.png?size=256');
+        expect(result.aspectRatio).toBe('16:9');
+      });
+
+      it('should not convert standard emoji shortcodes', () => {
+        const result = command.parseArgs(
+          [':smile:', 'Make', 'happy'],
+          mockImagenService
+        );
+
+        expect(result.prompt).toBe(':smile: Make happy');
+        expect(result.referenceImageUrl).toBeNull();
+      });
+    });
+
+    describe('execute with Discord emoji', () => {
+      it('should pass Discord CDN URL for emoji to generateImage', async () => {
+        await command.execute(
+          mockMessage,
+          ['<:blobsad:396521773144866826>', 'Make', 'this', 'a', 'painting'],
+          mockContext
+        );
+
+        expect(mockImagenService.generateImage).toHaveBeenCalledWith(
+          'Make this a painting',
+          expect.objectContaining({
+            referenceImageUrl: 'https://cdn.discordapp.com/emojis/396521773144866826.png?size=256'
           }),
           mockMessage.author
         );

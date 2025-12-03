@@ -350,6 +350,103 @@ describe('ImagenService', () => {
     });
   });
 
+  describe('Discord emoji and sticker support', () => {
+    describe('parseDiscordEmoji', () => {
+      it('should parse standard custom emoji format', () => {
+        const result = imagenService.parseDiscordEmoji('<:blobsad:396521773144866826>');
+
+        expect(result).toEqual({
+          name: 'blobsad',
+          id: '396521773144866826',
+          animated: false
+        });
+      });
+
+      it('should parse animated emoji format', () => {
+        const result = imagenService.parseDiscordEmoji('<a:ablobpanic:506956736113147909>');
+
+        expect(result).toEqual({
+          name: 'ablobpanic',
+          id: '506956736113147909',
+          animated: true
+        });
+      });
+
+      it('should return null for non-emoji strings', () => {
+        expect(imagenService.parseDiscordEmoji('hello')).toBeNull();
+        expect(imagenService.parseDiscordEmoji(':smile:')).toBeNull();
+        expect(imagenService.parseDiscordEmoji('1222630577900097627')).toBeNull();
+      });
+
+      it('should return null for empty or invalid input', () => {
+        expect(imagenService.parseDiscordEmoji('')).toBeNull();
+        expect(imagenService.parseDiscordEmoji(null)).toBeNull();
+        expect(imagenService.parseDiscordEmoji(undefined)).toBeNull();
+      });
+    });
+
+    describe('isDiscordEmojiId', () => {
+      it('should detect valid emoji IDs (snowflake format)', () => {
+        expect(imagenService.isDiscordEmojiId('1222630577900097627')).toBe(true);
+        expect(imagenService.isDiscordEmojiId('396521773144866826')).toBe(true);
+      });
+
+      it('should reject invalid IDs', () => {
+        expect(imagenService.isDiscordEmojiId('123')).toBe(false);
+        expect(imagenService.isDiscordEmojiId('abc123')).toBe(false);
+        expect(imagenService.isDiscordEmojiId('')).toBe(false);
+        expect(imagenService.isDiscordEmojiId('hello')).toBe(false);
+      });
+    });
+
+    describe('getDiscordEmojiUrl', () => {
+      it('should generate PNG URL for static emoji', () => {
+        const url = imagenService.getDiscordEmojiUrl('1222630577900097627', false);
+
+        expect(url).toBe('https://cdn.discordapp.com/emojis/1222630577900097627.png?size=256');
+      });
+
+      it('should generate GIF URL for animated emoji', () => {
+        const url = imagenService.getDiscordEmojiUrl('506956736113147909', true);
+
+        expect(url).toBe('https://cdn.discordapp.com/emojis/506956736113147909.gif?size=256');
+      });
+    });
+
+    describe('getDiscordStickerUrl', () => {
+      it('should generate PNG URL for sticker', () => {
+        const url = imagenService.getDiscordStickerUrl('1234567890123456789');
+
+        expect(url).toBe('https://cdn.discordapp.com/stickers/1234567890123456789.png?size=320');
+      });
+    });
+
+    describe('extractDiscordAssetUrl', () => {
+      it('should extract URL from custom emoji format', () => {
+        const result = imagenService.extractDiscordAssetUrl('<:blobsad:396521773144866826>');
+
+        expect(result).toBe('https://cdn.discordapp.com/emojis/396521773144866826.png?size=256');
+      });
+
+      it('should extract URL from animated emoji format', () => {
+        const result = imagenService.extractDiscordAssetUrl('<a:ablobpanic:506956736113147909>');
+
+        expect(result).toBe('https://cdn.discordapp.com/emojis/506956736113147909.gif?size=256');
+      });
+
+      it('should extract URL from raw emoji ID', () => {
+        const result = imagenService.extractDiscordAssetUrl('1222630577900097627');
+
+        expect(result).toBe('https://cdn.discordapp.com/emojis/1222630577900097627.png?size=256');
+      });
+
+      it('should return null for non-Discord assets', () => {
+        expect(imagenService.extractDiscordAssetUrl('hello')).toBeNull();
+        expect(imagenService.extractDiscordAssetUrl(':smile:')).toBeNull();
+      });
+    });
+  });
+
   describe('reference image support', () => {
     const mockUser = {
       id: 'user123',
