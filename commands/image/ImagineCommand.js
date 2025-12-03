@@ -51,6 +51,16 @@ class ImagineCommand extends BaseCommand {
         // This is an image URL - extract it for reference
         referenceImageUrl = arg;
         i++;
+      } else if (imagenService && imagenService.extractDiscordAssetUrl) {
+        // Try to extract Discord emoji/sticker URL
+        const discordUrl = imagenService.extractDiscordAssetUrl(arg);
+        if (discordUrl) {
+          referenceImageUrl = discordUrl;
+          i++;
+        } else {
+          prompt.push(arg);
+          i++;
+        }
       } else {
         prompt.push(arg);
         i++;
