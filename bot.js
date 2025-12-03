@@ -20,6 +20,7 @@ const LinkwardenService = require('./services/LinkwardenService');
 const LinkwardenPollingService = require('./services/LinkwardenPollingService');
 const ChatService = require('./services/ChatService');
 const ImagenService = require('./services/ImagenService');
+const VeoService = require('./services/VeoService');
 
 // Import command classes
 const SummarizeCommand = require('./commands/summarization/SummarizeCommand');
@@ -30,6 +31,7 @@ const PersonalitiesCommand = require('./commands/chat/PersonalitiesCommand');
 const ResetChatCommand = require('./commands/chat/ResetChatCommand');
 const ResumeChatCommand = require('./commands/chat/ResumeChatCommand');
 const ImagineCommand = require('./commands/image/ImagineCommand');
+const VideogenCommand = require('./commands/video/VideogenCommand');
 
 class DiscordBot {
   constructor() {
@@ -85,6 +87,19 @@ class DiscordBot {
       logger.info('Imagen (image generation) is disabled or API key not configured');
     }
 
+    // Initialize Veo (video generation) service
+    this.veoService = null;
+    if (config.veo.enabled && config.veo.projectId && config.veo.gcsBucket) {
+      try {
+        this.veoService = new VeoService(config, this.summarizationService.mongoService);
+        logger.info('Veo (video generation) service initialized');
+      } catch (error) {
+        logger.warn(`Failed to initialize Veo service: ${error.message}`);
+      }
+    } else {
+      logger.info('Veo (video generation) is disabled or not fully configured');
+    }
+
     // Initialize command handler
     this.commandHandler = new CommandHandler();
     this.registerCommands();
@@ -121,6 +136,12 @@ class DiscordBot {
     if (this.imagenService) {
       this.commandHandler.register(new ImagineCommand(this.imagenService));
       logger.info('Imagen command registered');
+    }
+
+    // Register video generation commands
+    if (this.veoService) {
+      this.commandHandler.register(new VideogenCommand(this.veoService));
+      logger.info('Veo command registered');
     }
 
     logger.info(`Registered ${this.commandHandler.getAllCommands().length} commands`);
