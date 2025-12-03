@@ -31,16 +31,20 @@ describe('ImagineCommand', () => {
       getRemainingCooldown: jest.fn().mockReturnValue(0),
       getValidAspectRatios: jest.fn().mockReturnValue(['1:1', '16:9', '9:16']),
       isImageUrl: jest.fn().mockImplementation(url => {
-        return url && (url.endsWith('.png') || url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.gif') || url.endsWith('.webp'));
+        // GIF not supported by Gemini
+        return url && (url.endsWith('.png') || url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.webp'));
       }),
       extractDiscordAssetUrl: jest.fn().mockImplementation(str => {
         // Match custom emoji format: <:name:id> or <a:name:id>
         const emojiMatch = str.match(/^<(a)?:(\w+):(\d+)>$/);
         if (emojiMatch) {
           const animated = emojiMatch[1] === 'a';
+          // Skip animated emojis - GIF not supported
+          if (animated) {
+            return null;
+          }
           const id = emojiMatch[3];
-          const ext = animated ? 'gif' : 'png';
-          return `https://cdn.discordapp.com/emojis/${id}.${ext}?size=256`;
+          return `https://cdn.discordapp.com/emojis/${id}.png?size=256`;
         }
         // Match raw snowflake ID
         if (/^\d{17,19}$/.test(str)) {
@@ -372,14 +376,14 @@ describe('ImagineCommand', () => {
         expect(result.referenceImageUrl).toBe('https://cdn.discordapp.com/emojis/396521773144866826.png?size=256');
       });
 
-      it('should extract and convert animated emoji to CDN URL', () => {
+      it('should ignore animated emoji (GIF not supported) and include in prompt', () => {
         const result = command.parseArgs(
           ['<a:ablobpanic:506956736113147909>', 'Turn', 'into', 'a', 'painting'],
           mockImagenService
         );
 
-        expect(result.prompt).toBe('Turn into a painting');
-        expect(result.referenceImageUrl).toBe('https://cdn.discordapp.com/emojis/506956736113147909.gif?size=256');
+        expect(result.prompt).toBe('<a:ablobpanic:506956736113147909> Turn into a painting');
+        expect(result.referenceImageUrl).toBeNull();
       });
 
       it('should extract and convert raw emoji ID to CDN URL', () => {

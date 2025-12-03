@@ -83,8 +83,7 @@ class ImagineCommand extends BaseCommand {
     const extensions = {
       'image/png': 'png',
       'image/jpeg': 'jpg',
-      'image/webp': 'webp',
-      'image/gif': 'gif'
+      'image/webp': 'webp'
     };
     return extensions[mimeType] || 'png';
   }
