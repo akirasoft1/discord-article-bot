@@ -27,6 +27,14 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - **Conversation Limits**: 100 messages, 150k tokens, or 30 min idle timeout
 - **Resume/Reset**: Continue expired conversations or reset them (admin only)
 
+### Image Generation (Nano Banana)
+
+- **AI Image Generation**: Generate images from text prompts using Google's Gemini API
+- **Aspect Ratio Support**: 10 supported ratios (1:1, 16:9, 9:16, etc.)
+- **Per-User Cooldowns**: Configurable cooldown to prevent abuse
+- **Usage Tracking**: All generations tracked in MongoDB
+- **Safety Filters**: Relies on Gemini's built-in content safety
+
 ### Additional Features
 
 - **Article Follow-up Questions**: Reply to summaries to ask follow-up questions about the article
@@ -41,6 +49,7 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - OpenAI API Key or Ollama instance
 - MongoDB database
 - Linkwarden instance (optional, for article archiving)
+- Google Gemini API Key (optional, for image generation)
 
 ## Installation
 
@@ -96,6 +105,8 @@ discord-article-bot/
 │   │   ├── PersonalitiesCommand.js # !personalities
 │   │   ├── ResetChatCommand.js   # !chatreset (admin)
 │   │   └── ResumeChatCommand.js  # !chatresume
+│   ├── image/
+│   │   └── ImagineCommand.js     # !imagine
 │   └── utility/
 │       └── HelpCommand.js        # !help
 ├── personalities/                # Personality definitions
@@ -107,6 +118,7 @@ discord-article-bot/
 ├── services/
 │   ├── SummarizationService.js   # Main summarization logic
 │   ├── ChatService.js            # Personality chat handling
+│   ├── ImagenService.js          # Gemini image generation
 │   ├── LinkwardenService.js      # Linkwarden API
 │   ├── LinkwardenPollingService.js
 │   ├── MongoService.js           # Database operations
@@ -153,6 +165,17 @@ discord-article-bot/
 | `LINKWARDEN_DISCORD_CHANNEL_ID` | `` | Channel for posts |
 | `LINKWARDEN_POLL_INTERVAL_MS` | `60000` | Poll interval |
 
+### Image Generation Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_API_KEY` | `` | Google Gemini API key |
+| `IMAGEN_ENABLED` | `false` | Enable image generation |
+| `IMAGEN_MODEL` | `gemini-3-pro-image-preview` | Gemini model for image generation |
+| `IMAGEN_DEFAULT_ASPECT_RATIO` | `1:1` | Default aspect ratio |
+| `IMAGEN_MAX_PROMPT_LENGTH` | `1000` | Maximum prompt length in characters |
+| `IMAGEN_COOLDOWN_SECONDS` | `30` | Cooldown between generations per user |
+
 ## Commands
 
 ### Summarization
@@ -168,6 +191,14 @@ discord-article-bot/
 | `!personalities` | `!chars` | List available personalities |
 | `!chatresume <personality> <message>` | `!resumechat` | Resume an expired conversation |
 | `!chatreset <personality>` | `!resetchat`, `!cr` | Reset a conversation (admin only) |
+
+### Image Generation
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `!imagine <prompt>` | `!img`, `!generate` | Generate an image from a prompt |
+| `!imagine <prompt> --ratio 16:9` | | Generate with custom aspect ratio |
+
+**Supported Aspect Ratios:** 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
 
 ### Utility
 | Command | Aliases | Description |
