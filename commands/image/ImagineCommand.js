@@ -160,7 +160,6 @@ class ImagineCommand extends BaseCommand {
     const filename = this.generateFilename(extension);
 
     await message.reply({
-      content: `**Prompt:** ${result.prompt}`,
       files: [{
         attachment: result.buffer,
         name: filename
