@@ -18,6 +18,18 @@ const EXTENSION_TO_MIME = {
   '.webp': 'image/webp'
 };
 
+// Discord CDN base URLs
+const DISCORD_EMOJI_CDN = 'https://cdn.discordapp.com/emojis';
+const DISCORD_STICKER_CDN = 'https://cdn.discordapp.com/stickers';
+
+// Regex patterns for Discord custom emojis
+// Standard emoji: <:name:id>
+// Animated emoji: <a:name:id>
+const DISCORD_EMOJI_REGEX = /^<(a)?:(\w+):(\d+)>$/;
+
+// Discord snowflake IDs are 17-19 digit numbers
+const DISCORD_SNOWFLAKE_REGEX = /^\d{17,19}$/;
+
 class ImagenService {
   constructor(config, mongoService = null) {
     this.config = config;
@@ -85,6 +97,80 @@ class ImagenService {
 
     return { valid: true };
   }
+
+  // ==================== DISCORD EMOJI/STICKER SUPPORT ====================
+
+  /**
+   * Parse a Discord custom emoji string
+   * @param {string} str - String to parse (e.g., "<:blobsad:396521773144866826>")
+   * @returns {{name: string, id: string, animated: boolean}|null} Parsed emoji info or null
+   */
+  parseDiscordEmoji(str) {
+    if (!str || typeof str !== 'string') return null;
+
+    const match = str.match(DISCORD_EMOJI_REGEX);
+    if (!match) return null;
+
+    return {
+      name: match[2],
+      id: match[3],
+      animated: match[1] === 'a'
+    };
+  }
+
+  /**
+   * Check if a string is a valid Discord snowflake ID (emoji/sticker ID)
+   * @param {string} str - String to check
+   * @returns {boolean} True if it's a valid snowflake ID
+   */
+  isDiscordEmojiId(str) {
+    if (!str || typeof str !== 'string') return false;
+    return DISCORD_SNOWFLAKE_REGEX.test(str);
+  }
+
+  /**
+   * Generate Discord CDN URL for an emoji
+   * @param {string} emojiId - Discord emoji ID
+   * @param {boolean} animated - Whether the emoji is animated
+   * @returns {string} CDN URL for the emoji
+   */
+  getDiscordEmojiUrl(emojiId, animated = false) {
+    const ext = animated ? 'gif' : 'png';
+    return `${DISCORD_EMOJI_CDN}/${emojiId}.${ext}?size=256`;
+  }
+
+  /**
+   * Generate Discord CDN URL for a sticker
+   * @param {string} stickerId - Discord sticker ID
+   * @returns {string} CDN URL for the sticker
+   */
+  getDiscordStickerUrl(stickerId) {
+    return `${DISCORD_STICKER_CDN}/${stickerId}.png?size=320`;
+  }
+
+  /**
+   * Extract Discord CDN URL from emoji format or raw ID
+   * @param {string} str - Emoji string (<:name:id>) or raw ID
+   * @returns {string|null} CDN URL or null if not a Discord asset
+   */
+  extractDiscordAssetUrl(str) {
+    if (!str || typeof str !== 'string') return null;
+
+    // Try parsing as custom emoji format first
+    const emoji = this.parseDiscordEmoji(str);
+    if (emoji) {
+      return this.getDiscordEmojiUrl(emoji.id, emoji.animated);
+    }
+
+    // Try as raw snowflake ID (assume it's an emoji, PNG format)
+    if (this.isDiscordEmojiId(str)) {
+      return this.getDiscordEmojiUrl(str, false);
+    }
+
+    return null;
+  }
+
+  // ==================== IMAGE URL SUPPORT ====================
 
   /**
    * Check if a string is a URL pointing to an image
