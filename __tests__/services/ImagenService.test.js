@@ -428,10 +428,10 @@ describe('ImagenService', () => {
         expect(result).toBe('https://cdn.discordapp.com/emojis/396521773144866826.png?size=256');
       });
 
-      it('should extract URL from animated emoji format', () => {
+      it('should return null for animated emoji format (GIF not supported)', () => {
         const result = imagenService.extractDiscordAssetUrl('<a:ablobpanic:506956736113147909>');
 
-        expect(result).toBe('https://cdn.discordapp.com/emojis/506956736113147909.gif?size=256');
+        expect(result).toBeNull();
       });
 
       it('should extract URL from raw emoji ID', () => {
@@ -472,8 +472,8 @@ describe('ImagenService', () => {
         expect(imagenService.isImageUrl('https://example.com/photo.jpeg')).toBe(true);
       });
 
-      it('should detect GIF image URLs', () => {
-        expect(imagenService.isImageUrl('https://example.com/animation.gif')).toBe(true);
+      it('should reject GIF image URLs (not supported)', () => {
+        expect(imagenService.isImageUrl('https://example.com/animation.gif')).toBe(false);
       });
 
       it('should detect WEBP image URLs', () => {

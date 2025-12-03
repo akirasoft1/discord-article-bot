@@ -6,15 +6,14 @@ const logger = require('../logger');
 // Valid aspect ratios supported by Gemini image generation
 const VALID_ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
 
-// Supported image extensions for reference images
-const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+// Supported image extensions for reference images (GIF not supported by Gemini)
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
 
 // Map file extensions to MIME types
 const EXTENSION_TO_MIME = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
   '.webp': 'image/webp'
 };
 
@@ -151,7 +150,7 @@ class ImagenService {
   /**
    * Extract Discord CDN URL from emoji format or raw ID
    * @param {string} str - Emoji string (<:name:id>) or raw ID
-   * @returns {string|null} CDN URL or null if not a Discord asset
+   * @returns {string|null} CDN URL or null if not a Discord asset or if animated (GIF not supported)
    */
   extractDiscordAssetUrl(str) {
     if (!str || typeof str !== 'string') return null;
@@ -159,7 +158,11 @@ class ImagenService {
     // Try parsing as custom emoji format first
     const emoji = this.parseDiscordEmoji(str);
     if (emoji) {
-      return this.getDiscordEmojiUrl(emoji.id, emoji.animated);
+      // Skip animated emojis - GIF MIME type not supported by Gemini
+      if (emoji.animated) {
+        return null;
+      }
+      return this.getDiscordEmojiUrl(emoji.id, false);
     }
 
     // Try as raw snowflake ID (assume it's an emoji, PNG format)
