@@ -61,3 +61,10 @@ data:
   GOOGLE_GENAI_USE_VERTEXAI: "false"
   VERTEXAI_PROJECT: ""
   VERTEXAI_LOCATION: "us-central1"
+
+  # Imagen (Image Generation via Gemini)
+  IMAGEN_ENABLED: "true"
+  IMAGEN_MODEL: "gemini-3-pro-image-preview"
+  IMAGEN_DEFAULT_ASPECT_RATIO: "1:1"
+  IMAGEN_MAX_PROMPT_LENGTH: "1000"
+  IMAGEN_COOLDOWN_SECONDS: "30"
