@@ -25,3 +25,10 @@ Thumbs.db
 
 #overlays/
 k8s/overlays/deployed/
+*_todos.md
+service_account_key.json
+service.account.key.json
+*.key.json
+
+# Conversation logs
+Dec012025.txt
