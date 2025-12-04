@@ -388,6 +388,62 @@ describe('VeoService', () => {
     });
   });
 
+  describe('normalizeDiscordImageUrl', () => {
+    it('should convert format=webp to format=png for Discord CDN URLs', () => {
+      const webpUrl = 'https://media.discordapp.net/attachments/684882379516805202/1445978411569905736/IMG_4684.jpg?ex=69324fd6&is=6930fe56&hm=fd215fceacb1b56cdb9072fd156529a5731faabe72361f68596d81788c8a9ec5&=&format=webp&width=1760&height=1320';
+      const result = veoService.normalizeDiscordImageUrl(webpUrl);
+
+      expect(result).toContain('format=png');
+      expect(result).not.toContain('format=webp');
+      // Preserve other parameters
+      expect(result).toContain('width=1760');
+      expect(result).toContain('height=1320');
+    });
+
+    it('should handle Discord CDN URLs without format parameter', () => {
+      const url = 'https://media.discordapp.net/attachments/123/456/image.png?width=100';
+      const result = veoService.normalizeDiscordImageUrl(url);
+
+      // Should remain unchanged or add format=png
+      expect(result).toBe(url);
+    });
+
+    it('should not modify non-Discord URLs', () => {
+      const url = 'https://example.com/image.png?format=webp';
+      const result = veoService.normalizeDiscordImageUrl(url);
+
+      expect(result).toBe(url);
+    });
+
+    it('should handle cdn.discordapp.com URLs as well', () => {
+      const webpUrl = 'https://cdn.discordapp.com/attachments/123/456/image.png?format=webp';
+      const result = veoService.normalizeDiscordImageUrl(webpUrl);
+
+      expect(result).toContain('format=png');
+      expect(result).not.toContain('format=webp');
+    });
+
+    it('should handle URLs with format=webp in different positions', () => {
+      const url = 'https://media.discordapp.net/attachments/123/456/image.jpg?format=webp&size=large';
+      const result = veoService.normalizeDiscordImageUrl(url);
+
+      expect(result).toContain('format=png');
+      expect(result).toContain('size=large');
+    });
+
+    it('should return unchanged URL for null/undefined', () => {
+      expect(veoService.normalizeDiscordImageUrl(null)).toBeNull();
+      expect(veoService.normalizeDiscordImageUrl(undefined)).toBeUndefined();
+    });
+
+    it('should handle invalid URL strings gracefully', () => {
+      const invalidUrl = 'not-a-valid-url';
+      const result = veoService.normalizeDiscordImageUrl(invalidUrl);
+
+      expect(result).toBe(invalidUrl);
+    });
+  });
+
   describe('generateVideo (first and last frame mode)', () => {
     it('should return error for invalid prompt', async () => {
       const result = await veoService.generateVideo(
