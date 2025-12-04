@@ -23,6 +23,9 @@ const EXTENSION_TO_MIME = {
 // Discord CDN base URL
 const DISCORD_EMOJI_CDN = 'https://cdn.discordapp.com/emojis';
 
+// Discord media CDN hosts (for uploaded attachments)
+const DISCORD_MEDIA_HOSTS = ['media.discordapp.net', 'cdn.discordapp.com'];
+
 // Regex patterns for Discord custom emojis
 const DISCORD_EMOJI_REGEX = /^<(a)?:(\w+):(\d+)>$/;
 const DISCORD_SNOWFLAKE_REGEX = /^\d{17,19}$/;
@@ -179,9 +182,11 @@ class VeoService {
    */
   async fetchImageAsBase64(imageUrl) {
     try {
-      logger.debug(`Fetching frame image from: ${imageUrl}`);
+      // Normalize Discord URLs to use PNG format instead of WebP
+      const normalizedUrl = this.normalizeDiscordImageUrl(imageUrl);
+      logger.debug(`Fetching frame image from: ${normalizedUrl}`);
 
-      const response = await axios.get(imageUrl, {
+      const response = await axios.get(normalizedUrl, {
         responseType: 'arraybuffer',
         timeout: 30000,
         maxContentLength: 10 * 1024 * 1024, // 10MB max
@@ -194,8 +199,8 @@ class VeoService {
       let mimeType = response.headers['content-type'];
 
       if (!mimeType || !mimeType.startsWith('image/')) {
-        if (this.isImageUrl(imageUrl)) {
-          mimeType = this.getMimeTypeFromUrl(imageUrl);
+        if (this.isImageUrl(normalizedUrl)) {
+          mimeType = this.getMimeTypeFromUrl(normalizedUrl);
         }
       }
 
@@ -290,6 +295,43 @@ class VeoService {
     }
 
     return null;
+  }
+
+  // ==================== DISCORD URL NORMALIZATION ====================
+
+  /**
+   * Normalize Discord CDN URLs to use PNG format instead of WebP
+   * Discord's CDN returns WebP by default which is not supported by Veo
+   * @param {string} url - Image URL to normalize
+   * @returns {string} Normalized URL with format=png if applicable
+   */
+  normalizeDiscordImageUrl(url) {
+    // Return unchanged for null/undefined
+    if (!url) return url;
+
+    try {
+      const parsedUrl = new URL(url);
+
+      // Check if this is a Discord media URL
+      if (!DISCORD_MEDIA_HOSTS.includes(parsedUrl.hostname)) {
+        return url;
+      }
+
+      // Check if URL has format=webp parameter
+      if (parsedUrl.searchParams.get('format') === 'webp') {
+        parsedUrl.searchParams.set('format', 'png');
+        logger.debug(`Converted Discord URL format from webp to png: ${url.substring(0, 80)}...`);
+        return parsedUrl.toString();
+      }
+
+      // No conversion needed
+      return url;
+
+    } catch (error) {
+      // Invalid URL, return unchanged
+      logger.debug(`Could not parse URL for normalization: ${url}`);
+      return url;
+    }
   }
 
   // ==================== COOLDOWN MANAGEMENT ====================
