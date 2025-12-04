@@ -29,3 +29,6 @@ k8s/overlays/deployed/
 service_account_key.json
 service.account.key.json
 *.key.json
+
+# Conversation logs
+Dec012025.txt
