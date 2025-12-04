@@ -219,8 +219,8 @@ describe('VideogenCommand', () => {
   });
 
   describe('execute', () => {
-    it('should show usage if no images provided', async () => {
-      await command.execute(mockMessage, ['just', 'a', 'prompt'], mockContext);
+    it('should show usage if no args provided', async () => {
+      await command.execute(mockMessage, [], mockContext);
 
       expect(mockMessage.reply).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -254,6 +254,24 @@ describe('VideogenCommand', () => {
         expect.objectContaining({
           content: expect.stringContaining('Usage:')
         })
+      );
+    });
+
+    it('should accept text-only prompt (no images)', async () => {
+      await command.execute(
+        mockMessage,
+        ['just', 'a', 'prompt'],
+        mockContext
+      );
+
+      // Should generate video, not show usage
+      expect(mockVeoService.generateVideo).toHaveBeenCalledWith(
+        'just a prompt',
+        null,
+        null,
+        expect.any(Object),
+        mockMessage.author,
+        expect.any(Function)
       );
     });
 
@@ -435,6 +453,72 @@ describe('VideogenCommand', () => {
       const filename = command.generateFilename();
 
       expect(filename).toMatch(/^videogen_\d+\.mp4$/);
+    });
+  });
+
+  describe('text-only mode', () => {
+    it('should generate video with text-only prompt (no images)', async () => {
+      await command.execute(
+        mockMessage,
+        ['A', 'sunset', 'over', 'the', 'ocean'],
+        mockContext
+      );
+
+      expect(mockVeoService.generateVideo).toHaveBeenCalledWith(
+        'A sunset over the ocean',
+        null, // No first frame
+        null, // No last frame
+        expect.objectContaining({
+          duration: null,
+          aspectRatio: null
+        }),
+        mockMessage.author,
+        expect.any(Function)
+      );
+    });
+
+    it('should generate video with text-only prompt and options', async () => {
+      await command.execute(
+        mockMessage,
+        ['A', 'bird', 'flying', '-d', '6', '-r', '9:16'],
+        mockContext
+      );
+
+      expect(mockVeoService.generateVideo).toHaveBeenCalledWith(
+        'A bird flying',
+        null,
+        null,
+        expect.objectContaining({
+          duration: '6',
+          aspectRatio: '9:16'
+        }),
+        mockMessage.author,
+        expect.any(Function)
+      );
+    });
+
+    it('should parse prompt correctly when no images are in args', () => {
+      const result = command.parseArgs(
+        ['A', 'beautiful', 'sunset', 'over', 'mountains'],
+        mockVeoService
+      );
+
+      expect(result.firstFrameUrl).toBeNull();
+      expect(result.lastFrameUrl).toBeNull();
+      expect(result.prompt).toBe('A beautiful sunset over mountains');
+    });
+
+    it('should parse text-only prompt with options', () => {
+      const result = command.parseArgs(
+        ['Ocean', 'waves', 'crashing', '--duration', '8', '--ratio', '16:9'],
+        mockVeoService
+      );
+
+      expect(result.firstFrameUrl).toBeNull();
+      expect(result.lastFrameUrl).toBeNull();
+      expect(result.prompt).toBe('Ocean waves crashing');
+      expect(result.duration).toBe('8');
+      expect(result.aspectRatio).toBe('16:9');
     });
   });
 });

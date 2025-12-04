@@ -7,17 +7,18 @@ class VideogenCommand extends BaseCommand {
     super({
       name: 'videogen',
       aliases: ['vg', 'veo', 'video'],
-      description: 'Generate a video from one or two images using AI',
+      description: 'Generate a video from text, one image, or two images using AI',
       category: 'video',
-      usage: '!videogen <image_url> [last_image_url] <prompt> [--duration <4|6|8>] [--ratio <16:9|9:16>]',
+      usage: '!videogen [image_url] [last_image_url] <prompt> [--duration <4|6|8>] [--ratio <16:9|9:16>]',
       examples: [
+        '!videogen A sunset over the ocean with waves crashing',
         '!videogen https://example.com/photo.jpg A camera panning across the scene',
         '!videogen https://example.com/morning.jpg https://example.com/night.jpg Day turning to night',
-        '!vg https://example.com/start.png https://example.com/end.png A flower blooming --duration 6',
+        '!vg A bird flying through clouds --duration 6',
         '!video <:emoji:123> The emoji spinning -r 9:16'
       ],
       args: [
-        { name: 'image_url', required: true, type: 'string' },
+        { name: 'image_url', required: false, type: 'string' },
         { name: 'last_image_url', required: false, type: 'string' },
         { name: 'prompt', required: true, type: 'string' }
       ]
@@ -105,12 +106,15 @@ class VideogenCommand extends BaseCommand {
     // Parse arguments
     const { firstFrameUrl, lastFrameUrl, prompt, duration, aspectRatio } = this.parseArgs(args, veoService);
 
-    // Show usage if missing required inputs (need at least one image and a prompt)
-    if (!firstFrameUrl || !prompt) {
+    // Show usage if missing prompt (prompt is always required)
+    if (!prompt) {
       const validRatios = veoService.getValidAspectRatios().join(', ');
       const validDurations = veoService.getValidDurations().join(', ');
       return message.reply({
-        content: `**Usage:** \`!videogen <image_url> [last_image_url] <prompt> [options]\`\n\n` +
+        content: `**Usage:** \`!videogen [image_url] [last_image_url] <prompt> [options]\`\n\n` +
+                 `**Text-Only Mode** (text-to-video):\n` +
+                 `• \`!videogen A sunset over the ocean with waves crashing\`\n` +
+                 `• \`!vg A bird flying through clouds --duration 6\`\n\n` +
                  `**Single Image Mode** (image-to-video):\n` +
                  `• \`!videogen https://example.com/photo.png A camera panning across the scene\`\n` +
                  `• \`!vg <:emoji:123> The emoji spinning --duration 4\`\n\n` +
@@ -120,7 +124,7 @@ class VideogenCommand extends BaseCommand {
                  `**Options:**\n` +
                  `• \`--duration\` / \`-d\`: Video duration (${validDurations} seconds)\n` +
                  `• \`--ratio\` / \`-r\`: Aspect ratio (${validRatios})\n\n` +
-                 `**Note:** Images must be PNG or JPEG format.`,
+                 `**Note:** Images (if provided) must be PNG or JPEG format.`,
         allowedMentions: { repliedUser: false }
       });
     }

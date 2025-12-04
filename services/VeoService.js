@@ -422,6 +422,176 @@ class VeoService {
   // ==================== VIDEO GENERATION ====================
 
   /**
+   * Generate a video from a text prompt only (text-to-video)
+   * @param {string} prompt - Text description of the video
+   * @param {Object} options - Generation options
+   * @param {string} options.aspectRatio - Aspect ratio (16:9 or 9:16)
+   * @param {number} options.duration - Duration in seconds (4, 6, or 8)
+   * @param {Object} user - Discord user object for tracking
+   * @param {Function} onProgress - Optional callback for progress updates
+   * @returns {Promise<{success: boolean, buffer?: Buffer, error?: string, prompt?: string}>}
+   */
+  async generateVideoFromText(prompt, options = {}, user = null, onProgress = null) {
+    // Validate prompt
+    const promptValidation = this.validatePrompt(prompt);
+    if (!promptValidation.valid) {
+      return { success: false, error: promptValidation.error };
+    }
+
+    // Validate and set aspect ratio
+    const aspectRatio = options.aspectRatio || this.config.veo.defaultAspectRatio;
+    const ratioValidation = this.validateAspectRatio(aspectRatio);
+    if (!ratioValidation.valid) {
+      return { success: false, error: ratioValidation.error };
+    }
+
+    // Validate and set duration
+    const duration = options.duration || this.config.veo.defaultDuration;
+    const durationValidation = this.validateDuration(duration);
+    if (!durationValidation.valid) {
+      return { success: false, error: durationValidation.error };
+    }
+
+    const trimmedPrompt = prompt.trim();
+
+    try {
+      logger.info(`Generating video from text for prompt: "${trimmedPrompt.substring(0, 50)}..." with duration: ${duration}s, ratio: ${aspectRatio}`);
+
+      if (onProgress) onProgress('Starting video generation...');
+
+      // Build the output GCS URI
+      const outputUri = this.buildGcsOutputUri();
+
+      // Make the API request to Vertex AI (text-only mode - no image)
+      const endpoint = `https://${this.config.veo.location}-aiplatform.googleapis.com/v1/projects/${this.config.veo.projectId}/locations/${this.config.veo.location}/publishers/google/models/${this.config.veo.model}:predictLongRunning`;
+
+      const requestBody = {
+        instances: [{
+          prompt: trimmedPrompt
+        }],
+        parameters: {
+          storageUri: outputUri,
+          sampleCount: 1,
+          aspectRatio: aspectRatio,
+          durationSeconds: parseInt(duration, 10)
+        }
+      };
+
+      // Get access token for authentication
+      const { GoogleAuth } = require('google-auth-library');
+      const auth = new GoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/cloud-platform']
+      });
+      const client = await auth.getClient();
+      const accessToken = await client.getAccessToken();
+
+      // Start the long-running operation
+      const startResponse = await axios.post(endpoint, requestBody, {
+        headers: {
+          'Authorization': `Bearer ${accessToken.token}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 60000
+      });
+
+      const operationName = startResponse.data.name;
+      logger.info(`Video generation operation started: ${operationName}`);
+
+      // Poll for completion
+      if (onProgress) onProgress('Generating video (this may take a few minutes)...');
+      const result = await this.pollOperation(operationName, accessToken.token, onProgress);
+
+      if (!result.success) {
+        // Record failed generation
+        if (this.mongoService && user) {
+          await this.mongoService.recordVideoGeneration(
+            user.id,
+            user.tag || user.username,
+            trimmedPrompt,
+            duration,
+            aspectRatio,
+            this.config.veo.model,
+            false,
+            result.error,
+            0
+          );
+        }
+        return result;
+      }
+
+      // Download the generated video from GCS
+      if (onProgress) onProgress('Downloading generated video...');
+      const videoGcsUri = result.videoUri;
+      const downloadResult = await this.downloadVideoFromGcs(videoGcsUri);
+
+      if (!downloadResult.success) {
+        return downloadResult;
+      }
+
+      // Set cooldown for user
+      if (user) {
+        this.setCooldown(user.id);
+      }
+
+      // Record successful generation
+      if (this.mongoService && user) {
+        await this.mongoService.recordVideoGeneration(
+          user.id,
+          user.tag || user.username,
+          trimmedPrompt,
+          duration,
+          aspectRatio,
+          this.config.veo.model,
+          true,
+          null,
+          downloadResult.buffer.length
+        );
+      }
+
+      logger.info(`Video generated successfully from text: ${downloadResult.buffer.length} bytes`);
+
+      return {
+        success: true,
+        buffer: downloadResult.buffer,
+        prompt: trimmedPrompt,
+        duration,
+        aspectRatio
+      };
+
+    } catch (error) {
+      logger.error(`Video generation error: ${error.message}`);
+
+      let errorMessage;
+      if (error.response?.data?.error?.message) {
+        errorMessage = error.response.data.error.message;
+      } else if (error.message.includes('rate limit') || error.message.includes('quota')) {
+        errorMessage = 'API rate limit exceeded. Please try again later.';
+      } else if (error.message.includes('safety') || error.message.includes('blocked')) {
+        errorMessage = 'Your prompt was blocked by safety filters. Please try a different prompt.';
+      } else {
+        errorMessage = `Video generation failed: ${error.message}`;
+      }
+
+      // Record failed generation
+      if (this.mongoService && user) {
+        await this.mongoService.recordVideoGeneration(
+          user.id,
+          user.tag || user.username,
+          trimmedPrompt,
+          duration,
+          aspectRatio,
+          this.config.veo.model,
+          false,
+          errorMessage,
+          0
+        );
+      }
+
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
    * Generate a video from a single image with a prompt (image-to-video)
    * @param {string} prompt - Text description of the video
    * @param {string} imageUrl - URL of the source image
@@ -605,10 +775,13 @@ class VeoService {
 
   /**
    * Generate a video from first and last frame images with a prompt
-   * If lastFrameUrl is null, routes to single-image mode (generateVideoFromImage)
+   * Routes to appropriate mode based on provided URLs:
+   * - No URLs: text-to-video mode (generateVideoFromText)
+   * - One URL: single-image mode (generateVideoFromImage)
+   * - Two URLs: first/last frame mode (this method)
    * @param {string} prompt - Text description of the video transition
-   * @param {string} firstFrameUrl - URL of the first frame image (or only image if single-image mode)
-   * @param {string|null} lastFrameUrl - URL of the last frame image (null for single-image mode)
+   * @param {string|null} firstFrameUrl - URL of the first frame image (null for text-only mode)
+   * @param {string|null} lastFrameUrl - URL of the last frame image (null for single-image or text-only mode)
    * @param {Object} options - Generation options
    * @param {string} options.aspectRatio - Aspect ratio (16:9 or 9:16)
    * @param {number} options.duration - Duration in seconds (4, 6, or 8)
@@ -617,7 +790,12 @@ class VeoService {
    * @returns {Promise<{success: boolean, buffer?: Buffer, error?: string, prompt?: string}>}
    */
   async generateVideo(prompt, firstFrameUrl, lastFrameUrl, options = {}, user = null, onProgress = null) {
-    // Route to single-image mode if no last frame provided
+    // Route to text-only mode if no images provided
+    if (!firstFrameUrl && !lastFrameUrl) {
+      return this.generateVideoFromText(prompt, options, user, onProgress);
+    }
+
+    // Route to single-image mode if only first frame provided
     if (!lastFrameUrl) {
       return this.generateVideoFromImage(prompt, firstFrameUrl, options, user, onProgress);
     }

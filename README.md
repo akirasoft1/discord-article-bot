@@ -39,6 +39,7 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 ### Video Generation (Veo)
 
 - **AI Video Generation**: Generate videos using Google's Veo 3.1
+- **Text-to-Video Mode**: Generate video from text descriptions alone
 - **Single Image Mode**: Animate a single image into a video (image-to-video)
 - **Two Image Mode**: Provide first and last frame images for smooth transitions
 - **Duration Options**: 4, 6, or 8 second videos
@@ -216,10 +217,16 @@ discord-article-bot/
 ### Video Generation
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| `!videogen <image_url> <prompt>` | `!vg`, `!veo`, `!video` | Generate a video from a single image (image-to-video) |
+| `!videogen <prompt>` | `!vg`, `!veo`, `!video` | Generate a video from text description (text-to-video) |
+| `!videogen <image_url> <prompt>` | | Generate a video from a single image (image-to-video) |
 | `!videogen <first_url> <last_url> <prompt>` | | Generate a video from first and last frame images |
 | `!videogen ... --duration 6` | | Set video duration (4, 6, or 8 seconds) |
 | `!videogen ... --ratio 9:16` | | Set aspect ratio (16:9 or 9:16) |
+
+**Text-Only Mode** (text-to-video):
+- `!videogen A sunset over the ocean with waves crashing` - Generate from text description
+- `!vg A bird flying through clouds --duration 6` - With custom duration
+- `!video A spaceship launching into orbit -r 9:16` - With portrait aspect ratio
 
 **Single Image Mode** (image-to-video):
 - `!videogen https://example.com/photo.jpg A camera panning across the scene` - Animate a single image
@@ -231,8 +238,8 @@ discord-article-bot/
 - `!video <:emoji1:123> <:emoji2:456> The emoji transforming -r 9:16` - Using Discord emojis
 
 **Requirements:**
-- One or two PNG/JPEG images
-- A text prompt describing the video
+- A text prompt describing the video (required for all modes)
+- Zero, one, or two PNG/JPEG images (optional)
 - Google Cloud service account with Vertex AI permissions
 - GCS bucket for video output storage
 
