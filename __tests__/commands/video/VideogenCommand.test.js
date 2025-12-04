@@ -163,7 +163,7 @@ describe('VideogenCommand', () => {
       expect(result.prompt).toBe('A flower blooming');
     });
 
-    it('should return null URLs if less than 2 images provided', () => {
+    it('should return single image URL when only one image provided', () => {
       const result = command.parseArgs(
         ['https://example.com/only.png', 'A', 'prompt'],
         mockVeoService
@@ -171,6 +171,31 @@ describe('VideogenCommand', () => {
 
       expect(result.firstFrameUrl).toBe('https://example.com/only.png');
       expect(result.lastFrameUrl).toBeNull();
+      expect(result.prompt).toBe('A prompt');
+    });
+
+    it('should parse single image with options', () => {
+      const result = command.parseArgs(
+        ['https://example.com/image.png', 'Zoom', 'in', '-d', '6', '-r', '9:16'],
+        mockVeoService
+      );
+
+      expect(result.firstFrameUrl).toBe('https://example.com/image.png');
+      expect(result.lastFrameUrl).toBeNull();
+      expect(result.prompt).toBe('Zoom in');
+      expect(result.duration).toBe('6');
+      expect(result.aspectRatio).toBe('9:16');
+    });
+
+    it('should handle single Discord emoji as image', () => {
+      const result = command.parseArgs(
+        ['<:emoji:123456789012345678>', 'Make', 'it', 'spin'],
+        mockVeoService
+      );
+
+      expect(result.firstFrameUrl).toBe('https://cdn.discordapp.com/emojis/123456789012345678.png?size=256');
+      expect(result.lastFrameUrl).toBeNull();
+      expect(result.prompt).toBe('Make it spin');
     });
 
     it('should return empty values for empty args', () => {
@@ -194,8 +219,8 @@ describe('VideogenCommand', () => {
   });
 
   describe('execute', () => {
-    it('should show usage if not enough images provided', async () => {
-      await command.execute(mockMessage, ['https://example.com/only.png', 'prompt'], mockContext);
+    it('should show usage if no images provided', async () => {
+      await command.execute(mockMessage, ['just', 'a', 'prompt'], mockContext);
 
       expect(mockMessage.reply).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -204,7 +229,21 @@ describe('VideogenCommand', () => {
       );
     });
 
-    it('should show usage if no prompt provided', async () => {
+    it('should show usage if no prompt provided with single image', async () => {
+      await command.execute(
+        mockMessage,
+        ['https://example.com/image.png'],
+        mockContext
+      );
+
+      expect(mockMessage.reply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('Usage:')
+        })
+      );
+    });
+
+    it('should show usage if no prompt provided with two images', async () => {
       await command.execute(
         mockMessage,
         ['https://example.com/first.png', 'https://example.com/last.png'],
@@ -215,6 +254,46 @@ describe('VideogenCommand', () => {
         expect.objectContaining({
           content: expect.stringContaining('Usage:')
         })
+      );
+    });
+
+    it('should generate video with single image (image-to-video mode)', async () => {
+      await command.execute(
+        mockMessage,
+        ['https://example.com/image.png', 'A', 'flower', 'blooming'],
+        mockContext
+      );
+
+      expect(mockVeoService.generateVideo).toHaveBeenCalledWith(
+        'A flower blooming',
+        'https://example.com/image.png',
+        null, // lastFrameUrl should be null for single-image mode
+        expect.objectContaining({
+          duration: null,
+          aspectRatio: null
+        }),
+        mockMessage.author,
+        expect.any(Function)
+      );
+    });
+
+    it('should generate video with single image and options', async () => {
+      await command.execute(
+        mockMessage,
+        ['https://example.com/image.png', 'Zoom', 'out', '-d', '4', '-r', '9:16'],
+        mockContext
+      );
+
+      expect(mockVeoService.generateVideo).toHaveBeenCalledWith(
+        'Zoom out',
+        'https://example.com/image.png',
+        null,
+        expect.objectContaining({
+          duration: '4',
+          aspectRatio: '9:16'
+        }),
+        mockMessage.author,
+        expect.any(Function)
       );
     });
 
