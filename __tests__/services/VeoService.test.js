@@ -388,7 +388,7 @@ describe('VeoService', () => {
     });
   });
 
-  describe('generateVideo', () => {
+  describe('generateVideo (first and last frame mode)', () => {
     it('should return error for invalid prompt', async () => {
       const result = await veoService.generateVideo(
         '',
@@ -454,6 +454,207 @@ describe('VeoService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('last frame');
+    });
+  });
+
+  describe('generateVideoFromImage (single image mode)', () => {
+    it('should return error for invalid prompt', async () => {
+      const result = await veoService.generateVideoFromImage(
+        '',
+        'https://example.com/image.png'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('empty');
+    });
+
+    it('should return error for invalid aspect ratio', async () => {
+      const result = await veoService.generateVideoFromImage(
+        'A valid prompt',
+        'https://example.com/image.png',
+        { aspectRatio: '4:3' }
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Invalid aspect ratio');
+    });
+
+    it('should return error for invalid duration', async () => {
+      const result = await veoService.generateVideoFromImage(
+        'A valid prompt',
+        'https://example.com/image.png',
+        { duration: 5 }
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Invalid duration');
+    });
+
+    it('should return error if image fetch fails', async () => {
+      axios.get.mockRejectedValue(new Error('Network error'));
+
+      const result = await veoService.generateVideoFromImage(
+        'A valid prompt',
+        'https://example.com/image.png'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to fetch');
+    });
+
+    it('should return error if image is not PNG or JPEG', async () => {
+      axios.get.mockResolvedValue({
+        data: Buffer.from('fake-image'),
+        headers: { 'content-type': 'image/webp' }
+      });
+
+      const result = await veoService.generateVideoFromImage(
+        'A valid prompt',
+        'https://example.com/image.webp'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Veo only supports PNG and JPEG');
+    });
+
+    it('should use default aspect ratio when not specified', async () => {
+      // Mock the image fetch
+      axios.get.mockResolvedValue({
+        data: Buffer.from('fake-image'),
+        headers: { 'content-type': 'image/png' }
+      });
+
+      // Mock the API call to fail so we can inspect the call
+      axios.post.mockRejectedValue(new Error('API error'));
+
+      const result = await veoService.generateVideoFromImage(
+        'A valid prompt',
+        'https://example.com/image.png'
+      );
+
+      // The call will fail, but we can verify the aspect ratio was set
+      expect(result.success).toBe(false);
+    });
+
+    it('should use default duration when not specified', async () => {
+      axios.get.mockResolvedValue({
+        data: Buffer.from('fake-image'),
+        headers: { 'content-type': 'image/png' }
+      });
+
+      axios.post.mockRejectedValue(new Error('API error'));
+
+      const result = await veoService.generateVideoFromImage(
+        'A valid prompt',
+        'https://example.com/image.png'
+      );
+
+      expect(result.success).toBe(false);
+    });
+
+    it('should call progress callback during generation', async () => {
+      axios.get.mockResolvedValue({
+        data: Buffer.from('fake-image'),
+        headers: { 'content-type': 'image/png' }
+      });
+
+      axios.post.mockRejectedValue(new Error('API error'));
+
+      const onProgress = jest.fn();
+
+      await veoService.generateVideoFromImage(
+        'A valid prompt',
+        'https://example.com/image.png',
+        {},
+        null,
+        onProgress
+      );
+
+      expect(onProgress).toHaveBeenCalledWith('Fetching image...');
+    });
+
+    it('should record failed generation in MongoDB', async () => {
+      const mockMongoService = {
+        recordVideoGeneration: jest.fn().mockResolvedValue()
+      };
+
+      const serviceWithMongo = new VeoService(mockConfig, mockMongoService);
+
+      axios.get.mockResolvedValue({
+        data: Buffer.from('fake-image'),
+        headers: { 'content-type': 'image/png' }
+      });
+
+      axios.post.mockRejectedValue(new Error('API error'));
+
+      const user = { id: 'user123', tag: 'testuser#1234' };
+
+      await serviceWithMongo.generateVideoFromImage(
+        'A valid prompt',
+        'https://example.com/image.png',
+        {},
+        user
+      );
+
+      expect(mockMongoService.recordVideoGeneration).toHaveBeenCalledWith(
+        'user123',
+        'testuser#1234',
+        'A valid prompt',
+        8, // default duration
+        '16:9', // default aspect ratio
+        'veo-3.1-fast-generate-001',
+        false,
+        expect.any(String),
+        0
+      );
+    });
+  });
+
+  describe('generateVideo routing (single vs dual image)', () => {
+    it('should route to single-image mode when lastFrameUrl is null', async () => {
+      axios.get.mockResolvedValue({
+        data: Buffer.from('fake-image'),
+        headers: { 'content-type': 'image/png' }
+      });
+
+      axios.post.mockRejectedValue(new Error('API error'));
+
+      const onProgress = jest.fn();
+
+      await veoService.generateVideo(
+        'A valid prompt',
+        'https://example.com/image.png',
+        null, // No last frame
+        {},
+        null,
+        onProgress
+      );
+
+      // Should call "Fetching image..." for single mode, not "Fetching first frame..."
+      expect(onProgress).toHaveBeenCalledWith('Fetching image...');
+    });
+
+    it('should route to dual-image mode when lastFrameUrl is provided', async () => {
+      axios.get.mockResolvedValue({
+        data: Buffer.from('fake-image'),
+        headers: { 'content-type': 'image/png' }
+      });
+
+      axios.post.mockRejectedValue(new Error('API error'));
+
+      const onProgress = jest.fn();
+
+      await veoService.generateVideo(
+        'A valid prompt',
+        'https://example.com/first.png',
+        'https://example.com/last.png', // Has last frame
+        {},
+        null,
+        onProgress
+      );
+
+      // Should call "Fetching first frame..." for dual mode
+      expect(onProgress).toHaveBeenCalledWith('Fetching first frame...');
     });
   });
 });

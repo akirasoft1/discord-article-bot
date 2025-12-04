@@ -38,11 +38,12 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 
 ### Video Generation (Veo)
 
-- **AI Video Generation**: Generate videos from first and last frame images using Google's Veo 3.1
-- **Frame-to-Frame**: Provide two images and a prompt to generate a smooth transition video
+- **AI Video Generation**: Generate videos using Google's Veo 3.1
+- **Single Image Mode**: Animate a single image into a video (image-to-video)
+- **Two Image Mode**: Provide first and last frame images for smooth transitions
 - **Duration Options**: 4, 6, or 8 second videos
 - **Aspect Ratios**: 16:9 (landscape) or 9:16 (portrait)
-- **Discord Emoji Support**: Use Discord emojis as frame images
+- **Discord Emoji Support**: Use Discord emojis as source images
 - **Progress Updates**: Real-time status updates during generation
 - **Usage Tracking**: All generations tracked in MongoDB
 
@@ -215,18 +216,23 @@ discord-article-bot/
 ### Video Generation
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| `!videogen <first_url> <last_url> <prompt>` | `!vg`, `!veo`, `!video` | Generate a video from two frame images |
+| `!videogen <image_url> <prompt>` | `!vg`, `!veo`, `!video` | Generate a video from a single image (image-to-video) |
+| `!videogen <first_url> <last_url> <prompt>` | | Generate a video from first and last frame images |
 | `!videogen ... --duration 6` | | Set video duration (4, 6, or 8 seconds) |
 | `!videogen ... --ratio 9:16` | | Set aspect ratio (16:9 or 9:16) |
 
-**Examples:**
-- `!videogen https://example.com/morning.jpg https://example.com/night.jpg Day turning to night` - Basic usage
+**Single Image Mode** (image-to-video):
+- `!videogen https://example.com/photo.jpg A camera panning across the scene` - Animate a single image
+- `!vg <:emoji:123> The emoji spinning --duration 4` - Animate a Discord emoji
+
+**Two Image Mode** (first & last frame):
+- `!videogen https://example.com/morning.jpg https://example.com/night.jpg Day turning to night` - Transition between frames
 - `!vg https://example.com/start.png https://example.com/end.png A flower blooming -d 6` - With duration
 - `!video <:emoji1:123> <:emoji2:456> The emoji transforming -r 9:16` - Using Discord emojis
 
 **Requirements:**
-- Two PNG or JPEG images (first and last frame)
-- A text prompt describing the transition
+- One or two PNG/JPEG images
+- A text prompt describing the video
 - Google Cloud service account with Vertex AI permissions
 - GCS bucket for video output storage
 
