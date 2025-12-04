@@ -585,11 +585,14 @@ class VeoService {
     const pollIntervalMs = this.config.veo.pollIntervalMs;
     const startTime = Date.now();
 
-    const operationUrl = `https://${this.config.veo.location}-aiplatform.googleapis.com/v1/${operationName}`;
+    // Use fetchPredictOperation endpoint for Veo video generation
+    const fetchOperationUrl = `https://${this.config.veo.location}-aiplatform.googleapis.com/v1/projects/${this.config.veo.projectId}/locations/${this.config.veo.location}/publishers/google/models/${this.config.veo.model}:fetchPredictOperation`;
 
     while (Date.now() - startTime < maxWaitMs) {
       try {
-        const response = await axios.get(operationUrl, {
+        const response = await axios.post(fetchOperationUrl, {
+          operationName: operationName
+        }, {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json'
