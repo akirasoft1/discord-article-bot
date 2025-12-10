@@ -289,6 +289,33 @@ The bot includes OpenTelemetry tracing for Dynatrace integration:
 - Spans for OpenAI API calls with token counts
 - Auto-instrumentation for HTTP and MongoDB
 
+### Health Check Endpoints
+
+The bot exposes HTTP health endpoints for Kubernetes liveness and readiness probes:
+
+| Endpoint | Purpose | Success Condition |
+|----------|---------|-------------------|
+| `/healthz` | Liveness probe | Process is running (always 200) |
+| `/readyz` | Readiness probe | Discord client is connected (200 or 503) |
+
+**Configuration:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HEALTH_SERVER_ENABLED` | `true` | Enable/disable health server |
+| `HEALTH_SERVER_PORT` | `8080` | Port for health endpoints |
+
+**Response Format:**
+```json
+{
+  "status": "ok",
+  "discordConnected": true,
+  "uptime": 3600.5
+}
+```
+
+The HTTP probes are more efficient than exec probes because they don't spawn a new Node.js process for each check, avoiding the cold-start overhead that can cause timeouts.
+
 ## License
 
 MIT License - see [LICENSE.md](LICENSE.md)
