@@ -254,6 +254,57 @@ describe('ImagenService', () => {
       expect(result.error).toContain('No image');
     });
 
+    it('should handle empty response with SAFETY block reason in promptFeedback', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [],
+          promptFeedback: {
+            blockReason: 'SAFETY',
+            safetyRatings: [
+              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', probability: 'HIGH', blocked: true }
+            ]
+          }
+        }
+      });
+
+      const result = await imagenService.generateImage('Something inappropriate', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('safety filters');
+    });
+
+    it('should handle empty response with PROHIBITED_CONTENT block reason', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [],
+          promptFeedback: {
+            blockReason: 'PROHIBITED_CONTENT'
+          }
+        }
+      });
+
+      const result = await imagenService.generateImage('Some prompt', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('prohibited content');
+    });
+
+    it('should handle empty response with unknown block reason', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [],
+          promptFeedback: {
+            blockReason: 'SOME_NEW_REASON'
+          }
+        }
+      });
+
+      const result = await imagenService.generateImage('Some prompt', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('SOME_NEW_REASON');
+    });
+
     it('should handle response without image data', async () => {
       mockGeminiModel.generateContent.mockResolvedValue({
         response: {

@@ -335,7 +335,46 @@ class ImagenService {
 
       // Check for empty response
       if (!response.candidates || response.candidates.length === 0) {
-        logger.warn('No candidates in image generation response');
+        // Log detailed information about why no candidates were returned
+        logger.warn('No candidates in image generation response', {
+          prompt: trimmedPrompt.substring(0, 100),
+          aspectRatio
+        });
+
+        // Check promptFeedback for block reasons (common when safety filters trigger)
+        if (response.promptFeedback) {
+          const feedback = response.promptFeedback;
+          logger.warn('Prompt feedback from Gemini:', {
+            blockReason: feedback.blockReason || 'none',
+            safetyRatings: feedback.safetyRatings?.map(r => ({
+              category: r.category,
+              probability: r.probability,
+              blocked: r.blocked
+            })) || []
+          });
+
+          // Provide more specific error message based on block reason
+          if (feedback.blockReason) {
+            const blockReasonMessages = {
+              'SAFETY': 'Your prompt was blocked by safety filters. Please try a different prompt.',
+              'BLOCK_REASON_UNSPECIFIED': 'Your prompt was blocked for an unspecified reason. Please try a different prompt.',
+              'OTHER': 'Your prompt was blocked. Please try a different prompt.',
+              'BLOCKLIST': 'Your prompt contains blocked content. Please try a different prompt.',
+              'PROHIBITED_CONTENT': 'Your prompt contains prohibited content. Please try a different prompt.'
+            };
+            const errorMsg = blockReasonMessages[feedback.blockReason] ||
+              `Your prompt was blocked (reason: ${feedback.blockReason}). Please try a different prompt.`;
+            return { success: false, error: errorMsg };
+          }
+        }
+
+        // Log raw response structure at debug level for troubleshooting
+        logger.debug('Full response structure (no candidates):', {
+          hasPromptFeedback: !!response.promptFeedback,
+          hasUsageMetadata: !!response.usageMetadata,
+          responseKeys: Object.keys(response)
+        });
+
         return { success: false, error: 'No image was generated. Please try a different prompt.' };
       }
 
@@ -343,17 +382,37 @@ class ImagenService {
 
       // Check for safety filter rejection
       if (candidate.finishReason === 'SAFETY') {
-        logger.warn(`Image generation blocked by safety filter for prompt: "${trimmedPrompt.substring(0, 50)}..."`);
+        logger.warn('Image generation blocked by safety filter', {
+          prompt: trimmedPrompt.substring(0, 100),
+          finishReason: candidate.finishReason,
+          safetyRatings: candidate.safetyRatings?.map(r => ({
+            category: r.category,
+            probability: r.probability,
+            blocked: r.blocked
+          })) || []
+        });
         return {
           success: false,
           error: 'Your prompt was blocked by safety filters. Please try a different prompt.'
         };
       }
 
+      // Log other non-STOP finish reasons for debugging
+      if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+        logger.warn('Unexpected finish reason in image generation', {
+          prompt: trimmedPrompt.substring(0, 100),
+          finishReason: candidate.finishReason
+        });
+      }
+
       // Extract image data from response
       const content = candidate.content;
       if (!content || !content.parts) {
-        logger.warn('No content parts in image generation response');
+        logger.warn('No content parts in image generation response', {
+          prompt: trimmedPrompt.substring(0, 100),
+          hasContent: !!content,
+          finishReason: candidate.finishReason
+        });
         return { success: false, error: 'No image was generated. Please try a different prompt.' };
       }
 
@@ -363,7 +422,18 @@ class ImagenService {
         // Check if there's a text response explaining why no image was generated
         const textPart = content.parts.find(part => part.text);
         if (textPart) {
-          logger.warn(`Image generation returned text instead of image: ${textPart.text}`);
+          logger.warn('Image generation returned text instead of image', {
+            prompt: trimmedPrompt.substring(0, 100),
+            textResponse: textPart.text.substring(0, 200),
+            partsCount: content.parts.length,
+            partTypes: content.parts.map(p => Object.keys(p).join(','))
+          });
+        } else {
+          logger.warn('No image data in response parts', {
+            prompt: trimmedPrompt.substring(0, 100),
+            partsCount: content.parts.length,
+            partTypes: content.parts.map(p => Object.keys(p).join(','))
+          });
         }
         return { success: false, error: 'No image was generated. Please try a different prompt.' };
       }
