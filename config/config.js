@@ -170,7 +170,7 @@ module.exports = {
     apiKey: process.env.GEMINI_API_KEY || '',
     // Model to use for image generation
     // Options: 'gemini-3-pro-image-preview' (preferred), 'gemini-2.5-flash-image' (fallback)
-    model: process.env.IMAGEN_MODEL || 'gemini-3-pro-image-preview',
+    model: process.env.IMAGEN_MODEL || 'gemini-2.5-flash-image',
     // Default aspect ratio for generated images
     // Options: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
     defaultAspectRatio: process.env.IMAGEN_DEFAULT_ASPECT_RATIO || '1:1',
@@ -204,5 +204,12 @@ module.exports = {
     maxWaitSeconds: parseInt(process.env.VEO_MAX_WAIT_SECONDS || '300', 10),
     // Polling interval for checking operation status (in milliseconds)
     pollIntervalMs: parseInt(process.env.VEO_POLL_INTERVAL_MS || '5000', 10)
+  },
+  // Health check server configuration for Kubernetes probes
+  health: {
+    // Enable/disable health check server
+    enabled: process.env.HEALTH_SERVER_ENABLED !== 'false', // Enabled by default
+    // Port for health check server
+    port: parseInt(process.env.HEALTH_SERVER_PORT || '8080', 10)
   }
 };

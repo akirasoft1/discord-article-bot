@@ -78,6 +78,10 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          ports:
+            - name: health
+              containerPort: 8080
+              protocol: TCP
           volumeMounts:
             - name: prompt-volume
               mountPath: /usr/src/app/prompt.txt
@@ -89,21 +93,17 @@ spec:
               mountPath: /var/secrets/google
               readOnly: true
           livenessProbe:
-            exec:
-              command:
-                - node
-                - -e
-                - "process.exit(0)"
+            httpGet:
+              path: /healthz
+              port: health
             initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            exec:
-              command:
-                - node
-                - -e
-                - "process.exit(0)"
+            httpGet:
+              path: /readyz
+              port: health
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5

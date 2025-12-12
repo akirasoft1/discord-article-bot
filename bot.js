@@ -3,6 +3,7 @@
 // to ensure all HTTP calls and operations are properly instrumented
 require('./tracing');
 
+const http = require('http');
 const { Client, GatewayIntentBits } = require('discord.js');
 const OpenAI = require('openai');
 const fs = require('fs').promises;
@@ -104,11 +105,17 @@ class DiscordBot {
     this.commandHandler = new CommandHandler();
     this.registerCommands();
 
+    // Health server for Kubernetes probes
+    this.healthServer = null;
+
     this.setupEventHandlers();
   }
 
   async start() {
     try {
+      // Start health check server first (so K8s knows we're starting)
+      this.startHealthServer();
+
       logger.info(`Attempting to login with token: ${config.discord.token.substring(0, 10)}...`);
       await this.client.login(config.discord.token);
       logger.info('Bot login successful');
@@ -116,6 +123,58 @@ class DiscordBot {
       logger.error('Failed to start bot:', error);
       process.exit(1);
     }
+  }
+
+  startHealthServer() {
+    if (!config.health.enabled) {
+      logger.info('Health server is disabled');
+      return;
+    }
+
+    const port = config.health.port;
+
+    this.healthServer = http.createServer((req, res) => {
+      const isReady = this.client && this.client.isReady();
+
+      if (req.url === '/healthz' || req.url === '/health') {
+        // Liveness probe - returns 200 if the process is alive and can handle requests
+        // Returns 200 even during startup since the process is healthy, just not ready
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          status: 'ok',
+          discordConnected: isReady,
+          uptime: process.uptime()
+        }));
+      } else if (req.url === '/readyz' || req.url === '/ready') {
+        // Readiness probe - returns 200 only if Discord client is connected
+        if (isReady) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            status: 'ready',
+            discordConnected: true,
+            uptime: process.uptime()
+          }));
+        } else {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            status: 'not ready',
+            discordConnected: false,
+            uptime: process.uptime()
+          }));
+        }
+      } else {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Not found' }));
+      }
+    });
+
+    this.healthServer.listen(port, () => {
+      logger.info(`Health check server listening on port ${port}`);
+    });
+
+    this.healthServer.on('error', (error) => {
+      logger.error(`Health server error: ${error.message}`);
+    });
   }
 
   registerCommands() {
@@ -317,6 +376,11 @@ if (require.main === module) {
       // Stop Linkwarden polling if active
       if (bot.linkwardenPollingService) {
         bot.linkwardenPollingService.stop();
+      }
+      // Stop health server if running
+      if (bot.healthServer) {
+        bot.healthServer.close();
+        logger.info('Health server stopped');
       }
       // Destroy Discord client
       bot.client.destroy();
