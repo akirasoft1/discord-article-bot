@@ -112,11 +112,14 @@ Address users by name when relevant. Do not announce when new users join the con
       return textInput;
     }
 
-    // Multimodal input with image
-    return [
-      { type: 'input_text', text: textInput },
-      { type: 'input_image', image_url: imageUrl }
-    ];
+    // Multimodal input with image - must be wrapped in a message object
+    return [{
+      role: 'user',
+      content: [
+        { type: 'input_text', text: textInput },
+        { type: 'input_image', image_url: imageUrl }
+      ]
+    }];
   }
 
   /**
