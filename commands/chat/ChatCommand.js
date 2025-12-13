@@ -1,5 +1,6 @@
 // commands/chat/ChatCommand.js
 const BaseCommand = require('../base/BaseCommand');
+const { validateImageAttachment, getSupportedFormatsText } = require('../../utils/imageValidation');
 
 const DEFAULT_PERSONALITY = 'friendly';
 
@@ -8,14 +9,15 @@ class ChatCommand extends BaseCommand {
     super({
       name: 'chat',
       aliases: ['c', 'talk'],
-      description: 'Chat with a personality (defaults to friendly assistant)',
+      description: 'Chat with a personality (defaults to friendly assistant). Supports image attachments!',
       category: 'chat',
-      usage: '!chat [personality] <message>',
+      usage: '!chat [personality] <message> [image attachment]',
       examples: [
         '!chat What do you think about AI?',
         '!chat noir-detective Tell me a story',
         '!chat grumpy-historian Tell me about the internet',
-        '!c How is the weather today?'
+        '!c How is the weather today?',
+        '!chat What is in this image? [attach image]'
       ],
       args: [
         { name: 'personality', required: false, type: 'string' },
@@ -26,18 +28,46 @@ class ChatCommand extends BaseCommand {
   }
 
   async execute(message, args) {
-    if (args.length === 0) {
+    // Check for image attachments
+    const imageAttachment = message.attachments.find(att =>
+      att.contentType?.startsWith('image/') ||
+      /\.(png|jpe?g|webp|gif)$/i.test(att.name)
+    );
+
+    // If only an image with no text, provide guidance
+    if (args.length === 0 && !imageAttachment) {
       const personalities = this.chatService.listPersonalities();
       const list = personalities.map(p => `${p.emoji} **${p.id}** - ${p.description}`).join('\n');
       return message.reply({
-        content: `**Usage:** \`!chat [personality] <message>\`\n\nPersonality is optional - defaults to **friendly** assistant.\n\n**Available Personalities:**\n${list}`,
+        content: `**Usage:** \`!chat [personality] <message>\`\n\nPersonality is optional - defaults to **friendly** assistant.\nYou can also attach an image to ask questions about it!\n\n**Available Personalities:**\n${list}`,
         allowedMentions: { repliedUser: false }
       });
     }
 
+    // Validate image attachment if present
+    let imageUrl = null;
+    let imageWarning = null;
+
+    if (imageAttachment) {
+      const validation = await validateImageAttachment(imageAttachment);
+
+      if (!validation.valid) {
+        return message.reply({
+          content: validation.error,
+          allowedMentions: { repliedUser: false }
+        });
+      }
+
+      if (validation.warning) {
+        imageWarning = validation.warning;
+      }
+
+      imageUrl = imageAttachment.url;
+    }
+
     // Check if the first argument is a valid personality
-    const firstArg = args[0].toLowerCase();
-    const isPersonality = this.chatService.personalityExists(firstArg);
+    const firstArg = args[0]?.toLowerCase();
+    const isPersonality = firstArg && this.chatService.personalityExists(firstArg);
 
     let personalityId;
     let userMessage;
@@ -47,8 +77,8 @@ class ChatCommand extends BaseCommand {
       personalityId = firstArg;
       userMessage = args.slice(1).join(' ');
 
-      // If they specified a personality but no message, show help
-      if (!userMessage.trim()) {
+      // If they specified a personality but no message (and no image), show help
+      if (!userMessage.trim() && !imageUrl) {
         return message.reply({
           content: `Please provide a message. Usage: \`!chat ${personalityId} <message>\``,
           allowedMentions: { repliedUser: false }
@@ -60,6 +90,11 @@ class ChatCommand extends BaseCommand {
       userMessage = args.join(' ');
     }
 
+    // If there's an image but no message, use a default prompt
+    if (imageUrl && !userMessage.trim()) {
+      userMessage = 'What is in this image?';
+    }
+
     // Show typing indicator
     await message.channel.sendTyping();
 
@@ -67,7 +102,7 @@ class ChatCommand extends BaseCommand {
     const channelId = message.channel.id;
     const guildId = message.guild?.id || null;
 
-    const result = await this.chatService.chat(personalityId, userMessage, message.author, channelId, guildId);
+    const result = await this.chatService.chat(personalityId, userMessage, message.author, channelId, guildId, imageUrl);
 
     if (!result.success) {
       if (result.availablePersonalities) {
@@ -91,7 +126,12 @@ class ChatCommand extends BaseCommand {
     }
 
     // Format response with personality header
-    const response = `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`;
+    let response = `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`;
+
+    // Add warning if there was an image validation warning
+    if (imageWarning) {
+      response = `> ${imageWarning}\n\n${response}`;
+    }
 
     // Split if too long for Discord
     if (response.length > 2000) {

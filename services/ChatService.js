@@ -102,15 +102,34 @@ Address users by name when relevant. Do not announce when new users join the con
   }
 
   /**
+   * Build input for OpenAI Responses API, optionally with an image
+   * @param {string} textInput - The text input
+   * @param {string|null} imageUrl - Optional image URL
+   * @returns {string|Array} Input for the API
+   */
+  _buildApiInput(textInput, imageUrl = null) {
+    if (!imageUrl) {
+      return textInput;
+    }
+
+    // Multimodal input with image
+    return [
+      { type: 'input_text', text: textInput },
+      { type: 'input_image', image_url: imageUrl }
+    ];
+  }
+
+  /**
    * Generate a response from a personality with conversation memory
    * @param {string} personalityId - The personality ID to use
    * @param {string} userMessage - The user's message
    * @param {Object} user - Discord user object
    * @param {string} channelId - Discord channel ID
    * @param {string} guildId - Discord guild ID
+   * @param {string|null} imageUrl - Optional image URL for vision
    * @returns {Object} Response with message and token usage
    */
-  async chat(personalityId, userMessage, user, channelId = null, guildId = null) {
+  async chat(personalityId, userMessage, user, channelId = null, guildId = null, imageUrl = null) {
     const personality = personalityManager.get(personalityId);
 
     if (!personality) {
@@ -123,7 +142,7 @@ Address users by name when relevant. Do not announce when new users join the con
 
     // If no channelId provided, fall back to stateless mode (backwards compatibility)
     if (!channelId || !this.mongoService) {
-      return this._statelessChat(personality, userMessage, user);
+      return this._statelessChat(personality, userMessage, user, imageUrl);
     }
 
     try {
@@ -186,10 +205,15 @@ Address users by name when relevant. Do not announce when new users join the con
       }
 
       // Call OpenAI Responses API
+      const apiInput = this._buildApiInput(inputText, imageUrl);
+      if (imageUrl) {
+        logger.info(`Including image in chat request: ${imageUrl.substring(0, 50)}...`);
+      }
+
       const response = await this.openaiClient.responses.create({
         model: this.config.openai.model || 'gpt-5.1',
         instructions: systemPrompt,
-        input: inputText,
+        input: apiInput,
       });
 
       const assistantMessage = response.output_text;
@@ -261,16 +285,25 @@ Address users by name when relevant. Do not announce when new users join the con
 
   /**
    * Stateless chat (no memory) - backwards compatibility
+   * @param {Object} personality - Personality object
+   * @param {string} userMessage - User's message
+   * @param {Object} user - Discord user object
+   * @param {string|null} imageUrl - Optional image URL for vision
    * @private
    */
-  async _statelessChat(personality, userMessage, user) {
+  async _statelessChat(personality, userMessage, user, imageUrl = null) {
     try {
       logger.info(`Stateless chat request from ${user.username} using personality: ${personality.name}`);
+
+      const apiInput = this._buildApiInput(userMessage, imageUrl);
+      if (imageUrl) {
+        logger.info(`Including image in stateless chat request: ${imageUrl.substring(0, 50)}...`);
+      }
 
       const response = await this.openaiClient.responses.create({
         model: this.config.openai.model || 'gpt-5.1',
         instructions: personality.systemPrompt,
-        input: userMessage,
+        input: apiInput,
       });
 
       const assistantMessage = response.output_text;
