@@ -1,21 +1,24 @@
 // commands/chat/ChatCommand.js
 const BaseCommand = require('../base/BaseCommand');
 
+const DEFAULT_PERSONALITY = 'friendly';
+
 class ChatCommand extends BaseCommand {
   constructor(chatService) {
     super({
       name: 'chat',
       aliases: ['c', 'talk'],
-      description: 'Chat with a personality',
+      description: 'Chat with a personality (defaults to friendly assistant)',
       category: 'chat',
-      usage: '!chat <personality> <message>',
+      usage: '!chat [personality] <message>',
       examples: [
-        '!chat noir-detective What do you think about AI?',
+        '!chat What do you think about AI?',
+        '!chat noir-detective Tell me a story',
         '!chat grumpy-historian Tell me about the internet',
-        '!c sports-bro How is the weather today?'
+        '!c How is the weather today?'
       ],
       args: [
-        { name: 'personality', required: true, type: 'string' },
+        { name: 'personality', required: false, type: 'string' },
         { name: 'message', required: true, type: 'string' }
       ]
     });
@@ -23,17 +26,39 @@ class ChatCommand extends BaseCommand {
   }
 
   async execute(message, args) {
-    if (args.length < 2) {
+    if (args.length === 0) {
       const personalities = this.chatService.listPersonalities();
       const list = personalities.map(p => `${p.emoji} **${p.id}** - ${p.description}`).join('\n');
       return message.reply({
-        content: `**Usage:** \`!chat <personality> <message>\`\n\n**Available Personalities:**\n${list}`,
+        content: `**Usage:** \`!chat [personality] <message>\`\n\nPersonality is optional - defaults to **friendly** assistant.\n\n**Available Personalities:**\n${list}`,
         allowedMentions: { repliedUser: false }
       });
     }
 
-    const personalityId = args[0].toLowerCase();
-    const userMessage = args.slice(1).join(' ');
+    // Check if the first argument is a valid personality
+    const firstArg = args[0].toLowerCase();
+    const isPersonality = this.chatService.personalityExists(firstArg);
+
+    let personalityId;
+    let userMessage;
+
+    if (isPersonality) {
+      // First arg is a personality, rest is the message
+      personalityId = firstArg;
+      userMessage = args.slice(1).join(' ');
+
+      // If they specified a personality but no message, show help
+      if (!userMessage.trim()) {
+        return message.reply({
+          content: `Please provide a message. Usage: \`!chat ${personalityId} <message>\``,
+          allowedMentions: { repliedUser: false }
+        });
+      }
+    } else {
+      // First arg is not a personality, use default and treat all args as message
+      personalityId = DEFAULT_PERSONALITY;
+      userMessage = args.join(' ');
+    }
 
     // Show typing indicator
     await message.channel.sendTyping();
