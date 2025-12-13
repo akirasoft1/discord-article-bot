@@ -402,4 +402,57 @@ describe('ChatService', () => {
       expect(result.limits).toBeDefined();
     });
   });
+
+  describe('listUserConversations', () => {
+    it('should return empty array when no mongoService', async () => {
+      const noMongoService = new ChatService(mockOpenAIClient, mockConfig, null);
+      const result = await noMongoService.listUserConversations('user123');
+      expect(result).toEqual([]);
+    });
+
+    it('should return enriched conversations with personality info', async () => {
+      mockMongoService.getUserConversations = jest.fn().mockResolvedValue([
+        {
+          channelId: 'channel123',
+          personalityId: 'test-personality',
+          status: 'expired',
+          messageCount: 10,
+          totalTokens: 500,
+          lastActivity: new Date(),
+          lastUserMessage: 'Hello there'
+        }
+      ]);
+
+      const result = await chatService.listUserConversations('user123', 'guild123');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].personality).toBeDefined();
+      expect(result[0].personality.id).toBe('test-personality');
+      expect(result[0].personality.name).toBe('Test Character');
+      expect(result[0].personality.emoji).toBe('🧪');
+      expect(result[0].channelId).toBe('channel123');
+      expect(result[0].status).toBe('expired');
+    });
+
+    it('should handle unknown personalities gracefully', async () => {
+      mockMongoService.getUserConversations = jest.fn().mockResolvedValue([
+        {
+          channelId: 'channel456',
+          personalityId: 'deleted-personality',
+          status: 'reset',
+          messageCount: 5,
+          totalTokens: 200,
+          lastActivity: new Date(),
+          lastUserMessage: null
+        }
+      ]);
+
+      const result = await chatService.listUserConversations('user123');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].personality.id).toBe('deleted-personality');
+      expect(result[0].personality.name).toBe('deleted-personality');
+      expect(result[0].personality.emoji).toBe('🎭');
+    });
+  });
 });

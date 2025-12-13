@@ -501,6 +501,37 @@ Address users by name when relevant. Do not announce when new users join the con
   personalityExists(personalityId) {
     return personalityManager.exists(personalityId);
   }
+
+  /**
+   * List resumable conversations for a user
+   * @param {string} userId - Discord user ID
+   * @param {string} guildId - Discord guild ID (optional)
+   * @returns {Array} Array of conversation summaries with personality info
+   */
+  async listUserConversations(userId, guildId = null) {
+    if (!this.mongoService) {
+      return [];
+    }
+
+    const conversations = await this.mongoService.getUserConversations(userId, guildId);
+
+    // Enrich with personality info
+    return conversations.map(conv => {
+      const personality = personalityManager.get(conv.personalityId);
+      return {
+        ...conv,
+        personality: personality ? {
+          id: personality.id,
+          name: personality.name,
+          emoji: personality.emoji
+        } : {
+          id: conv.personalityId,
+          name: conv.personalityId,
+          emoji: '🎭'
+        }
+      };
+    });
+  }
 }
 
 module.exports = ChatService;
