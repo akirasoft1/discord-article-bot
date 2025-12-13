@@ -16,16 +16,20 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 ### Personality Chat
 
 - **Character Conversations**: Chat with unique AI personalities
-- **4 Built-in Personalities**:
+- **5 Built-in Personalities**:
+  - 😊 **Friendly Assistant** - Helpful, informal assistant for casual chat and questions (default)
   - 📚 **Professor Grimsworth** - Grumpy historian who relates everything to obscure historical events
   - 🕵️ **Jack Shadows** - Hardboiled 1940s detective with noir prose
   - 🤔 **Erik the Existentialist** - Philosophy grad student who spirals into existential questions
   - 💾 **x0r_kid** - 90s IRC gamer kid with leet speak and old-school internet vibes
+- **Default Personality**: Just use `!chat <message>` - defaults to friendly assistant
+- **Image Vision**: Attach images to chat messages for the bot to analyze and discuss
+- **Web Search**: Bot can search the web for current information when needed
 - **Extensible**: Add new personalities by dropping a `.js` file in `personalities/`
 - **Channel-Scoped Memory**: All users in a channel share a conversation with each personality
 - **Reply to Continue**: Reply directly to bot messages to continue conversations naturally
 - **Conversation Limits**: 100 messages, 150k tokens, or 30 min idle timeout
-- **Resume/Reset**: Continue expired conversations or reset them (admin only)
+- **Resume/Reset/List**: Continue expired conversations, reset them, or list your resumable chats
 
 ### Image Generation (Nano Banana)
 
@@ -116,7 +120,8 @@ discord-article-bot/
 │   │   ├── SummarizeCommand.js   # !summarize
 │   │   └── ReSummarizeCommand.js # !resummarize
 │   ├── chat/
-│   │   ├── ChatCommand.js        # !chat
+│   │   ├── ChatCommand.js        # !chat (with image vision)
+│   │   ├── ChatListCommand.js    # !chatlist
 │   │   ├── PersonalitiesCommand.js # !personalities
 │   │   ├── ResetChatCommand.js   # !chatreset (admin)
 │   │   └── ResumeChatCommand.js  # !chatresume
@@ -128,6 +133,7 @@ discord-article-bot/
 │       └── HelpCommand.js        # !help
 ├── personalities/                # Personality definitions
 │   ├── index.js                  # Personality manager
+│   ├── friendly-assistant.js     # Default friendly personality
 │   ├── grumpy-historian.js
 │   ├── noir-detective.js
 │   ├── existential-philosopher.js
@@ -149,7 +155,8 @@ discord-article-bot/
 └── utils/
     ├── urlUtils.js
     ├── textUtils.js
-    └── tokenCounter.js           # Token counting for limits
+    ├── tokenCounter.js           # Token counting for limits
+    └── imageValidation.js        # Image type validation for vision
 ```
 
 ## Configuration
@@ -194,8 +201,10 @@ discord-article-bot/
 ### Personality Chat
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| `!chat <personality> <message>` | `!c`, `!talk` | Chat with a personality |
+| `!chat [personality] <message>` | `!c`, `!talk` | Chat with a personality (defaults to friendly) |
+| `!chat <message> [image]` | | Chat about an attached image |
 | `!personalities` | `!chars` | List available personalities |
+| `!chatlist` | `!chats`, `!listchats` | List your resumable conversations |
 | `!chatresume <personality> <message>` | `!resumechat` | Resume an expired conversation |
 | `!chatreset <personality>` | `!resetchat`, `!cr` | Reset a conversation (admin only) |
 

@@ -22,11 +22,14 @@
 
 ### Personality Chat
 - **5 Built-in Personalities**:
+  - Friendly Assistant (helpful, informal - **default**)
   - Professor Grimsworth (grumpy historian)
   - Jack Shadows (noir detective)
-  - Chad McCommentary (sports bro)
   - Erik the Existentialist (philosopher)
-  - Bartholomew the Bold (medieval herald)
+  - x0r_kid (90s IRC gamer)
+- **Default Personality**: Just `!chat <message>` defaults to Friendly Assistant
+- **Image Vision**: Attach images to chat messages for analysis and discussion
+- **Web Search**: Bot can search the web for current information when needed
 - **Extensible System**: Add new personalities via `.js` files
 - **Per-user Token Tracking**: Usage recorded per personality
 
@@ -38,7 +41,27 @@
   - Maximum 150,000 tokens per conversation
   - 30-minute idle timeout
 - **Resume Capability**: `!chatresume` to continue expired conversations
+- **List Conversations**: `!chatlist` to see your resumable conversations
 - **Admin Reset**: `!chatreset` for "bot admin" role to clear conversations
+
+### Image Generation (Nano Banana)
+- **AI Image Generation**: Generate images from text prompts using Google's Gemini API
+- **Reference Image Support**: Use existing images or Discord emojis as reference
+- **Aspect Ratio Support**: 10 supported ratios (1:1, 16:9, 9:16, etc.)
+- **Per-User Cooldowns**: Configurable cooldown to prevent abuse
+- **Usage Tracking**: All generations tracked in MongoDB
+- **Safety Filters**: Relies on Gemini's built-in content safety
+
+### Video Generation (Veo)
+- **AI Video Generation**: Generate videos using Google's Veo 3.1
+- **Text-to-Video Mode**: Generate video from text descriptions alone
+- **Single Image Mode**: Animate a single image into a video (image-to-video)
+- **Two Image Mode**: Provide first and last frame images for smooth transitions
+- **Duration Options**: 4, 6, or 8 second videos
+- **Aspect Ratios**: 16:9 (landscape) or 9:16 (portrait)
+- **Discord Emoji Support**: Use Discord emojis as source images
+- **Progress Updates**: Real-time status updates during generation
+- **Usage Tracking**: All generations tracked in MongoDB
 
 ### Monitoring & Observability
 - **OpenTelemetry Tracing**: Distributed tracing for Dynatrace
@@ -46,6 +69,8 @@
 - **Cost Tracking**: Real-time token and cost breakdown
 
 ### Additional Features
+- **Reply to Continue**: Reply directly to bot messages to continue conversations naturally
+- **Article Follow-up Questions**: Reply to summaries to ask follow-up questions about the article
 - **RSS Feed Monitoring**: Auto-post from configured feeds
 - **Follow-up Tracker**: Mark stories for updates (📚 reaction)
 - **Related Articles**: Suggests similar previously shared articles
@@ -56,11 +81,18 @@
 
 ### Memory & Context
 - [x] Conversation memory for personality chats
+- [x] Reply to bot messages to continue conversations
 - [ ] User preference persistence
 
 ### Enhanced Personalities
+- [x] Default personality for quick chat
 - [ ] More personality archetypes
 - [ ] Custom personality creation via commands
+
+### Media Generation
+- [x] Image generation via Gemini
+- [x] Video generation via Veo
+- [ ] Audio generation
 
 ### Analytics
 - [ ] Token usage leaderboards
