@@ -2,6 +2,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 const logger = require('../logger');
+const { withSpan } = require('../tracing');
 
 // Valid aspect ratios supported by Gemini image generation
 const VALID_ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
@@ -324,11 +325,34 @@ class ImagenService {
         });
       }
 
-      const result = await this.model.generateContent({
-        contents: [{
-          role: 'user',
-          parts
-        }]
+      const model = this.config.imagen.model;
+      const result = await withSpan('gemini.generateContent', {
+        // GenAI semantic conventions
+        'gen_ai.system': 'google',
+        'gen_ai.operation.name': 'image_generation',
+        'gen_ai.request.model': model,
+        // Image generation context
+        'image_gen.aspect_ratio': aspectRatio,
+        'image_gen.has_reference_image': !!referenceImage,
+        'image_gen.prompt_length': trimmedPrompt.length,
+        // Discord context
+        'discord.user.id': user?.id || '',
+      }, async (span) => {
+        const genResult = await this.model.generateContent({
+          contents: [{
+            role: 'user',
+            parts
+          }]
+        });
+
+        // Add response attributes
+        const hasImage = genResult.response?.candidates?.[0]?.content?.parts?.some(p => p.inlineData);
+        span.setAttributes({
+          'gen_ai.response.has_image': hasImage,
+          'gen_ai.response.finish_reason': genResult.response?.candidates?.[0]?.finishReason || '',
+        });
+
+        return genResult;
       });
 
       const response = result.response;
