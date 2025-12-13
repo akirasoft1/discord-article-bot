@@ -214,6 +214,7 @@ Address users by name when relevant. Do not announce when new users join the con
         model: this.config.openai.model || 'gpt-5.1',
         instructions: systemPrompt,
         input: apiInput,
+        tools: [{ type: 'web_search' }]
       });
 
       const assistantMessage = response.output_text;
@@ -304,6 +305,7 @@ Address users by name when relevant. Do not announce when new users join the con
         model: this.config.openai.model || 'gpt-5.1',
         instructions: personality.systemPrompt,
         input: apiInput,
+        tools: [{ type: 'web_search' }]
       });
 
       const assistantMessage = response.output_text;
