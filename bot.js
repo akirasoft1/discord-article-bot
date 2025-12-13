@@ -31,6 +31,7 @@ const ChatCommand = require('./commands/chat/ChatCommand');
 const PersonalitiesCommand = require('./commands/chat/PersonalitiesCommand');
 const ResetChatCommand = require('./commands/chat/ResetChatCommand');
 const ResumeChatCommand = require('./commands/chat/ResumeChatCommand');
+const ChatListCommand = require('./commands/chat/ChatListCommand');
 const ImagineCommand = require('./commands/image/ImagineCommand');
 const VideogenCommand = require('./commands/video/VideogenCommand');
 
@@ -187,6 +188,7 @@ class DiscordBot {
     this.commandHandler.register(new PersonalitiesCommand(this.chatService));
     this.commandHandler.register(new ResetChatCommand(this.chatService));
     this.commandHandler.register(new ResumeChatCommand(this.chatService));
+    this.commandHandler.register(new ChatListCommand(this.chatService));
 
     // Register utility commands
     this.commandHandler.register(new HelpCommand(this.commandHandler));

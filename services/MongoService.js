@@ -763,6 +763,57 @@ class MongoService {
         return diffMinutes > timeoutMinutes;
     }
 
+    /**
+     * Get all conversations where a user has participated
+     * Returns conversations that are expired or reset (resumable)
+     * @param {string} userId - Discord user ID
+     * @param {string} guildId - Discord guild ID (optional, to filter by server)
+     * @returns {Array} Array of conversation summaries
+     */
+    async getUserConversations(userId, guildId = null) {
+        if (!this.db) {
+            logger.error('Cannot get user conversations: Not connected to MongoDB.');
+            return [];
+        }
+        try {
+            const collection = this.db.collection('chat_conversations');
+
+            // Find conversations where the user has sent messages
+            const query = {
+                'messages.userId': userId,
+                status: { $in: ['expired', 'reset'] }  // Only resumable conversations
+            };
+
+            // Optionally filter by guild
+            if (guildId) {
+                query.guildId = guildId;
+            }
+
+            const conversations = await collection.find(query)
+                .sort({ lastActivity: -1 })  // Most recent first
+                .limit(10)  // Limit to 10 conversations
+                .toArray();
+
+            // Return summary info for each conversation
+            return conversations.map(conv => ({
+                channelId: conv.channelId,
+                personalityId: conv.personalityId,
+                status: conv.status,
+                messageCount: conv.messageCount,
+                totalTokens: conv.totalTokens,
+                lastActivity: conv.lastActivity,
+                createdAt: conv.createdAt,
+                // Get preview of last user message
+                lastUserMessage: conv.messages
+                    .filter(m => m.role === 'user')
+                    .slice(-1)[0]?.content?.substring(0, 50) || null
+            }));
+        } catch (error) {
+            logger.error(`Error getting user conversations: ${error.message}`);
+            return [];
+        }
+    }
+
     // ==================== IMAGE GENERATION TRACKING ====================
 
     /**
