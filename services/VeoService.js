@@ -3,6 +3,7 @@ const { VertexAI } = require('@google-cloud/vertexai');
 const { Storage } = require('@google-cloud/storage');
 const axios = require('axios');
 const logger = require('../logger');
+const { withSpan } = require('../tracing');
 
 // Valid aspect ratios for Veo video generation
 const VALID_ASPECT_RATIOS = ['16:9', '9:16'];
@@ -461,45 +462,69 @@ class VeoService {
 
       // Build the output GCS URI
       const outputUri = this.buildGcsOutputUri();
+      const model = this.config.veo.model;
 
-      // Make the API request to Vertex AI (text-only mode - no image)
-      const endpoint = `https://${this.config.veo.location}-aiplatform.googleapis.com/v1/projects/${this.config.veo.projectId}/locations/${this.config.veo.location}/publishers/google/models/${this.config.veo.model}:predictLongRunning`;
+      // Wrap the entire generation process in a span
+      const result = await withSpan('vertexai.veo.generateVideo', {
+        // GenAI semantic conventions
+        'gen_ai.system': 'google_vertex',
+        'gen_ai.operation.name': 'video_generation',
+        'gen_ai.request.model': model,
+        // Video generation context
+        'video_gen.mode': 'text_to_video',
+        'video_gen.duration_seconds': duration,
+        'video_gen.aspect_ratio': aspectRatio,
+        'video_gen.prompt_length': trimmedPrompt.length,
+        // Discord context
+        'discord.user.id': user?.id || '',
+      }, async (span) => {
+        // Make the API request to Vertex AI (text-only mode - no image)
+        const endpoint = `https://${this.config.veo.location}-aiplatform.googleapis.com/v1/projects/${this.config.veo.projectId}/locations/${this.config.veo.location}/publishers/google/models/${model}:predictLongRunning`;
 
-      const requestBody = {
-        instances: [{
-          prompt: trimmedPrompt
-        }],
-        parameters: {
-          storageUri: outputUri,
-          sampleCount: 1,
-          aspectRatio: aspectRatio,
-          durationSeconds: parseInt(duration, 10)
-        }
-      };
+        const requestBody = {
+          instances: [{
+            prompt: trimmedPrompt
+          }],
+          parameters: {
+            storageUri: outputUri,
+            sampleCount: 1,
+            aspectRatio: aspectRatio,
+            durationSeconds: parseInt(duration, 10)
+          }
+        };
 
-      // Get access token for authentication
-      const { GoogleAuth } = require('google-auth-library');
-      const auth = new GoogleAuth({
-        scopes: ['https://www.googleapis.com/auth/cloud-platform']
+        // Get access token for authentication
+        const { GoogleAuth } = require('google-auth-library');
+        const auth = new GoogleAuth({
+          scopes: ['https://www.googleapis.com/auth/cloud-platform']
+        });
+        const client = await auth.getClient();
+        const accessToken = await client.getAccessToken();
+
+        // Start the long-running operation
+        const startResponse = await axios.post(endpoint, requestBody, {
+          headers: {
+            'Authorization': `Bearer ${accessToken.token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 60000
+        });
+
+        const operationName = startResponse.data.name;
+        logger.info(`Video generation operation started: ${operationName}`);
+        span.setAttributes({ 'video_gen.operation_name': operationName });
+
+        // Poll for completion
+        if (onProgress) onProgress('Generating video (this may take a few minutes)...');
+        const pollResult = await this.pollOperation(operationName, accessToken.token, onProgress);
+
+        // Add response attributes
+        span.setAttributes({
+          'gen_ai.response.success': pollResult.success,
+        });
+
+        return pollResult;
       });
-      const client = await auth.getClient();
-      const accessToken = await client.getAccessToken();
-
-      // Start the long-running operation
-      const startResponse = await axios.post(endpoint, requestBody, {
-        headers: {
-          'Authorization': `Bearer ${accessToken.token}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 60000
-      });
-
-      const operationName = startResponse.data.name;
-      logger.info(`Video generation operation started: ${operationName}`);
-
-      // Poll for completion
-      if (onProgress) onProgress('Generating video (this may take a few minutes)...');
-      const result = await this.pollOperation(operationName, accessToken.token, onProgress);
 
       if (!result.success) {
         // Record failed generation
@@ -639,49 +664,74 @@ class VeoService {
 
       // Build the output GCS URI
       const outputUri = this.buildGcsOutputUri();
+      const model = this.config.veo.model;
 
-      // Make the API request to Vertex AI (single image mode - no lastFrame)
-      const endpoint = `https://${this.config.veo.location}-aiplatform.googleapis.com/v1/projects/${this.config.veo.projectId}/locations/${this.config.veo.location}/publishers/google/models/${this.config.veo.model}:predictLongRunning`;
+      // Wrap the entire generation process in a span
+      const result = await withSpan('vertexai.veo.generateVideo', {
+        // GenAI semantic conventions
+        'gen_ai.system': 'google_vertex',
+        'gen_ai.operation.name': 'video_generation',
+        'gen_ai.request.model': model,
+        // Video generation context
+        'video_gen.mode': 'image_to_video',
+        'video_gen.duration_seconds': duration,
+        'video_gen.aspect_ratio': aspectRatio,
+        'video_gen.prompt_length': trimmedPrompt.length,
+        'video_gen.source_image_mime': sourceImage.mimeType,
+        // Discord context
+        'discord.user.id': user?.id || '',
+      }, async (span) => {
+        // Make the API request to Vertex AI (single image mode - no lastFrame)
+        const endpoint = `https://${this.config.veo.location}-aiplatform.googleapis.com/v1/projects/${this.config.veo.projectId}/locations/${this.config.veo.location}/publishers/google/models/${model}:predictLongRunning`;
 
-      const requestBody = {
-        instances: [{
-          prompt: trimmedPrompt,
-          image: {
-            bytesBase64Encoded: sourceImage.data,
-            mimeType: sourceImage.mimeType
+        const requestBody = {
+          instances: [{
+            prompt: trimmedPrompt,
+            image: {
+              bytesBase64Encoded: sourceImage.data,
+              mimeType: sourceImage.mimeType
+            }
+          }],
+          parameters: {
+            storageUri: outputUri,
+            sampleCount: 1,
+            aspectRatio: aspectRatio,
+            durationSeconds: parseInt(duration, 10)
           }
-        }],
-        parameters: {
-          storageUri: outputUri,
-          sampleCount: 1,
-          aspectRatio: aspectRatio,
-          durationSeconds: parseInt(duration, 10)
-        }
-      };
+        };
 
-      // Get access token for authentication
-      const { GoogleAuth } = require('google-auth-library');
-      const auth = new GoogleAuth({
-        scopes: ['https://www.googleapis.com/auth/cloud-platform']
+        // Get access token for authentication
+        const { GoogleAuth } = require('google-auth-library');
+        const auth = new GoogleAuth({
+          scopes: ['https://www.googleapis.com/auth/cloud-platform']
+        });
+        const client = await auth.getClient();
+        const accessToken = await client.getAccessToken();
+
+        // Start the long-running operation
+        const startResponse = await axios.post(endpoint, requestBody, {
+          headers: {
+            'Authorization': `Bearer ${accessToken.token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 60000
+        });
+
+        const operationName = startResponse.data.name;
+        logger.info(`Video generation operation started: ${operationName}`);
+        span.setAttributes({ 'video_gen.operation_name': operationName });
+
+        // Poll for completion
+        if (onProgress) onProgress('Generating video (this may take a few minutes)...');
+        const pollResult = await this.pollOperation(operationName, accessToken.token, onProgress);
+
+        // Add response attributes
+        span.setAttributes({
+          'gen_ai.response.success': pollResult.success,
+        });
+
+        return pollResult;
       });
-      const client = await auth.getClient();
-      const accessToken = await client.getAccessToken();
-
-      // Start the long-running operation
-      const startResponse = await axios.post(endpoint, requestBody, {
-        headers: {
-          'Authorization': `Bearer ${accessToken.token}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 60000
-      });
-
-      const operationName = startResponse.data.name;
-      logger.info(`Video generation operation started: ${operationName}`);
-
-      // Poll for completion
-      if (onProgress) onProgress('Generating video (this may take a few minutes)...');
-      const result = await this.pollOperation(operationName, accessToken.token, onProgress);
 
       if (!result.success) {
         // Record failed generation
@@ -842,53 +892,79 @@ class VeoService {
 
       // Build the output GCS URI
       const outputUri = this.buildGcsOutputUri();
+      const model = this.config.veo.model;
 
-      // Make the API request to Vertex AI
-      const endpoint = `https://${this.config.veo.location}-aiplatform.googleapis.com/v1/projects/${this.config.veo.projectId}/locations/${this.config.veo.location}/publishers/google/models/${this.config.veo.model}:predictLongRunning`;
+      // Wrap the entire generation process in a span
+      const result = await withSpan('vertexai.veo.generateVideo', {
+        // GenAI semantic conventions
+        'gen_ai.system': 'google_vertex',
+        'gen_ai.operation.name': 'video_generation',
+        'gen_ai.request.model': model,
+        // Video generation context
+        'video_gen.mode': 'first_last_frame',
+        'video_gen.duration_seconds': duration,
+        'video_gen.aspect_ratio': aspectRatio,
+        'video_gen.prompt_length': trimmedPrompt.length,
+        'video_gen.first_frame_mime': firstFrame.mimeType,
+        'video_gen.last_frame_mime': lastFrame.mimeType,
+        // Discord context
+        'discord.user.id': user?.id || '',
+      }, async (span) => {
+        // Make the API request to Vertex AI
+        const endpoint = `https://${this.config.veo.location}-aiplatform.googleapis.com/v1/projects/${this.config.veo.projectId}/locations/${this.config.veo.location}/publishers/google/models/${model}:predictLongRunning`;
 
-      const requestBody = {
-        instances: [{
-          prompt: trimmedPrompt,
-          image: {
-            bytesBase64Encoded: firstFrame.data,
-            mimeType: firstFrame.mimeType
-          },
-          lastFrame: {
-            bytesBase64Encoded: lastFrame.data,
-            mimeType: lastFrame.mimeType
+        const requestBody = {
+          instances: [{
+            prompt: trimmedPrompt,
+            image: {
+              bytesBase64Encoded: firstFrame.data,
+              mimeType: firstFrame.mimeType
+            },
+            lastFrame: {
+              bytesBase64Encoded: lastFrame.data,
+              mimeType: lastFrame.mimeType
+            }
+          }],
+          parameters: {
+            storageUri: outputUri,
+            sampleCount: 1,
+            aspectRatio: aspectRatio,
+            durationSeconds: parseInt(duration, 10)
           }
-        }],
-        parameters: {
-          storageUri: outputUri,
-          sampleCount: 1,
-          aspectRatio: aspectRatio,
-          durationSeconds: parseInt(duration, 10)
-        }
-      };
+        };
 
-      // Get access token for authentication
-      const { GoogleAuth } = require('google-auth-library');
-      const auth = new GoogleAuth({
-        scopes: ['https://www.googleapis.com/auth/cloud-platform']
+        // Get access token for authentication
+        const { GoogleAuth } = require('google-auth-library');
+        const auth = new GoogleAuth({
+          scopes: ['https://www.googleapis.com/auth/cloud-platform']
+        });
+        const client = await auth.getClient();
+        const accessToken = await client.getAccessToken();
+
+        // Start the long-running operation
+        const startResponse = await axios.post(endpoint, requestBody, {
+          headers: {
+            'Authorization': `Bearer ${accessToken.token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 60000
+        });
+
+        const operationName = startResponse.data.name;
+        logger.info(`Video generation operation started: ${operationName}`);
+        span.setAttributes({ 'video_gen.operation_name': operationName });
+
+        // Poll for completion
+        if (onProgress) onProgress('Generating video (this may take a few minutes)...');
+        const pollResult = await this.pollOperation(operationName, accessToken.token, onProgress);
+
+        // Add response attributes
+        span.setAttributes({
+          'gen_ai.response.success': pollResult.success,
+        });
+
+        return pollResult;
       });
-      const client = await auth.getClient();
-      const accessToken = await client.getAccessToken();
-
-      // Start the long-running operation
-      const startResponse = await axios.post(endpoint, requestBody, {
-        headers: {
-          'Authorization': `Bearer ${accessToken.token}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 60000
-      });
-
-      const operationName = startResponse.data.name;
-      logger.info(`Video generation operation started: ${operationName}`);
-
-      // Poll for completion
-      if (onProgress) onProgress('Generating video (this may take a few minutes)...');
-      const result = await this.pollOperation(operationName, accessToken.token, onProgress);
 
       if (!result.success) {
         // Record failed generation
