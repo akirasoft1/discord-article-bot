@@ -9,7 +9,7 @@ const OpenAI = require('openai');
 const fs = require('fs').promises;
 const config = require('./config/config');
 const logger = require('./logger');
-const { shutdownTracing } = require('./tracing');
+const { shutdownTracing, withRootSpan } = require('./tracing');
 const SummarizationService = require('./services/SummarizationService');
 const ReactionHandler = require('./handlers/ReactionHandler');
 const ReplyHandler = require('./handlers/ReplyHandler');
@@ -242,7 +242,7 @@ class DiscordBot {
 
     this.client.on('messageReactionAdd', async (reaction, user) => {
       if (user.bot) return;
-      
+
       try {
         if (reaction.partial) {
           await reaction.fetch();
@@ -250,21 +250,30 @@ class DiscordBot {
         if (reaction.message.partial) {
           await reaction.message.fetch();
         }
-        
-        await this.reactionHandler.handleNewsReaction(reaction, user);
 
-        // Handle follow-up reaction
-        if (reaction.emoji.name === '📚') {
-          const messageContent = reaction.message.content;
-          const urlMatch = messageContent.match(/(https?:\/\/[^\s]+)/);
-          if (urlMatch) {
-            const url = urlMatch[0];
-            const success = await this.followUpService.markForFollowUp(url, user.id);
-            if (success) {
-              await reaction.message.channel.send(`${user.username}, I'll keep an eye on this story for you!`);
+        // Wrap reaction handling in a trace
+        await withRootSpan('discord.reaction', {
+          'discord.reaction.emoji': reaction.emoji.name,
+          'discord.channel.id': reaction.message.channel.id,
+          'discord.user.id': user.id,
+          'discord.user.tag': user.tag,
+          'discord.message.id': reaction.message.id,
+        }, async () => {
+          await this.reactionHandler.handleNewsReaction(reaction, user);
+
+          // Handle follow-up reaction
+          if (reaction.emoji.name === '📚') {
+            const messageContent = reaction.message.content;
+            const urlMatch = messageContent.match(/(https?:\/\/[^\s]+)/);
+            if (urlMatch) {
+              const url = urlMatch[0];
+              const success = await this.followUpService.markForFollowUp(url, user.id);
+              if (success) {
+                await reaction.message.channel.send(`${user.username}, I'll keep an eye on this story for you!`);
+              }
             }
           }
-        }
+        });
 
       } catch (error) {
         logger.error('Error handling reaction:', error);
@@ -279,8 +288,17 @@ class DiscordBot {
         try {
           const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
           if (referencedMessage && referencedMessage.author.id === this.client.user.id) {
-            const handled = await this.replyHandler.handleReply(message, referencedMessage);
-            if (handled) return; // Reply was handled, don't process as command
+            // Wrap reply handling in a trace
+            await withRootSpan('discord.reply', {
+              'discord.channel.id': message.channel.id,
+              'discord.user.id': message.author.id,
+              'discord.user.tag': message.author.tag,
+              'discord.message.id': message.id,
+            }, async () => {
+              const handled = await this.replyHandler.handleReply(message, referencedMessage);
+              return handled;
+            });
+            return; // Reply was handled, don't process as command
           }
         } catch (error) {
           logger.error(`Error fetching referenced message: ${error.message}`);
@@ -299,7 +317,16 @@ class DiscordBot {
         config: config
       };
 
-      await this.commandHandler.execute(message, commandName, args, context);
+      // Wrap command execution in a trace
+      await withRootSpan('discord.command', {
+        'discord.command.name': commandName,
+        'discord.channel.id': message.channel.id,
+        'discord.user.id': message.author.id,
+        'discord.user.tag': message.author.tag,
+        'discord.message.id': message.id,
+      }, async () => {
+        await this.commandHandler.execute(message, commandName, args, context);
+      });
     });
 
     this.client.on('interactionCreate', async interaction => {
