@@ -12,7 +12,11 @@ spec:
   policyTypes:
     - Ingress
     - Egress
-  ingress: []  # No ingress needed - bot is outbound only
+  ingress:
+    # Allow health check probes from kubelet on port 8080
+    - ports:
+        - protocol: TCP
+          port: 8080
   egress:
     # Allow DNS resolution
     - to:
