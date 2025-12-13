@@ -8,7 +8,7 @@ const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto'
 const { Resource } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { trace, SpanStatusCode, SpanKind } = require('@opentelemetry/api');
+const { trace, SpanStatusCode, SpanKind, context, ROOT_CONTEXT } = require('@opentelemetry/api');
 
 // Service identification
 const SERVICE_NAME = process.env.OTEL_SERVICE_NAME || 'discord-article-bot';
@@ -142,6 +142,7 @@ async function withSpan(name, attributes, fn) {
 
 /**
  * Create a root span for an entry point (like event handlers)
+ * Uses ROOT_CONTEXT to ensure this creates a new trace, not a child of any active context
  * @param {string} name - Span name
  * @param {Object} attributes - Span attributes
  * @param {Function} fn - Async function to execute within the span
@@ -150,28 +151,32 @@ async function withSpan(name, attributes, fn) {
 async function withRootSpan(name, attributes, fn) {
   const tracer = getTracer();
 
-  return tracer.startActiveSpan(name, {
-    kind: SpanKind.SERVER, // Mark as entry point
-    attributes: {
-      ...attributes,
-      'messaging.system': 'discord',
-      'messaging.operation': 'process',
-    },
-  }, async (span) => {
-    try {
-      const result = await fn(span);
-      span.setStatus({ code: SpanStatusCode.OK });
-      return result;
-    } catch (error) {
-      span.setStatus({
-        code: SpanStatusCode.ERROR,
-        message: error.message,
-      });
-      span.recordException(error);
-      throw error;
-    } finally {
-      span.end();
-    }
+  // Use ROOT_CONTEXT to ensure this is truly a root span with a new trace ID
+  // This prevents trace context bleeding between unrelated operations
+  return context.with(ROOT_CONTEXT, () => {
+    return tracer.startActiveSpan(name, {
+      kind: SpanKind.SERVER, // Mark as entry point
+      attributes: {
+        ...attributes,
+        'messaging.system': 'discord',
+        'messaging.operation': 'process',
+      },
+    }, async (span) => {
+      try {
+        const result = await fn(span);
+        span.setStatus({ code: SpanStatusCode.OK });
+        return result;
+      } catch (error) {
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error.message,
+        });
+        span.recordException(error);
+        throw error;
+      } finally {
+        span.end();
+      }
+    });
   });
 }
 
