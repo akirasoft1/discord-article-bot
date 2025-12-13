@@ -4,6 +4,7 @@
 const logger = require('../logger');
 const personalityManager = require('../personalities');
 const { countTokens, wouldExceedLimit } = require('../utils/tokenCounter');
+const { withSpan } = require('../tracing');
 
 // Conversation limits
 const LIMITS = {
@@ -213,11 +214,40 @@ Address users by name when relevant. Do not announce when new users join the con
         logger.info(`Including image in chat request: ${imageUrl.substring(0, 50)}...`);
       }
 
-      const response = await this.openaiClient.responses.create({
-        model: this.config.openai.model || 'gpt-5.1',
-        instructions: systemPrompt,
-        input: apiInput,
-        tools: [{ type: 'web_search' }]
+      const model = this.config.openai.model || 'gpt-5.1';
+      const response = await withSpan('openai.responses.create', {
+        // GenAI semantic conventions
+        'gen_ai.system': 'openai',
+        'gen_ai.operation.name': 'chat',
+        'gen_ai.request.model': model,
+        // Chat context
+        'chat.personality.id': personalityId,
+        'chat.personality.name': personality.name,
+        'chat.mode': 'stateful',
+        'chat.has_image': !!imageUrl,
+        'chat.tools_enabled': 'web_search',
+        'chat.conversation.message_count': conversation.messageCount || 0,
+        // Discord context
+        'discord.channel.id': channelId,
+        'discord.guild.id': guildId || '',
+        'discord.user.id': user.id,
+      }, async (span) => {
+        const result = await this.openaiClient.responses.create({
+          model: model,
+          instructions: systemPrompt,
+          input: apiInput,
+          tools: [{ type: 'web_search' }]
+        });
+
+        // Add response attributes
+        span.setAttributes({
+          'gen_ai.response.id': result.id || '',
+          'gen_ai.response.model': result.model || model,
+          'gen_ai.usage.input_tokens': result.usage?.input_tokens || 0,
+          'gen_ai.usage.output_tokens': result.usage?.output_tokens || 0,
+        });
+
+        return result;
       });
 
       const assistantMessage = response.output_text;
@@ -304,11 +334,37 @@ Address users by name when relevant. Do not announce when new users join the con
         logger.info(`Including image in stateless chat request: ${imageUrl.substring(0, 50)}...`);
       }
 
-      const response = await this.openaiClient.responses.create({
-        model: this.config.openai.model || 'gpt-5.1',
-        instructions: personality.systemPrompt,
-        input: apiInput,
-        tools: [{ type: 'web_search' }]
+      const model = this.config.openai.model || 'gpt-5.1';
+      const response = await withSpan('openai.responses.create', {
+        // GenAI semantic conventions
+        'gen_ai.system': 'openai',
+        'gen_ai.operation.name': 'chat',
+        'gen_ai.request.model': model,
+        // Chat context
+        'chat.personality.id': personality.id,
+        'chat.personality.name': personality.name,
+        'chat.mode': 'stateless',
+        'chat.has_image': !!imageUrl,
+        'chat.tools_enabled': 'web_search',
+        // Discord context
+        'discord.user.id': user.id,
+      }, async (span) => {
+        const result = await this.openaiClient.responses.create({
+          model: model,
+          instructions: personality.systemPrompt,
+          input: apiInput,
+          tools: [{ type: 'web_search' }]
+        });
+
+        // Add response attributes
+        span.setAttributes({
+          'gen_ai.response.id': result.id || '',
+          'gen_ai.response.model': result.model || model,
+          'gen_ai.usage.input_tokens': result.usage?.input_tokens || 0,
+          'gen_ai.usage.output_tokens': result.usage?.output_tokens || 0,
+        });
+
+        return result;
       });
 
       const assistantMessage = response.output_text;
