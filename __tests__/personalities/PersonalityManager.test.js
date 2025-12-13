@@ -110,5 +110,12 @@ describe('PersonalityManager', () => {
       expect(personality).not.toBeNull();
       expect(personality.emoji).toBe('💾');
     });
+
+    it('should have friendly personality', () => {
+      const personality = personalityManager.get('friendly');
+      expect(personality).not.toBeNull();
+      expect(personality.name).toBe('Friendly Assistant');
+      expect(personality.emoji).toBe('😊');
+    });
   });
 });
