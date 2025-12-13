@@ -39,6 +39,18 @@ spec:
             - configMapRef:
                 name: discord-article-bot-config
           env:
+            # OpenTelemetry configuration for Dynatrace tracing
+            # Override OTEL_EXPORTER_OTLP_ENDPOINT in overlays for your cluster
+            - name: OTEL_SERVICE_NAME
+              value: "discord-article-bot"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://telemetry-ingest.dynatrace.svc.cluster.local:4318"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
             # Secrets - injected from Secret resource
             - name: DISCORD_TOKEN
               valueFrom:
