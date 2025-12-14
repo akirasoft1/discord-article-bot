@@ -15,7 +15,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: 20Gi
   storageClassName: harvester-longhorn
 ---
 apiVersion: apps/v1
@@ -54,11 +54,11 @@ spec:
               value: "6334"
           resources:
             requests:
-              memory: "256Mi"
-              cpu: "100m"
+              memory: "4Gi"
+              cpu: "1500m"
             limits:
-              memory: "1Gi"
-              cpu: "500m"
+              memory: "6Gi"
+              cpu: "4000m"
           volumeMounts:
             - name: qdrant-storage
               mountPath: /qdrant/storage
