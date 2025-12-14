@@ -35,10 +35,11 @@ const ResumeChatCommand = require('./commands/chat/ResumeChatCommand');
 const ChatListCommand = require('./commands/chat/ChatListCommand');
 const ImagineCommand = require('./commands/image/ImagineCommand');
 const VideogenCommand = require('./commands/video/VideogenCommand');
+const { version } = require('./package.json');
 
 class DiscordBot {
   constructor() {
-    logger.info('Creating DiscordBot v0.6 instance');
+    logger.info(`Creating DiscordBot v${version} instance`);
     logger.info(`OpenAI API Key: ${config.openai.apiKey ? 'Loaded' : 'Not Loaded'}`);
     
     this.client = new Client({

@@ -9,10 +9,11 @@ const { Resource } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { trace, SpanStatusCode, SpanKind, context, ROOT_CONTEXT } = require('@opentelemetry/api');
+const { version } = require('./package.json');
 
 // Service identification
 const SERVICE_NAME = process.env.OTEL_SERVICE_NAME || 'discord-article-bot';
-const SERVICE_VERSION = process.env.npm_package_version || '0.92.0';
+const SERVICE_VERSION = version;
 
 // Dynatrace OTLP endpoint configuration
 // When running with OneAgent, traces are sent to the local OneAgent endpoint
