@@ -1,5 +1,6 @@
 const BaseCommand = require('../base/BaseCommand');
 const { EmbedBuilder } = require('discord.js');
+const { version } = require('../../package.json');
 
 class HelpCommand extends BaseCommand {
   constructor(commandHandler) {
@@ -58,7 +59,7 @@ class HelpCommand extends BaseCommand {
       .setTitle('Available Commands')
       .setDescription('Use `!help <command>` for detailed information about a specific command.')
       .setColor(0x0099FF)
-      .setFooter({ text: 'Discord Article Bot v0.6' });
+      .setFooter({ text: `Discord Article Bot v${version}` });
 
     categories.forEach(([category, commands]) => {
       const commandList = commands
