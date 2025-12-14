@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: discord-article-bot
+
+# Storage backends for Mem0 SDK
+# The mem0ai npm package runs inside the Discord bot and connects to these
+resources:
+  - qdrant.yaml
+  - postgres.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: mem0
+  app.kubernetes.io/managed-by: kustomize
