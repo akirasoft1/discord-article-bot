@@ -24,6 +24,7 @@
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.3",
     "google-auth-library": "^10.5.0",
+    "mem0ai": "^2.1.38",
     "mongodb": "^6.21.0",
     "openai": "^6.9.1",
     "rss-parser": "^3.13.0",
