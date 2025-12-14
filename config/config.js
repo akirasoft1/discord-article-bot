@@ -205,6 +205,23 @@ module.exports = {
     // Polling interval for checking operation status (in milliseconds)
     pollIntervalMs: parseInt(process.env.VEO_POLL_INTERVAL_MS || '5000', 10)
   },
+  // Mem0 - Persistent AI conversation memory
+  mem0: {
+    // Enable/disable Mem0 memory service
+    enabled: process.env.MEM0_ENABLED === 'true',
+    // Qdrant host for vector storage
+    qdrantHost: process.env.MEM0_QDRANT_HOST || 'qdrant.discord-article-bot.svc.cluster.local',
+    // Qdrant port
+    qdrantPort: parseInt(process.env.MEM0_QDRANT_PORT || '6333', 10),
+    // Collection name for memories
+    collectionName: process.env.MEM0_COLLECTION_NAME || 'discord_memories',
+    // OpenAI API key (uses the main one if not specified)
+    openaiApiKey: process.env.MEM0_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+    // LLM model for memory extraction (use cheap model)
+    llmModel: process.env.MEM0_LLM_MODEL || 'gpt-4o-mini',
+    // Embedding model
+    embeddingModel: process.env.MEM0_EMBEDDING_MODEL || 'text-embedding-3-small'
+  },
   // Health check server configuration for Kubernetes probes
   health: {
     // Enable/disable health check server

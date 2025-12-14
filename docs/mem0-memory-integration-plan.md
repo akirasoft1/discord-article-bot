@@ -50,26 +50,30 @@ Users are frustrated with the bot's lack of or inconsistent memory:
 
 ## Proposed Architecture
 
+**Important:** Mem0 is an SDK (npm package `mem0ai`), NOT a separate server.
+The SDK runs inside the Discord bot and connects directly to storage backends.
+
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                         Discord Bot                               │
 │                                                                   │
-│  ChatService ───┬────────────────▶ MongoService                   │
-│                 │                  (session transcripts)          │
-│                 │                                                 │
-│                 └────────────────▶ Mem0Service (NEW)              │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │                    mem0ai SDK (npm package)                 │  │
+│  │                                                             │  │
+│  │  ChatService ───┬────────────────▶ MongoService             │  │
+│  │                 │                  (session transcripts)    │  │
+│  │                 │                                           │  │
+│  │                 └────────────────▶ Mem0Service (NEW)        │  │
+│  │                                    (uses mem0ai SDK)        │  │
+│  └─────────────────────────────────────────────────────────────┘  │
 │                                    │                              │
-│                                    ▼                              │
-│                              ┌─────────────┐                      │
-│                              │   Mem0 API  │                      │
-│                              └──────┬──────┘                      │
-│                                     │                             │
-│                    ┌────────────────┼────────────────┐            │
-│                    ▼                ▼                ▼            │
-│              ┌──────────┐    ┌───────────┐    ┌───────────┐       │
-│              │ Postgres │    │   Neo4j   │    │  Qdrant   │       │
-│              │ pgvector │    │  (graph)  │    │ (vectors) │       │
-│              └──────────┘    └───────────┘    └───────────┘       │
+│                    ┌───────────────┴───────────────┐              │
+│                    ▼                               ▼              │
+│              ┌──────────┐                    ┌───────────┐        │
+│              │ Postgres │                    │  Qdrant   │        │
+│              │ pgvector │                    │ (vectors) │        │
+│              │ (history)│                    │           │        │
+│              └──────────┘                    └───────────┘        │
 │                                                                   │
 │  Memory scopes:                                                   │
 │  - user_id: Discord user ID (cross-channel, persistent)          │
@@ -77,6 +81,10 @@ Users are frustrated with the bot's lack of or inconsistent memory:
 │  - run_id: Channel+Session (current conversation context)         │
 └──────────────────────────────────────────────────────────────────┘
 ```
+
+**Infrastructure Deployed (K8s):**
+- Qdrant: `qdrant.discord-article-bot.svc.cluster.local:6333`
+- PostgreSQL: `postgres-mem0.discord-article-bot.svc.cluster.local:5432`
 
 ## Memory Flow
 

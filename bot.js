@@ -22,6 +22,7 @@ const LinkwardenPollingService = require('./services/LinkwardenPollingService');
 const ChatService = require('./services/ChatService');
 const ImagenService = require('./services/ImagenService');
 const VeoService = require('./services/VeoService');
+const Mem0Service = require('./services/Mem0Service');
 
 // Import command classes
 const SummarizeCommand = require('./commands/summarization/SummarizeCommand');
@@ -59,7 +60,21 @@ class DiscordBot {
     this.reactionHandler = new ReactionHandler(this.summarizationService, this.summarizationService.mongoService);
     this.rssService = new RssService(this.summarizationService.mongoService, this.summarizationService, this.client);
     this.followUpService = new FollowUpService(this.summarizationService.mongoService, this.summarizationService, this.client);
-    this.chatService = new ChatService(this.openaiClient, config, this.summarizationService.mongoService);
+
+    // Initialize Mem0 (AI memory) service if enabled
+    this.mem0Service = null;
+    if (config.mem0?.enabled) {
+      try {
+        this.mem0Service = new Mem0Service(config);
+        logger.info('Mem0 (AI memory) service initialized');
+      } catch (error) {
+        logger.warn(`Failed to initialize Mem0 service: ${error.message}`);
+      }
+    } else {
+      logger.info('Mem0 (AI memory) is disabled');
+    }
+
+    this.chatService = new ChatService(this.openaiClient, config, this.summarizationService.mongoService, this.mem0Service);
     this.replyHandler = new ReplyHandler(this.chatService, this.summarizationService, this.openaiClient, config);
 
     // Initialize Linkwarden services for self-hosted article archiving

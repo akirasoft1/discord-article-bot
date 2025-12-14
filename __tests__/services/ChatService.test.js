@@ -455,4 +455,133 @@ describe('ChatService', () => {
       expect(result[0].personality.emoji).toBe('🎭');
     });
   });
+
+  describe('Mem0 integration', () => {
+    let mockMem0Service;
+    let chatServiceWithMem0;
+    const mockUser = { id: 'user123', username: 'TestUser', tag: 'TestUser#1234' };
+
+    beforeEach(() => {
+      mockMem0Service = {
+        isEnabled: jest.fn().mockReturnValue(true),
+        searchMemories: jest.fn().mockResolvedValue({
+          results: [
+            { id: 'mem-1', memory: 'User prefers dark mode' },
+            { id: 'mem-2', memory: 'User is a Python developer' }
+          ]
+        }),
+        addMemory: jest.fn().mockResolvedValue({
+          results: [{ id: 'new-mem', memory: 'Some new fact' }]
+        }),
+        formatMemoriesForContext: jest.fn().mockReturnValue(
+          '\n\nRelevant things you remember about this user:\n- User prefers dark mode\n- User is a Python developer\n'
+        )
+      };
+
+      chatServiceWithMem0 = new ChatService(mockOpenAIClient, mockConfig, mockMongoService, mockMem0Service);
+    });
+
+    it('should accept mem0Service as optional fourth constructor argument', () => {
+      const service = new ChatService(mockOpenAIClient, mockConfig, mockMongoService, mockMem0Service);
+      expect(service.mem0Service).toBe(mockMem0Service);
+    });
+
+    it('should work without mem0Service (backwards compatibility)', () => {
+      const service = new ChatService(mockOpenAIClient, mockConfig, mockMongoService);
+      expect(service.mem0Service).toBeNull();
+    });
+
+    it('should search for relevant memories during chat', async () => {
+      await chatServiceWithMem0.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      expect(mockMem0Service.searchMemories).toHaveBeenCalledWith(
+        'Hello!',
+        'user123',
+        expect.objectContaining({
+          personalityId: 'test-personality',
+          limit: 5
+        })
+      );
+    });
+
+    it('should include memories in system prompt context', async () => {
+      await chatServiceWithMem0.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      expect(mockMem0Service.formatMemoriesForContext).toHaveBeenCalledWith([
+        { id: 'mem-1', memory: 'User prefers dark mode' },
+        { id: 'mem-2', memory: 'User is a Python developer' }
+      ]);
+
+      // Verify the system prompt includes the memory context
+      const callArgs = mockOpenAIClient.responses.create.mock.calls[0][0];
+      expect(callArgs.instructions).toContain('User prefers dark mode');
+    });
+
+    it('should store new memories after chat response', async () => {
+      await chatServiceWithMem0.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      expect(mockMem0Service.addMemory).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ role: 'user', content: 'Hello!' }),
+          expect.objectContaining({ role: 'assistant', content: 'Test response from personality' })
+        ]),
+        'user123',
+        expect.objectContaining({
+          channelId: 'channel123',
+          personalityId: 'test-personality',
+          guildId: 'guild456'
+        })
+      );
+    });
+
+    it('should handle mem0 search errors gracefully', async () => {
+      mockMem0Service.searchMemories.mockRejectedValue(new Error('Qdrant unavailable'));
+
+      const result = await chatServiceWithMem0.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      // Chat should still succeed even if memory search fails
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('Test response from personality');
+    });
+
+    it('should handle mem0 addMemory errors gracefully', async () => {
+      mockMem0Service.addMemory.mockRejectedValue(new Error('Storage failed'));
+
+      const result = await chatServiceWithMem0.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      // Chat should still succeed even if memory storage fails
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('Test response from personality');
+    });
+
+    it('should not use mem0 when service is disabled', async () => {
+      mockMem0Service.isEnabled.mockReturnValue(false);
+
+      await chatServiceWithMem0.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      expect(mockMem0Service.searchMemories).not.toHaveBeenCalled();
+      expect(mockMem0Service.addMemory).not.toHaveBeenCalled();
+    });
+
+    it('should skip mem0 in stateless mode', async () => {
+      // No channelId = stateless mode
+      await chatServiceWithMem0.chat('test-personality', 'Hello!', mockUser);
+
+      // In stateless mode, mem0 should not be used as there's no user context
+      expect(mockMem0Service.searchMemories).not.toHaveBeenCalled();
+      expect(mockMem0Service.addMemory).not.toHaveBeenCalled();
+    });
+
+    it('should pass correct metadata to addMemory', async () => {
+      await chatServiceWithMem0.chat('test-personality', 'My favorite color is blue', mockUser, 'channel123', 'guild456');
+
+      const addMemoryCall = mockMem0Service.addMemory.mock.calls[0];
+      const metadata = addMemoryCall[2];
+
+      expect(metadata.channelId).toBe('channel123');
+      expect(metadata.personalityId).toBe('test-personality');
+      expect(metadata.guildId).toBe('guild456');
+      expect(metadata.channelName).toBeUndefined(); // Not available in this context
+    });
+  });
 });

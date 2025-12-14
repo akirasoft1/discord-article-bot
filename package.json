@@ -1,6 +1,6 @@
 {
   "name": "discord-article-archiver-bot",
-  "version": "1.112.0",
+  "version": "1.113.0",
   "license": "MIT",
   "description": "A Discord bot that integrates with Linkwarden for self-hosted article archiving and uses OpenAI-compatible APIs to automatically generate summaries of archived articles with support for authenticated/paywalled content.",
   "main": "bot.js",
@@ -24,6 +24,7 @@
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.3",
     "google-auth-library": "^10.5.0",
+    "mem0ai": "^2.1.38",
     "mongodb": "^6.21.0",
     "openai": "^6.9.1",
     "rss-parser": "^3.13.0",
