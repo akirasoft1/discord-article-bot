@@ -35,6 +35,9 @@ const ResumeChatCommand = require('./commands/chat/ResumeChatCommand');
 const ChatListCommand = require('./commands/chat/ChatListCommand');
 const ImagineCommand = require('./commands/image/ImagineCommand');
 const VideogenCommand = require('./commands/video/VideogenCommand');
+const MemoriesCommand = require('./commands/memory/MemoriesCommand');
+const RememberCommand = require('./commands/memory/RememberCommand');
+const ForgetCommand = require('./commands/memory/ForgetCommand');
 const { version } = require('./package.json');
 
 class DiscordBot {
@@ -208,6 +211,14 @@ class DiscordBot {
 
     // Register utility commands
     this.commandHandler.register(new HelpCommand(this.commandHandler));
+
+    // Register memory management commands (if Mem0 is enabled)
+    if (this.mem0Service) {
+      this.commandHandler.register(new MemoriesCommand());
+      this.commandHandler.register(new RememberCommand());
+      this.commandHandler.register(new ForgetCommand());
+      logger.info('Memory management commands registered');
+    }
 
     // Register image generation commands
     if (this.imagenService) {
