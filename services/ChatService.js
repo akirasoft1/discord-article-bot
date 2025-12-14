@@ -14,23 +14,84 @@ const LIMITS = {
 };
 
 class ChatService {
-  constructor(openaiClient, config, mongoService) {
+  constructor(openaiClient, config, mongoService, mem0Service = null) {
     this.openaiClient = openaiClient;
     this.config = config;
     this.mongoService = mongoService;
+    this.mem0Service = mem0Service;
   }
 
   /**
    * Build enhanced system prompt for group conversations
    * @param {Object} personality - Personality object
+   * @param {string} memoryContext - Optional memory context to include
    * @returns {string} Enhanced system prompt
    */
-  _buildGroupSystemPrompt(personality) {
+  _buildGroupSystemPrompt(personality, memoryContext = '') {
     return `${personality.systemPrompt}
 
 You are in a group conversation with multiple users in a Discord channel.
 Their names appear before their messages like "[Username]: message".
-Address users by name when relevant. Do not announce when new users join the conversation.`;
+Address users by name when relevant. Do not announce when new users join the conversation.${memoryContext}`;
+  }
+
+  /**
+   * Retrieve relevant memories for a user (if Mem0 is enabled)
+   * @param {string} userMessage - The user's message to search for relevant memories
+   * @param {string} userId - Discord user ID
+   * @param {string} personalityId - Personality ID for filtering
+   * @returns {Promise<{memories: Array, context: string}>}
+   * @private
+   */
+  async _getRelevantMemories(userMessage, userId, personalityId) {
+    if (!this.mem0Service || !this.mem0Service.isEnabled()) {
+      return { memories: [], context: '' };
+    }
+
+    try {
+      const result = await this.mem0Service.searchMemories(userMessage, userId, {
+        personalityId: personalityId,
+        limit: 5
+      });
+
+      const memories = result.results || [];
+      const context = this.mem0Service.formatMemoriesForContext(memories);
+
+      if (memories.length > 0) {
+        logger.debug(`Found ${memories.length} relevant memories for user ${userId}`);
+      }
+
+      return { memories, context };
+    } catch (error) {
+      logger.error(`Error retrieving memories: ${error.message}`);
+      return { memories: [], context: '' };
+    }
+  }
+
+  /**
+   * Store new memories from a conversation exchange
+   * @param {string} userMessage - The user's message
+   * @param {string} assistantMessage - The assistant's response
+   * @param {string} userId - Discord user ID
+   * @param {Object} metadata - Conversation metadata
+   * @private
+   */
+  async _storeMemories(userMessage, assistantMessage, userId, metadata) {
+    if (!this.mem0Service || !this.mem0Service.isEnabled()) {
+      return;
+    }
+
+    try {
+      const messages = [
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: assistantMessage }
+      ];
+
+      await this.mem0Service.addMemory(messages, userId, metadata);
+    } catch (error) {
+      logger.error(`Error storing memories: ${error.message}`);
+      // Don't fail the chat response if memory storage fails
+    }
   }
 
   /**
@@ -180,8 +241,11 @@ Address users by name when relevant. Do not announce when new users join the con
 
       logger.info(`Chat request from ${user.username} using personality: ${personality.name} (channel: ${channelId})`);
 
+      // Retrieve relevant memories for this user (if Mem0 is enabled)
+      const { context: memoryContext } = await this._getRelevantMemories(userMessage, user.id, personalityId);
+
       // Build system prompt and format history
-      const systemPrompt = this._buildGroupSystemPrompt(personality);
+      const systemPrompt = this._buildGroupSystemPrompt(personality, memoryContext);
       const historyMessages = this._formatMessagesForAPI(conversation.messages || []);
 
       // Format current user message
@@ -286,6 +350,13 @@ Address users by name when relevant. Do not announce when new users join the con
         `chat_${personalityId}`,
         this.config.openai.model || 'gpt-5.1'
       );
+
+      // Store conversation in Mem0 for long-term memory extraction
+      await this._storeMemories(userMessage, assistantMessage, user.id, {
+        channelId: channelId,
+        personalityId: personalityId,
+        guildId: guildId
+      });
 
       logger.info(`Chat response generated: ${inputTokens} in, ${outputTokens} out (conversation: ${conversation.messageCount + 2} messages)`);
 
