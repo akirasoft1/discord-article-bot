@@ -559,6 +559,10 @@ k8s/
 │   ├── secret.yaml                # Secret template (DO NOT commit real secrets)
 │   ├── serviceaccount.yaml        # Service account with minimal permissions
 │   └── networkpolicy.yaml         # Network restrictions
+├── mem0/                          # AI Memory infrastructure (optional)
+│   ├── kustomization.yaml         # Kustomize configuration
+│   ├── qdrant.yaml                # Qdrant vector database
+│   └── postgres.yaml              # PostgreSQL with pgvector
 └── overlays/                      # Environment-specific overrides
     ├── dev/
     │   └── kustomization.yaml     # Development overrides
@@ -612,6 +616,49 @@ k8s/
    ```
 
 3. **Adjust resource limits** by patching in your overlay's `kustomization.yaml`
+
+### Deploying Mem0 (AI Memory) Infrastructure
+
+The bot supports AI-powered long-term memory using Mem0. This requires a Qdrant vector database for semantic search.
+
+1. **Deploy Mem0 infrastructure:**
+   ```bash
+   kubectl apply -k k8s/mem0
+   ```
+
+   This deploys:
+   - **Qdrant**: Vector database for semantic memory search (port 6333)
+   - **PostgreSQL with pgvector**: Relational storage with vector extension (optional, for history)
+
+2. **Verify the deployment:**
+   ```bash
+   kubectl get pods -l app.kubernetes.io/part-of=mem0
+   ```
+
+3. **Update your configmap** to enable Mem0:
+   ```yaml
+   data:
+     MEM0_ENABLED: "true"
+     MEM0_QDRANT_HOST: "qdrant.discord-article-bot.svc.cluster.local"
+     MEM0_QDRANT_PORT: "6333"
+     MEM0_COLLECTION_NAME: "discord_memories"
+     MEM0_LLM_MODEL: "gpt-4o-mini"
+     MEM0_EMBEDDING_MODEL: "text-embedding-3-small"
+   ```
+
+4. **Update network policy** to allow Qdrant access:
+   ```yaml
+   # Add to egress rules
+   - to:
+       - podSelector:
+           matchLabels:
+             app.kubernetes.io/name: qdrant
+     ports:
+       - protocol: TCP
+         port: 6333
+   ```
+
+**Note**: Mem0 uses your existing OpenAI API key for embeddings and memory extraction. No additional API keys required.
 
 ### Best Practices Applied
 

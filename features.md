@@ -44,6 +44,15 @@
 - **List Conversations**: `!chatlist` to see your resumable conversations
 - **Admin Reset**: `!chatreset` for "bot admin" role to clear conversations
 
+### AI Memory (Mem0)
+- **Long-Term Memory**: Bot remembers facts and preferences about users across conversations
+- **Automatic Extraction**: Mem0 extracts relevant facts from conversations using GPT-4o-mini
+- **Semantic Search**: Relevant memories retrieved via vector similarity search
+- **Per-User Memories**: Each Discord user has their own memory store
+- **Personality-Scoped**: Memories can be filtered by personality for relevant context
+- **Graceful Degradation**: Bot works normally if memory service (Qdrant) is unavailable
+- **GDPR Compliance**: Users can request deletion of all their memories
+
 ### Image Generation (Nano Banana)
 - **AI Image Generation**: Generate images from text prompts using Google's Gemini API
 - **Reference Image Support**: Use existing images or Discord emojis as reference
@@ -82,7 +91,7 @@
 ### Memory & Context
 - [x] Conversation memory for personality chats
 - [x] Reply to bot messages to continue conversations
-- [ ] User preference persistence
+- [x] User preference persistence (Mem0 long-term memory)
 
 ### Enhanced Personalities
 - [x] Default personality for quick chat

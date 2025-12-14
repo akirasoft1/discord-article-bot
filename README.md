@@ -31,6 +31,16 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - **Conversation Limits**: 100 messages, 150k tokens, or 30 min idle timeout
 - **Resume/Reset/List**: Continue expired conversations, reset them, or list your resumable chats
 
+### AI Memory (Mem0)
+
+- **Long-Term Memory**: Bot remembers facts about users across conversations
+- **Automatic Extraction**: Mem0 extracts preferences, facts, and context from conversations
+- **Semantic Search**: Relevant memories are retrieved based on conversation context
+- **Per-User Memories**: Each user has their own memory store
+- **Personality-Scoped**: Memories can be filtered by personality for relevant context
+- **Graceful Degradation**: Bot works normally if memory service is unavailable
+- **Privacy Controls**: Users can request deletion of their memories (GDPR compliance)
+
 ### Image Generation (Nano Banana)
 
 - **AI Image Generation**: Generate images from text prompts using Google's Gemini API
@@ -69,6 +79,7 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - Google Gemini API Key (optional, for image generation)
 - Google Cloud Project with Vertex AI enabled (optional, for video generation)
 - Google Cloud Storage bucket (optional, for video generation)
+- Qdrant vector database (optional, for AI memory)
 
 ## Installation
 
@@ -141,6 +152,7 @@ discord-article-bot/
 ├── services/
 │   ├── SummarizationService.js   # Main summarization logic
 │   ├── ChatService.js            # Personality chat handling
+│   ├── Mem0Service.js            # AI memory management (Mem0 SDK)
 │   ├── ImagenService.js          # Gemini image generation
 │   ├── VeoService.js             # Vertex AI video generation
 │   ├── LinkwardenService.js      # Linkwarden API
@@ -189,6 +201,17 @@ discord-article-bot/
 | `LINKWARDEN_SOURCE_COLLECTION_ID` | `0` | Collection to monitor |
 | `LINKWARDEN_DISCORD_CHANNEL_ID` | `` | Channel for posts |
 | `LINKWARDEN_POLL_INTERVAL_MS` | `60000` | Poll interval |
+
+### Mem0 (AI Memory) Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MEM0_ENABLED` | `false` | Enable AI memory |
+| `MEM0_QDRANT_HOST` | `localhost` | Qdrant vector database host |
+| `MEM0_QDRANT_PORT` | `6333` | Qdrant port |
+| `MEM0_COLLECTION_NAME` | `discord_memories` | Vector collection name |
+| `MEM0_LLM_MODEL` | `gpt-4o-mini` | Model for memory extraction |
+| `MEM0_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
 
 ## Commands
 
