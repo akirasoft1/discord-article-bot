@@ -62,6 +62,15 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - **Progress Updates**: Real-time status updates during generation
 - **Usage Tracking**: All generations tracked in MongoDB
 
+### IRC History Search
+
+- **Semantic Search**: Search through archived IRC conversations using natural language
+- **Discord-to-IRC Mapping**: Links Discord users to their historical IRC nicknames
+- **Personal History**: Filter searches to your own conversations with `--me` flag
+- **Time-Based Filtering**: Filter by year or decade
+- **Throwback Feature**: Random conversations from "this day in history"
+- **Graceful Degradation**: Commands hidden when Qdrant service unavailable
+
 ### Additional Features
 
 - **Article Follow-up Questions**: Reply to summaries to ask follow-up questions about the article
@@ -140,6 +149,14 @@ discord-article-bot/
 │   │   └── ImagineCommand.js     # !imagine
 │   ├── video/
 │   │   └── VideogenCommand.js    # !videogen
+│   ├── irc/
+│   │   ├── RecallCommand.js      # !recall (semantic search)
+│   │   ├── HistoryCommand.js     # !history (user history)
+│   │   └── ThrowbackCommand.js   # !throwback (this day in history)
+│   ├── memory/
+│   │   ├── MemoriesCommand.js    # !memories
+│   │   ├── RememberCommand.js    # !remember
+│   │   └── ForgetCommand.js      # !forget
 │   └── utility/
 │       └── HelpCommand.js        # !help
 ├── personalities/                # Personality definitions
@@ -153,6 +170,8 @@ discord-article-bot/
 │   ├── SummarizationService.js   # Main summarization logic
 │   ├── ChatService.js            # Personality chat handling
 │   ├── Mem0Service.js            # AI memory management (Mem0 SDK)
+│   ├── QdrantService.js          # IRC history vector search
+│   ├── NickMappingService.js     # Discord-to-IRC nick mapping
 │   ├── ImagenService.js          # Gemini image generation
 │   ├── VeoService.js             # Vertex AI video generation
 │   ├── LinkwardenService.js      # Linkwarden API
@@ -212,6 +231,17 @@ discord-article-bot/
 | `MEM0_COLLECTION_NAME` | `discord_memories` | Vector collection name |
 | `MEM0_LLM_MODEL` | `gpt-4o-mini` | Model for memory extraction |
 | `MEM0_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
+
+### Qdrant IRC History Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QDRANT_IRC_ENABLED` | `false` | Enable IRC history search |
+| `QDRANT_HOST` | `localhost` | Qdrant vector database host |
+| `QDRANT_PORT` | `6333` | Qdrant port |
+| `QDRANT_IRC_COLLECTION` | `irc_history` | Collection name for IRC history |
+
+**Note:** IRC history requires a pre-populated Qdrant collection with vectorized IRC logs. See `scripts/irc-parser/` for ingestion tools.
 
 ## Commands
 
@@ -274,6 +304,38 @@ discord-article-bot/
 - Zero, one, or two PNG/JPEG images (optional)
 - Google Cloud service account with Vertex AI permissions
 - GCS bucket for video output storage
+
+### Memory Management
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `!memories` | `!mems`, `!recall-memories` | View your stored memories |
+| `!remember <fact>` | `!mem`, `!store` | Manually store a memory about yourself |
+| `!forget [search]` | `!forgetme`, `!delete-memory` | Delete memories (all or matching search) |
+
+**Examples:**
+- `!memories` - View all your stored memories
+- `!remember I prefer dark mode` - Store a preference
+- `!forget` - Delete all your memories
+- `!forget dark mode` - Delete memories matching "dark mode"
+
+### IRC History Search
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `!recall <query>` | `!irc`, `!ircsearch` | Semantic search through IRC history |
+| `!recall <query> --me` | | Filter to your own IRC conversations |
+| `!recall <query> --year 2015` | | Filter by specific year |
+| `!history [@user]` | `!irchistory`, `!myirc` | View IRC history for yourself or mentioned user |
+| `!throwback` | `!tbt`, `!onthisday`, `!otd` | Random conversation from this day in history |
+
+**Examples:**
+- `!recall funny story about gaming` - Search all IRC history
+- `!recall lan party --me` - Search only your conversations
+- `!irc that time we broke the server --year 2010` - Search specific year
+- `!history` - View your own IRC history
+- `!history @friend` - View a friend's IRC history
+- `!throwback` - See what was happening on this date years ago
+
+**Note:** IRC commands require Discord-to-IRC nick mapping in `config/nick_mappings.json`. Commands are hidden when Qdrant service is unavailable.
 
 ### Utility
 | Command | Aliases | Description |
