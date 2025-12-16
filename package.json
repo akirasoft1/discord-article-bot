@@ -19,7 +19,7 @@
     "@opentelemetry/sdk-node": "^0.56.0",
     "@opentelemetry/sdk-trace-base": "^1.29.0",
     "@opentelemetry/semantic-conventions": "^1.28.0",
-    "@qdrant/js-client-rest": "^1.16.2",
+    "@qdrant/js-client-rest": "^1.13.0",
     "axios": "^1.13.2",
     "discord-article-archiver-bot": "file:",
     "discord.js": "^14.25.1",
