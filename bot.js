@@ -23,6 +23,8 @@ const ChatService = require('./services/ChatService');
 const ImagenService = require('./services/ImagenService');
 const VeoService = require('./services/VeoService');
 const Mem0Service = require('./services/Mem0Service');
+const QdrantService = require('./services/QdrantService');
+const NickMappingService = require('./services/NickMappingService');
 
 // Import command classes
 const SummarizeCommand = require('./commands/summarization/SummarizeCommand');
@@ -38,6 +40,9 @@ const VideogenCommand = require('./commands/video/VideogenCommand');
 const MemoriesCommand = require('./commands/memory/MemoriesCommand');
 const RememberCommand = require('./commands/memory/RememberCommand');
 const ForgetCommand = require('./commands/memory/ForgetCommand');
+const RecallCommand = require('./commands/irc/RecallCommand');
+const HistoryCommand = require('./commands/irc/HistoryCommand');
+const ThrowbackCommand = require('./commands/irc/ThrowbackCommand');
 const { version } = require('./package.json');
 
 class DiscordBot {
@@ -119,6 +124,21 @@ class DiscordBot {
       }
     } else {
       logger.info('Veo (video generation) is disabled or not fully configured');
+    }
+
+    // Initialize IRC history services (Qdrant + nick mapping)
+    this.qdrantService = null;
+    this.nickMappingService = null;
+    if (config.qdrant?.enabled) {
+      try {
+        this.qdrantService = new QdrantService(this.openaiClient, config);
+        this.nickMappingService = new NickMappingService();
+        logger.info('IRC history services initialized (Qdrant + NickMapping)');
+      } catch (error) {
+        logger.warn(`Failed to initialize IRC history services: ${error.message}`);
+      }
+    } else {
+      logger.info('IRC history search is disabled');
     }
 
     // Initialize command handler
@@ -230,6 +250,14 @@ class DiscordBot {
     if (this.veoService) {
       this.commandHandler.register(new VideogenCommand(this.veoService));
       logger.info('Veo command registered');
+    }
+
+    // Register IRC history commands
+    if (this.qdrantService) {
+      this.commandHandler.register(new RecallCommand());
+      this.commandHandler.register(new HistoryCommand());
+      this.commandHandler.register(new ThrowbackCommand());
+      logger.info('IRC history commands registered (recall, history, throwback)');
     }
 
     logger.info(`Registered ${this.commandHandler.getAllCommands().length} commands`);
