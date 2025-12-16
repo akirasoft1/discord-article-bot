@@ -1,0 +1,35 @@
+[
+  {
+    "discord": {
+      "id": "123456789",
+      "username": "akirasoft",
+      "displayName": "Akira",
+      "globalName": "Akira"
+    },
+    "irc_nicks": ["Akira1", "Akira1_", "cAd_Akira1"],
+    "suggestions": [],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "987654321",
+      "username": "inc1067",
+      "displayName": "inc",
+      "globalName": "inc"
+    },
+    "irc_nicks": ["inc", "inc_"],
+    "suggestions": [],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "555555555",
+      "username": "vise",
+      "displayName": "visE",
+      "globalName": "visE"
+    },
+    "irc_nicks": ["vise", "cK-visE", "cAd_visE_wrk"],
+    "suggestions": [],
+    "notes": ""
+  }
+]

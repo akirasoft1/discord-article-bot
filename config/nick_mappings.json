@@ -1,0 +1,502 @@
+[
+  {
+    "discord": {
+      "id": "132657273666273280",
+      "username": "inc1067",
+      "displayName": "inc",
+      "globalName": "inc"
+    },
+    "irc_nicks": ["inc", "cAd_inc"],
+    "suggestions": [
+      {
+        "irc_nick": "inc",
+        "score": 1.0,
+        "matched_on": "inc",
+        "message_count": 10711,
+        "years": [
+          2002,
+          2003,
+          2004,
+          2005,
+          2006,
+          2007
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "538187409595039748",
+      "username": "incogn17o",
+      "displayName": "Bishop",
+      "globalName": "incogn17o"
+    },
+    "irc_nicks": ["Bishop"],
+    "suggestions": [
+      {
+        "irc_nick": "p_",
+        "score": 0.9,
+        "matched_on": "Bishop",
+        "message_count": 84590,
+        "years": [
+          2004,
+          2005,
+          2006,
+          2007
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "293034704934797312",
+      "username": "o.g.vise",
+      "displayName": "First City",
+      "globalName": "visE"
+    },
+    "irc_nicks": ["vise", "cK-visE", "cAd_visE_wrk", "nL-visE|wrk", "U4-vise"],
+    "suggestions": [
+      {
+        "irc_nick": "vise",
+        "score": 1.0,
+        "matched_on": "visE",
+        "message_count": 8863,
+        "years": [
+          2001,
+          2002,
+          2004,
+          2005,
+          2006,
+          2007
+        ]
+      },
+      {
+        "irc_nick": "cK-visE",
+        "score": 0.9,
+        "matched_on": "visE",
+        "message_count": 3934,
+        "years": [
+          2001
+        ]
+      },
+      {
+        "irc_nick": "cAd_visE_wrk",
+        "score": 0.9,
+        "matched_on": "visE",
+        "message_count": 2070,
+        "years": [
+          2002,
+          2003
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "437596201333030925",
+      "username": "dissenter.",
+      "displayName": "Dissenter",
+      "globalName": "Dissenter"
+    },
+    "irc_nicks": ["Dissenter", "cAd_Dissenter", "cK-Dissenter", "Dissenter|wrk", "nL-Dissenter|wrk"],
+    "suggestions": [
+      {
+        "irc_nick": "Dissenter",
+        "score": 1.0,
+        "matched_on": "dissenter.",
+        "message_count": 2170,
+        "years": [
+          2002,
+          2003,
+          2004,
+          2005,
+          2007
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "395373691652800522",
+      "username": "kooksta",
+      "displayName": "k00ksta",
+      "globalName": "k00ksta"
+    },
+    "irc_nicks": ["k00k", "cAd_k00k", "cAd_k00k|wrk"],
+    "suggestions": [
+      {
+        "irc_nick": "k00k",
+        "score": 0.9,
+        "matched_on": "k00ksta",
+        "message_count": 9110,
+        "years": [
+          2002,
+          2003,
+          2004,
+          2005,
+          2006,
+          2007
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "485050296792514560",
+      "username": ".ebuck",
+      "displayName": "ebuck",
+      "globalName": "ebuck"
+    },
+    "irc_nicks": ["eBuCk", "cAd_eBuCk", "cAd_ebuck_wrk"],
+    "suggestions": [
+      {
+        "irc_nick": "cAd_eBuCk",
+        "score": 0.9,
+        "matched_on": ".ebuck",
+        "message_count": 5628,
+        "years": [
+          2005,
+          2006,
+          2007
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "111887593297162240",
+      "username": "socrates8630",
+      "displayName": "socrates",
+      "globalName": "socrates"
+    },
+    "irc_nicks": ["socrates", "socrates_", "[id]socrates"],
+    "suggestions": [],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "689164925263806474",
+      "username": ".bodegacat.",
+      "displayName": "bodega behemot",
+      "globalName": "bodega cat"
+    },
+    "irc_nicks": ["blake", "blake`"],
+    "suggestions": [
+      {
+        "irc_nick": "d_",
+        "score": 0.9,
+        "matched_on": ".bodegacat.",
+        "message_count": 15249,
+        "years": [
+          2005,
+          2006,
+          2007
+        ]
+      }
+    ],
+    "notes": "Blake... right?"
+  },
+  {
+    "discord": {
+      "id": "743129335690690631",
+      "username": "microb0x",
+      "displayName": "Sir microb0xingtonshire",
+      "globalName": "microb0x"
+    },
+    "irc_nicks": ["microb0x", "cAd_m|cr0-wrk", "cAd_m|cr0"],
+    "suggestions": [
+      {
+        "irc_nick": "rob",
+        "score": 0.9,
+        "matched_on": "microb0x",
+        "message_count": 55435,
+        "years": [
+          2004,
+          2005,
+          2006,
+          2007
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "259487795859423233",
+      "username": "wrl",
+      "displayName": "wrl",
+      "globalName": "whereiswilltoday"
+    },
+    "irc_nicks": ["wrl"],
+    "suggestions": [
+      {
+        "irc_nick": "d_",
+        "score": 0.9,
+        "matched_on": "whereiswilltoday",
+        "message_count": 15249,
+        "years": [
+          2005,
+          2006,
+          2007
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "299370782855790622",
+      "username": "c3_01",
+      "displayName": "The Ghost of c3",
+      "globalName": "c3"
+    },
+    "irc_nicks": ["c3", "_c3", "c3|away" ],
+    "suggestions": [
+      {
+        "irc_nick": "c3",
+        "score": 1.0,
+        "matched_on": "c3_01",
+        "message_count": 3429,
+        "years": [
+          2001,
+          2002,
+          2003,
+          2004
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "180801656571691008",
+      "username": "phr0",
+      "displayName": "phr0",
+      "globalName": "phr0"
+    },
+    "irc_nicks": ["phr0", "phr0sty", "cAd_phr0sty"],
+    "suggestions": [
+      {
+        "irc_nick": "p_",
+        "score": 0.9,
+        "matched_on": "phr0",
+        "message_count": 84590,
+        "years": [
+          2004,
+          2005,
+          2006,
+          2007
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "246151225328795649",
+      "username": "phyxated",
+      "displayName": "phyx",
+      "globalName": "phyx"
+    },
+    "irc_nicks": ["phyx", "phyxated"],
+    "suggestions": [
+      {
+        "irc_nick": "phyx",
+        "score": 1.0,
+        "matched_on": "phyx",
+        "message_count": 2636,
+        "years": [
+          2004,
+          2005,
+          2006,
+          2007
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "230941213652549632",
+      "username": "batch0v",
+      "displayName": "batchOv",
+      "globalName": "batch0v"
+    },
+    "irc_nicks": ["batch"],
+    "suggestions": [],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "717097803498782911",
+      "username": "shane_z",
+      "displayName": "Snowbirdturd",
+      "globalName": "shanez"
+    },
+    "irc_nicks": ["ecoli"],
+    "suggestions": [
+      {
+        "irc_nick": "Snow",
+        "score": 0.9,
+        "matched_on": "Snowbirdturd",
+        "message_count": 47052,
+        "years": [
+          2003,
+          2004
+        ]
+      },
+      {
+        "irc_nick": "d_",
+        "score": 0.9,
+        "matched_on": "Snowbirdturd",
+        "message_count": 15249,
+        "years": [
+          2005,
+          2006,
+          2007
+        ]
+      },
+      {
+        "irc_nick": "Sean",
+        "score": 0.6,
+        "matched_on": "shane_z",
+        "message_count": 2210,
+        "years": [
+          2003,
+          2004
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "discord": {
+      "id": "161644375040983040",
+      "username": "akirasoft",
+      "displayName": "Akira",
+      "globalName": "Akira"
+    },
+    "irc_nicks": ["Akira1", "Akira1_", "Akira1__", "Akira42", "akirasoft", "Akira1_Laptop", "cAd_Akira1"],
+    "suggestions": [
+      {
+        "irc_nick": "Akira1",
+        "score": 0.9,
+        "matched_on": "Akira",
+        "message_count": 233617,
+        "years": [
+          2001,
+          2002,
+          2003,
+          2004,
+          2005,
+          2006,
+          2007
+        ]
+      },
+      {
+        "irc_nick": "Akira1_Laptop",
+        "score": 0.9,
+        "matched_on": "Akira",
+        "message_count": 13364,
+        "years": [
+          2006,
+          2007
+        ]
+      },
+      {
+        "irc_nick": "cAd_Akira1",
+        "score": 0.9,
+        "matched_on": "Akira",
+        "message_count": 5894,
+        "years": [
+          2001,
+          2002,
+          2005,
+          2006
+        ]
+      },
+      {
+        "irc_nick": "k",
+        "score": 0.9,
+        "matched_on": "akirasoft",
+        "message_count": 2033,
+        "years": [
+          2001
+        ]
+      },
+      {
+        "irc_nick": "arpa",
+        "score": 0.67,
+        "matched_on": "Akira",
+        "message_count": 2060,
+        "years": [
+          2004
+        ]
+      },
+      {
+        "irc_nick": "Captkirk",
+        "score": 0.62,
+        "matched_on": "Akira",
+        "message_count": 9899,
+        "years": [
+          2002,
+          2004,
+          2005,
+          2006,
+          2007
+        ]
+      }
+    ],
+    "notes": ""
+  },
+  
+  {
+    "discord": {
+      "id": "899747703385366548",
+      "username": "bludshed.",
+      "displayName": "Pork Musket",
+      "globalName": "bludshed"
+    },
+    "irc_nicks": ["bludshed", "nL-bludshed|wrk", "bludshedwrkn", "bludshed|wrk"],
+    "suggestions": [
+      {
+        "irc_nick": "bludshed|wrk",
+        "score": 1.0,
+        "matched_on": "bludshed.",
+        "message_count": 34115,
+        "years": [
+          2005,
+          2006,
+          2007
+        ]
+      },
+      {
+        "irc_nick": "nL-bludshed|wrk",
+        "score": 0.9,
+        "matched_on": "bludshed.",
+        "message_count": 19414,
+        "years": [
+          2004,
+          2005,
+          2007
+        ]
+      },
+      {
+        "irc_nick": "bludshedwrkn",
+        "score": 0.9,
+        "matched_on": "bludshed.",
+        "message_count": 4080,
+        "years": [
+          2006
+        ]
+      }
+    ],
+    "notes": ""
+  }
+]
