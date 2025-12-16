@@ -222,6 +222,17 @@ module.exports = {
     // Embedding model
     embeddingModel: process.env.MEM0_EMBEDDING_MODEL || 'text-embedding-3-small'
   },
+  // Qdrant - IRC history vector search
+  qdrant: {
+    // Enable/disable IRC history search
+    enabled: process.env.QDRANT_IRC_ENABLED === 'true',
+    // Qdrant host
+    host: process.env.QDRANT_HOST || 'qdrant.discord-article-bot.svc.cluster.local',
+    // Qdrant port
+    port: parseInt(process.env.QDRANT_PORT || '6333', 10),
+    // Collection name for IRC history
+    collection: process.env.QDRANT_IRC_COLLECTION || 'irc_history'
+  },
   // Health check server configuration for Kubernetes probes
   health: {
     // Enable/disable health check server
