@@ -79,3 +79,24 @@ data:
   VEO_COOLDOWN_SECONDS: "60"
   VEO_MAX_WAIT_SECONDS: "300"
   VEO_POLL_INTERVAL_MS: "5000"
+
+  # channel context tracking and memory
+
+  #nable/disable the feature
+  CHANNEL_CONTEXT_ENABLED:	"false"	
+  #messages to keep in memory buffer
+  CHANNEL_CONTEXT_RECENT_COUNT:	"20"	
+  #minutes between batch indexing
+  CHANNEL_CONTEXT_BATCH_INTERVAL:	"60"	
+  #Days to retain indexed messages
+  CHANNEL_CONTEXT_RETENTION_DAYS:	"30"
+  #Qdrant collection name
+  CHANNEL_CONTEXT_QDRANT_COLLECTION: "channel_conversations"	
+  #Minimum score for semantic search
+  CHANNEL_CONTEXT_SEARCH_THRESHOLD:	"0.4"
+  #Max results from semantic search
+  CHANNEL_CONTEXT_SEARCH_LIMIT: "5"
+  #Enable Tier 3 Mem0 extraction
+  CHANNEL_CONTEXT_EXTRACT_MEMORIES: "false"
+  #Messages between memory extraction
+  CHANNEL_CONTEXT_MEMORY_INTERVAL: "50"

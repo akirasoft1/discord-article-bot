@@ -237,6 +237,10 @@ module.exports = {
   channelContext: {
     // Enable/disable channel context tracking
     enabled: process.env.CHANNEL_CONTEXT_ENABLED === 'true',
+    // Pre-configured channel IDs to track (comma-separated, loaded on startup)
+    preConfiguredChannels: process.env.CHANNEL_CONTEXT_CHANNELS
+      ? process.env.CHANNEL_CONTEXT_CHANNELS.split(',').map(id => id.trim()).filter(Boolean)
+      : [],
     // Number of recent messages to keep in memory per channel (Tier 1: hot)
     recentMessageCount: parseInt(process.env.CHANNEL_CONTEXT_RECENT_COUNT || '20', 10),
     // Batch indexing interval in minutes (Tier 2: warm)

@@ -32,6 +32,7 @@ The feature uses a three-tier hybrid RAG (Retrieval Augmented Generation) archit
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CHANNEL_CONTEXT_ENABLED` | `false` | Enable/disable the feature |
+| `CHANNEL_CONTEXT_CHANNELS` | `""` | Comma-separated channel IDs to auto-track |
 | `CHANNEL_CONTEXT_RECENT_COUNT` | `20` | Messages to keep in memory buffer |
 | `CHANNEL_CONTEXT_BATCH_INTERVAL` | `60` | Minutes between batch indexing |
 | `CHANNEL_CONTEXT_RETENTION_DAYS` | `30` | Days to retain indexed messages |
@@ -46,7 +47,24 @@ The feature uses a three-tier hybrid RAG (Retrieval Augmented Generation) archit
 1. Set `CHANNEL_CONTEXT_ENABLED=true` in your environment
 2. Ensure Qdrant is running and accessible
 3. Deploy the updated bot
-4. Use `!channeltrack enable` in channels you want to track
+4. Either:
+   - **Via config:** Set `CHANNEL_CONTEXT_CHANNELS` to a comma-separated list of channel IDs
+   - **Via command:** Use `!channeltrack enable` in channels you want to track
+
+### Pre-Configured Channels
+
+You can pre-configure channels to track automatically on startup by setting `CHANNEL_CONTEXT_CHANNELS`:
+
+```yaml
+CHANNEL_CONTEXT_CHANNELS: "1234567890,0987654321,1122334455"
+```
+
+This is useful for:
+- Initial deployment without manual setup
+- Ensuring specific channels are always tracked
+- Infrastructure-as-code approaches
+
+Pre-configured channels are persisted to MongoDB on first startup, so they'll remain tracked even if removed from the environment variable later. Use `!channeltrack disable` to stop tracking.
 
 ## Commands
 

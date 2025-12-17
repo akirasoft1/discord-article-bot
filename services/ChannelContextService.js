@@ -195,10 +195,11 @@ class ChannelContextService {
   }
 
   /**
-   * Load tracked channels from MongoDB on startup
+   * Load tracked channels from MongoDB and pre-configured list on startup
    */
   async _loadTrackedChannels() {
     try {
+      // Load from MongoDB first
       const channels = await this.mongoService.getTrackedChannels();
       for (const channel of channels) {
         this.trackedChannels.add(channel.channelId);
@@ -209,6 +210,26 @@ class ChannelContextService {
         });
       }
       logger.info(`Loaded ${channels.length} tracked channels from database`);
+
+      // Also load pre-configured channels from environment
+      const preConfigured = this.config.preConfiguredChannels || [];
+      let newFromConfig = 0;
+      for (const channelId of preConfigured) {
+        if (!this.trackedChannels.has(channelId)) {
+          this.trackedChannels.add(channelId);
+          this.channelBuffers.set(channelId, {
+            messages: new CircularBuffer(this.config.recentMessageCount),
+            lastActivity: new Date(),
+            guildId: null // Will be set when first message arrives
+          });
+          // Persist to MongoDB for consistency
+          await this.mongoService.enableChannelTracking(channelId, null, 'config');
+          newFromConfig++;
+        }
+      }
+      if (newFromConfig > 0) {
+        logger.info(`Added ${newFromConfig} pre-configured channels from CHANNEL_CONTEXT_CHANNELS`);
+      }
     } catch (error) {
       logger.error(`Error loading tracked channels: ${error.message}`);
     }
