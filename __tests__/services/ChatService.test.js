@@ -491,30 +491,92 @@ describe('ChatService', () => {
       expect(service.mem0Service).toBeNull();
     });
 
-    it('should search for relevant memories during chat', async () => {
+    it('should search for both personality and explicit memories during chat', async () => {
       await chatServiceWithMem0.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
 
+      // Should search for personality-specific memories
       expect(mockMem0Service.searchMemories).toHaveBeenCalledWith(
         'Hello!',
         'user123',
         expect.objectContaining({
           personalityId: 'test-personality',
-          limit: 5
+          limit: 3
         })
       );
+
+      // Should also search for explicit memories from !remember command
+      expect(mockMem0Service.searchMemories).toHaveBeenCalledWith(
+        'Hello!',
+        'user123',
+        expect.objectContaining({
+          personalityId: 'explicit_memory',
+          limit: 3
+        })
+      );
+
+      // Total of 2 searches
+      expect(mockMem0Service.searchMemories).toHaveBeenCalledTimes(2);
     });
 
     it('should include memories in system prompt context', async () => {
       await chatServiceWithMem0.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
 
-      expect(mockMem0Service.formatMemoriesForContext).toHaveBeenCalledWith([
-        { id: 'mem-1', memory: 'User prefers dark mode' },
-        { id: 'mem-2', memory: 'User is a Python developer' }
-      ]);
+      // Should format the combined memories
+      expect(mockMem0Service.formatMemoriesForContext).toHaveBeenCalled();
 
       // Verify the system prompt includes the memory context
       const callArgs = mockOpenAIClient.responses.create.mock.calls[0][0];
       expect(callArgs.instructions).toContain('User prefers dark mode');
+    });
+
+    it('should combine explicit and personality memories without duplicates', async () => {
+      // Set up mock to return different memories for each search
+      mockMem0Service.searchMemories
+        .mockResolvedValueOnce({
+          results: [
+            { id: 'personality-1', memory: 'User likes Python from chat' }
+          ]
+        })
+        .mockResolvedValueOnce({
+          results: [
+            { id: 'explicit-1', memory: 'User prefers dark mode' },
+            { id: 'explicit-2', memory: 'User is a software engineer' }
+          ]
+        });
+
+      await chatServiceWithMem0.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      // formatMemoriesForContext should receive combined, deduplicated memories
+      // Explicit memories come first (prioritized)
+      const formatCall = mockMem0Service.formatMemoriesForContext.mock.calls[0][0];
+      expect(formatCall).toHaveLength(3);
+      // Explicit memories first
+      expect(formatCall[0].id).toBe('explicit-1');
+      expect(formatCall[1].id).toBe('explicit-2');
+      // Then personality memories
+      expect(formatCall[2].id).toBe('personality-1');
+    });
+
+    it('should deduplicate memories by ID', async () => {
+      // Same memory ID returned by both searches
+      mockMem0Service.searchMemories
+        .mockResolvedValueOnce({
+          results: [
+            { id: 'shared-mem', memory: 'Same memory' }
+          ]
+        })
+        .mockResolvedValueOnce({
+          results: [
+            { id: 'shared-mem', memory: 'Same memory' },
+            { id: 'unique-mem', memory: 'Unique explicit memory' }
+          ]
+        });
+
+      await chatServiceWithMem0.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      const formatCall = mockMem0Service.formatMemoriesForContext.mock.calls[0][0];
+      // Should have 2 memories, not 3 (deduplicated)
+      expect(formatCall).toHaveLength(2);
     });
 
     it('should store new memories after chat response', async () => {
