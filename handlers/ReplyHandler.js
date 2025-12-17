@@ -3,6 +3,7 @@
 
 const logger = require('../logger');
 const personalityManager = require('../personalities');
+const TextUtils = require('../utils/textUtils');
 
 class ReplyHandler {
   constructor(chatService, summarizationService, openaiClient, config) {
@@ -209,8 +210,10 @@ class ReplyHandler {
       });
     }
 
-    // Format response with personality header
-    const response = `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`;
+    // Format response with personality header and wrap URLs
+    const response = TextUtils.wrapUrls(
+      `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
+    );
 
     // Split if too long for Discord
     if (response.length > 2000) {
@@ -319,8 +322,8 @@ Answer the user's follow-up question based on the summary provided. If the quest
         );
       }
 
-      // Format and send response
-      const formattedResponse = `**Follow-up Answer:**\n\n${answer}`;
+      // Format and send response with URL wrapping
+      const formattedResponse = TextUtils.wrapUrls(`**Follow-up Answer:**\n\n${answer}`);
 
       if (formattedResponse.length > 2000) {
         const chunks = this.splitMessage(formattedResponse, 2000);
