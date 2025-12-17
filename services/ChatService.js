@@ -37,6 +37,7 @@ Address users by name when relevant. Do not announce when new users join the con
 
   /**
    * Retrieve relevant memories for a user (if Mem0 is enabled)
+   * Searches both personality-specific memories AND explicit memories from !remember
    * @param {string} userMessage - The user's message to search for relevant memories
    * @param {string} userId - Discord user ID
    * @param {string} personalityId - Personality ID for filtering
@@ -49,16 +50,45 @@ Address users by name when relevant. Do not announce when new users join the con
     }
 
     try {
-      const result = await this.mem0Service.searchMemories(userMessage, userId, {
-        personalityId: personalityId,
-        limit: 5
-      });
+      // Search for both personality-specific memories AND explicit memories from !remember
+      // Run both searches in parallel for efficiency
+      const [personalityResult, explicitResult] = await Promise.all([
+        this.mem0Service.searchMemories(userMessage, userId, {
+          personalityId: personalityId,
+          limit: 3
+        }),
+        this.mem0Service.searchMemories(userMessage, userId, {
+          personalityId: 'explicit_memory',
+          limit: 3
+        })
+      ]);
 
-      const memories = result.results || [];
+      // Combine results, deduplicating by memory ID
+      const seenIds = new Set();
+      const combinedMemories = [];
+
+      // Add explicit memories first (they're user-specified, so prioritize them)
+      for (const memory of (explicitResult.results || [])) {
+        if (memory.id && !seenIds.has(memory.id)) {
+          seenIds.add(memory.id);
+          combinedMemories.push(memory);
+        }
+      }
+
+      // Add personality-specific memories
+      for (const memory of (personalityResult.results || [])) {
+        if (memory.id && !seenIds.has(memory.id)) {
+          seenIds.add(memory.id);
+          combinedMemories.push(memory);
+        }
+      }
+
+      // Limit to top 5 total
+      const memories = combinedMemories.slice(0, 5);
       const context = this.mem0Service.formatMemoriesForContext(memories);
 
       if (memories.length > 0) {
-        logger.debug(`Found ${memories.length} relevant memories for user ${userId}`);
+        logger.debug(`Found ${memories.length} relevant memories for user ${userId} (explicit + ${personalityId})`);
       }
 
       return { memories, context };
