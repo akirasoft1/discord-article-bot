@@ -206,5 +206,54 @@ describe('ForgetCommand', () => {
         );
       });
     });
+
+    describe('delete by number', () => {
+      it('should delete memory by list number', async () => {
+        await command.execute(mockMessage, ['1'], mockContext);
+
+        expect(mockMem0Service.getUserMemories).toHaveBeenCalledWith('user123', { limit: 20 });
+        expect(mockMem0Service.deleteMemory).toHaveBeenCalledWith('mem-1');
+      });
+
+      it('should delete second memory when given number 2', async () => {
+        await command.execute(mockMessage, ['2'], mockContext);
+
+        expect(mockMem0Service.deleteMemory).toHaveBeenCalledWith('mem-2');
+      });
+
+      it('should show error for invalid number (too high)', async () => {
+        await command.execute(mockMessage, ['99'], mockContext);
+
+        expect(mockMem0Service.deleteMemory).not.toHaveBeenCalled();
+        expect(mockMessage.reply).toHaveBeenCalledWith(
+          expect.objectContaining({
+            content: expect.stringContaining('Invalid number')
+          })
+        );
+      });
+
+      it('should show confirmation with memory content preview', async () => {
+        await command.execute(mockMessage, ['1'], mockContext);
+
+        expect(mockMessage.reply).toHaveBeenCalledWith(
+          expect.objectContaining({
+            content: expect.stringMatching(/Memory #1 deleted.*dark mode/i)
+          })
+        );
+      });
+
+      it('should handle no memories gracefully', async () => {
+        mockMem0Service.getUserMemories.mockResolvedValue({ results: [] });
+
+        await command.execute(mockMessage, ['1'], mockContext);
+
+        expect(mockMem0Service.deleteMemory).not.toHaveBeenCalled();
+        expect(mockMessage.reply).toHaveBeenCalledWith(
+          expect.objectContaining({
+            content: expect.stringContaining('no memories')
+          })
+        );
+      });
+    });
   });
 });

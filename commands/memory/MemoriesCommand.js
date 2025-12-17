@@ -61,14 +61,12 @@ class MemoriesCommand extends BaseCommand {
 
       // Format memories for display
       const memoryList = memories.map((mem, index) => {
-        const id = mem.id || `unknown-${index}`;
-        const shortId = id.length > 12 ? id.substring(0, 12) + '...' : id;
-        return `**${index + 1}.** ${mem.memory}\n   \`ID: ${shortId}\``;
+        return `**${index + 1}.** ${mem.memory}`;
       }).join('\n\n');
 
       const header = `🧠 **Your Memories** (${memories.length}${memories.length >= MAX_MEMORIES_DISPLAY ? '+' : ''})\n\n`;
       const footer = '\n\n---\n' +
-                     '• To delete a specific memory: `!forget <memory_id>`\n' +
+                     '• To delete a memory: `!forget <number>` (e.g., `!forget 4`)\n' +
                      '• To delete ALL memories: `!forget all`\n' +
                      '• To add a memory: `!remember <fact>`';
 

@@ -96,7 +96,7 @@ describe('MemoriesCommand', () => {
       );
     });
 
-    it('should display memories with IDs', async () => {
+    it('should display memories with numbered list', async () => {
       await command.execute(mockMessage, [], mockContext);
 
       expect(mockMessage.reply).toHaveBeenCalledWith(
@@ -104,9 +104,10 @@ describe('MemoriesCommand', () => {
           content: expect.stringContaining('dark mode')
         })
       );
+      // Should show numbered list for easy deletion via !forget <number>
       expect(mockMessage.reply).toHaveBeenCalledWith(
         expect.objectContaining({
-          content: expect.stringContaining('mem-1')
+          content: expect.stringMatching(/\*\*1\.\*\*.*dark mode/i)
         })
       );
     });

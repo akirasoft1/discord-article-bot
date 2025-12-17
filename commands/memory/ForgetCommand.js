@@ -50,10 +50,10 @@ class ForgetCommand extends BaseCommand {
     // No arguments - show usage
     if (args.length === 0) {
       return message.reply({
-        content: '**Usage:** `!forget <memory_id>` or `!forget all`\n\n' +
-                 '• To delete a specific memory, use its ID from `!memories`\n' +
+        content: '**Usage:** `!forget <number>` or `!forget all`\n\n' +
+                 '• To delete a specific memory, use its number from `!memories` (e.g., `!forget 4`)\n' +
                  '• To delete ALL your memories, use `!forget all`\n\n' +
-                 'Run `!memories` first to see your memory IDs.',
+                 'Run `!memories` first to see your memories.',
         allowedMentions: { repliedUser: false }
       });
     }
@@ -65,8 +65,61 @@ class ForgetCommand extends BaseCommand {
       return this.deleteAllMemories(message, mem0Service, userId);
     }
 
-    // Delete specific memory
+    // Check if target is a number (memory list position)
+    const memoryNumber = parseInt(target, 10);
+    if (!isNaN(memoryNumber) && memoryNumber > 0) {
+      return this.deleteByNumber(message, mem0Service, userId, memoryNumber);
+    }
+
+    // Delete by full memory ID (legacy support)
     return this.deleteSpecificMemory(message, mem0Service, args[0]);
+  }
+
+  /**
+   * Delete a memory by its list number from !memories
+   */
+  async deleteByNumber(message, mem0Service, userId, memoryNumber) {
+    try {
+      // Fetch user's memories to get the ID at this position
+      const result = await mem0Service.getUserMemories(userId, { limit: 20 });
+      const memories = result.results || [];
+
+      if (memories.length === 0) {
+        return message.reply({
+          content: 'You have no memories to delete.',
+          allowedMentions: { repliedUser: false }
+        });
+      }
+
+      if (memoryNumber > memories.length) {
+        return message.reply({
+          content: `Invalid number. You have ${memories.length} memories. Use a number between 1 and ${memories.length}.`,
+          allowedMentions: { repliedUser: false }
+        });
+      }
+
+      // Get the memory at this position (1-indexed)
+      const memory = memories[memoryNumber - 1];
+      const memoryId = memory.id;
+      const memoryContent = memory.memory;
+
+      logger.info(`User ${message.author.tag} deleting memory #${memoryNumber}: ${memoryId}`);
+
+      await mem0Service.deleteMemory(memoryId);
+
+      return message.reply({
+        content: `✅ Memory #${memoryNumber} deleted: "${memoryContent.substring(0, 50)}${memoryContent.length > 50 ? '...' : ''}"\n\n` +
+                 `Use \`!memories\` to see your remaining memories.`,
+        allowedMentions: { repliedUser: false }
+      });
+
+    } catch (error) {
+      logger.error(`Error deleting memory #${memoryNumber} for user ${userId}: ${error.message}`);
+      return message.reply({
+        content: 'An error occurred while deleting that memory. Please try again.',
+        allowedMentions: { repliedUser: false }
+      });
+    }
   }
 
   /**
