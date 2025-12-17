@@ -106,7 +106,7 @@ class QdrantService {
         vector: embedding,
         limit: options.limit || 5,
         with_payload: true,
-        score_threshold: options.scoreThreshold || 0.5
+        score_threshold: options.scoreThreshold || 0.3  // Lowered from 0.5 - IRC conversations have lower semantic similarity
       };
 
       if (filter) {
