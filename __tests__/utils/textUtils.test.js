@@ -39,6 +39,18 @@ describe('TextUtils', () => {
       expect(TextUtils.wrapUrls(input)).toBe(expected);
     });
 
+    it('wraps URLs inside parentheses', () => {
+      const input = 'More info here (https://example.com/docs)';
+      const expected = 'More info here (<https://example.com/docs>)';
+      expect(TextUtils.wrapUrls(input)).toBe(expected);
+    });
+
+    it('wraps URLs inside parentheses with text', () => {
+      const input = 'See the docs (visit https://example.com for details)';
+      const expected = 'See the docs (visit <https://example.com> for details)';
+      expect(TextUtils.wrapUrls(input)).toBe(expected);
+    });
+
     it('handles http URLs (not just https)', () => {
       const input = 'Old site: http://legacy.example.com';
       const expected = 'Old site: <http://legacy.example.com>';

@@ -2,9 +2,8 @@
 const logger = require('../logger');
 
 // URL regex pattern - matches http/https URLs
-// Negative lookbehind: not preceded by < or ](
-// Negative lookahead: not followed by > or )
-const URL_PATTERN = /(?<![<]|\]\()(?<!\[.*\]\()(https?:\/\/[^\s<>\[\]()]+)(?![>\)])/g;
+// Excludes trailing punctuation that's likely not part of the URL
+const URL_PATTERN = /(https?:\/\/[^\s<>]*[^\s<>.,;:!?)\]}"'])/g;
 
 class TextUtils {
   /**
@@ -17,7 +16,31 @@ class TextUtils {
     if (!text || typeof text !== 'string') {
       return text;
     }
-    return text.replace(URL_PATTERN, '<$1>');
+
+    // Use replacement function to check context for each URL
+    return text.replace(URL_PATTERN, (match, url, offset, fullString) => {
+      // Check if already wrapped in angle brackets
+      const charBefore = offset > 0 ? fullString[offset - 1] : '';
+      const charAfter = fullString[offset + match.length] || '';
+
+      if (charBefore === '<' && charAfter === '>') {
+        return match; // Already wrapped
+      }
+
+      // Check if inside a markdown link: [text](url)
+      // Look for ]( before the URL
+      const before = fullString.substring(Math.max(0, offset - 10), offset);
+      if (before.includes('](')) {
+        // Check if there's a closing ) after - this is a markdown link
+        const afterUrl = fullString.substring(offset + match.length);
+        if (afterUrl.startsWith(')')) {
+          return match; // Part of markdown link, don't wrap
+        }
+      }
+
+      // Wrap the URL
+      return `<${url}>`;
+    });
   }
 
   /**
