@@ -1046,6 +1046,139 @@ class MongoService {
             return [];
         }
     }
+
+    // ==================== CHANNEL CONTEXT TRACKING ====================
+
+    /**
+     * Get all channels that have tracking enabled
+     * @returns {Array} Array of tracked channel documents
+     */
+    async getTrackedChannels() {
+        if (!this.db) {
+            logger.error('Cannot get tracked channels: Not connected to MongoDB.');
+            return [];
+        }
+        try {
+            const collection = this.db.collection('channel_tracking_config');
+            return await collection.find({ enabled: true }).toArray();
+        } catch (error) {
+            logger.error(`Error getting tracked channels: ${error.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Enable channel context tracking for a channel
+     * @param {string} channelId - Discord channel ID
+     * @param {string} guildId - Discord guild ID
+     * @param {string} userId - User who enabled tracking
+     * @returns {boolean} Success status
+     */
+    async enableChannelTracking(channelId, guildId, userId) {
+        if (!this.db) {
+            logger.error('Cannot enable channel tracking: Not connected to MongoDB.');
+            return false;
+        }
+        try {
+            const collection = this.db.collection('channel_tracking_config');
+            await collection.updateOne(
+                { channelId },
+                {
+                    $set: {
+                        channelId,
+                        guildId,
+                        enabled: true,
+                        enabledAt: new Date(),
+                        enabledBy: userId,
+                        lastActivity: new Date()
+                    },
+                    $setOnInsert: {
+                        messageCount: 0,
+                        createdAt: new Date()
+                    }
+                },
+                { upsert: true }
+            );
+            logger.info(`Channel tracking enabled for ${channelId} by ${userId}`);
+            return true;
+        } catch (error) {
+            logger.error(`Error enabling channel tracking: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Disable channel context tracking for a channel
+     * @param {string} channelId - Discord channel ID
+     * @returns {boolean} Success status
+     */
+    async disableChannelTracking(channelId) {
+        if (!this.db) {
+            logger.error('Cannot disable channel tracking: Not connected to MongoDB.');
+            return false;
+        }
+        try {
+            const collection = this.db.collection('channel_tracking_config');
+            await collection.updateOne(
+                { channelId },
+                {
+                    $set: {
+                        enabled: false,
+                        disabledAt: new Date()
+                    }
+                }
+            );
+            logger.info(`Channel tracking disabled for ${channelId}`);
+            return true;
+        } catch (error) {
+            logger.error(`Error disabling channel tracking: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Update last activity timestamp and increment message count for a channel
+     * @param {string} channelId - Discord channel ID
+     * @returns {boolean} Success status
+     */
+    async updateChannelActivity(channelId) {
+        if (!this.db) {
+            return false;
+        }
+        try {
+            const collection = this.db.collection('channel_tracking_config');
+            await collection.updateOne(
+                { channelId },
+                {
+                    $set: { lastActivity: new Date() },
+                    $inc: { messageCount: 1 }
+                }
+            );
+            return true;
+        } catch (error) {
+            logger.debug(`Error updating channel activity: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Get tracking configuration for a specific channel
+     * @param {string} channelId - Discord channel ID
+     * @returns {Object|null} Channel tracking config or null if not found
+     */
+    async getChannelTrackingConfig(channelId) {
+        if (!this.db) {
+            logger.error('Cannot get channel tracking config: Not connected to MongoDB.');
+            return null;
+        }
+        try {
+            const collection = this.db.collection('channel_tracking_config');
+            return await collection.findOne({ channelId });
+        } catch (error) {
+            logger.error(`Error getting channel tracking config: ${error.message}`);
+            return null;
+        }
+    }
 }
 
 module.exports = MongoService;

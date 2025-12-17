@@ -233,6 +233,27 @@ module.exports = {
     // Collection name for IRC history
     collection: process.env.QDRANT_IRC_COLLECTION || 'irc_history'
   },
+  // Channel Context - Passive conversation awareness for opt-in channels
+  channelContext: {
+    // Enable/disable channel context tracking
+    enabled: process.env.CHANNEL_CONTEXT_ENABLED === 'true',
+    // Number of recent messages to keep in memory per channel (Tier 1: hot)
+    recentMessageCount: parseInt(process.env.CHANNEL_CONTEXT_RECENT_COUNT || '20', 10),
+    // Batch indexing interval in minutes (Tier 2: warm)
+    batchIndexIntervalMinutes: parseInt(process.env.CHANNEL_CONTEXT_BATCH_INTERVAL || '60', 10),
+    // Retention period in days for indexed messages
+    retentionDays: parseInt(process.env.CHANNEL_CONTEXT_RETENTION_DAYS || '30', 10),
+    // Qdrant collection name for channel messages
+    qdrantCollection: process.env.CHANNEL_CONTEXT_QDRANT_COLLECTION || 'channel_conversations',
+    // Score threshold for semantic search (0.0-1.0)
+    searchScoreThreshold: parseFloat(process.env.CHANNEL_CONTEXT_SEARCH_THRESHOLD || '0.4'),
+    // Maximum messages to retrieve via semantic search
+    semanticSearchLimit: parseInt(process.env.CHANNEL_CONTEXT_SEARCH_LIMIT || '5', 10),
+    // Enable channel-level Mem0 memory extraction (Tier 3: cold)
+    extractChannelMemories: process.env.CHANNEL_CONTEXT_EXTRACT_MEMORIES === 'true',
+    // Interval for memory extraction (number of messages between extractions)
+    memoryExtractionInterval: parseInt(process.env.CHANNEL_CONTEXT_MEMORY_INTERVAL || '50', 10)
+  },
   // Health check server configuration for Kubernetes probes
   health: {
     // Enable/disable health check server

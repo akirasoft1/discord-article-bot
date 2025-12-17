@@ -19,20 +19,55 @@ class ChatService {
     this.config = config;
     this.mongoService = mongoService;
     this.mem0Service = mem0Service;
+    this.channelContextService = null;
+  }
+
+  /**
+   * Set the channel context service (called after bot initialization)
+   * @param {Object} channelContextService - ChannelContextService instance
+   */
+  setChannelContextService(channelContextService) {
+    this.channelContextService = channelContextService;
   }
 
   /**
    * Build enhanced system prompt for group conversations
    * @param {Object} personality - Personality object
    * @param {string} memoryContext - Optional memory context to include
+   * @param {string} channelContext - Optional channel conversation context
    * @returns {string} Enhanced system prompt
    */
-  _buildGroupSystemPrompt(personality, memoryContext = '') {
+  _buildGroupSystemPrompt(personality, memoryContext = '', channelContext = '') {
     return `${personality.systemPrompt}
 
 You are in a group conversation with multiple users in a Discord channel.
 Their names appear before their messages like "[Username]: message".
-Address users by name when relevant. Do not announce when new users join the conversation.${memoryContext}`;
+Address users by name when relevant. Do not announce when new users join the conversation.${memoryContext}${channelContext}`;
+  }
+
+  /**
+   * Get channel conversation context from ChannelContextService
+   * @param {string} channelId - Discord channel ID
+   * @param {string} userMessage - Current user message for semantic relevance
+   * @returns {Promise<string>} Channel context string for prompt injection
+   * @private
+   */
+  async _getChannelContext(channelId, userMessage) {
+    if (!this.channelContextService?.isChannelTracked(channelId)) {
+      return '';
+    }
+
+    try {
+      const context = await this.channelContextService.buildHybridContext(channelId, userMessage);
+      if (!context) return '';
+
+      return `
+
+${context}`;
+    } catch (error) {
+      logger.debug(`Error getting channel context: ${error.message}`);
+      return '';
+    }
   }
 
   /**
@@ -272,10 +307,14 @@ Address users by name when relevant. Do not announce when new users join the con
       logger.info(`Chat request from ${user.username} using personality: ${personality.name} (channel: ${channelId})`);
 
       // Retrieve relevant memories for this user (if Mem0 is enabled)
-      const { context: memoryContext } = await this._getRelevantMemories(userMessage, user.id, personalityId);
+      // Also retrieve channel context for conversation awareness (if enabled)
+      const [{ context: memoryContext }, channelContext] = await Promise.all([
+        this._getRelevantMemories(userMessage, user.id, personalityId),
+        this._getChannelContext(channelId, userMessage)
+      ]);
 
       // Build system prompt and format history
-      const systemPrompt = this._buildGroupSystemPrompt(personality, memoryContext);
+      const systemPrompt = this._buildGroupSystemPrompt(personality, memoryContext, channelContext);
       const historyMessages = this._formatMessagesForAPI(conversation.messages || []);
 
       // Format current user message

@@ -25,6 +25,7 @@ const VeoService = require('./services/VeoService');
 const Mem0Service = require('./services/Mem0Service');
 const QdrantService = require('./services/QdrantService');
 const NickMappingService = require('./services/NickMappingService');
+const ChannelContextService = require('./services/ChannelContextService');
 
 // Import command classes
 const SummarizeCommand = require('./commands/summarization/SummarizeCommand');
@@ -43,6 +44,8 @@ const ForgetCommand = require('./commands/memory/ForgetCommand');
 const RecallCommand = require('./commands/irc/RecallCommand');
 const HistoryCommand = require('./commands/irc/HistoryCommand');
 const ThrowbackCommand = require('./commands/irc/ThrowbackCommand');
+const ChannelTrackCommand = require('./commands/admin/ChannelTrackCommand');
+const ChannelContextCommand = require('./commands/utility/ChannelContextCommand');
 const { version } = require('./package.json');
 
 class DiscordBot {
@@ -139,6 +142,26 @@ class DiscordBot {
       }
     } else {
       logger.info('IRC history search is disabled');
+    }
+
+    // Initialize Channel Context service for passive conversation awareness
+    this.channelContextService = null;
+    if (config.channelContext?.enabled) {
+      try {
+        this.channelContextService = new ChannelContextService(
+          config,
+          this.openaiClient,
+          this.summarizationService.mongoService,
+          this.mem0Service
+        );
+        // Wire up to ChatService for context injection
+        this.chatService.setChannelContextService(this.channelContextService);
+        logger.info('Channel context service initialized (pending start)');
+      } catch (error) {
+        logger.warn(`Failed to initialize Channel context service: ${error.message}`);
+      }
+    } else {
+      logger.info('Channel context tracking is disabled');
     }
 
     // Initialize command handler
@@ -260,6 +283,11 @@ class DiscordBot {
       logger.info('IRC history commands registered (recall, history, throwback)');
     }
 
+    // Register channel context commands (always register, command checks config internally)
+    this.commandHandler.register(new ChannelTrackCommand());
+    this.commandHandler.register(new ChannelContextCommand());
+    logger.info('Channel context commands registered (channeltrack, context)');
+
     logger.info(`Registered ${this.commandHandler.getAllCommands().length} commands`);
   }
 
@@ -292,6 +320,12 @@ class DiscordBot {
         } else {
           logger.error('Failed to start Linkwarden polling service - check configuration');
         }
+      }
+
+      // Start Channel Context service if enabled
+      if (this.channelContextService) {
+        logger.info('Starting Channel Context service...');
+        await this.channelContextService.start();
       }
     });
 
@@ -337,6 +371,13 @@ class DiscordBot {
 
     this.client.on('messageCreate', async message => {
       if (message.author.bot) return;
+
+      // Passive channel context recording (non-blocking)
+      if (this.channelContextService?.isChannelTracked(message.channel.id)) {
+        this.channelContextService.recordMessage(message).catch(err =>
+          logger.debug(`Channel context record failed: ${err.message}`)
+        );
+      }
 
       // Check if this is a reply to a bot message
       if (message.reference && message.reference.messageId) {
@@ -457,6 +498,11 @@ if (require.main === module) {
   const gracefulShutdown = async (signal) => {
     logger.info(`Received ${signal}, initiating graceful shutdown...`);
     try {
+      // Stop Channel Context service (flushes pending batch)
+      if (bot.channelContextService) {
+        await bot.channelContextService.stop();
+        logger.info('Channel context service stopped');
+      }
       // Stop Linkwarden polling if active
       if (bot.linkwardenPollingService) {
         bot.linkwardenPollingService.stop();
