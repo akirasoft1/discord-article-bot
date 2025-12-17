@@ -27,10 +27,27 @@ describe('TextUtils', () => {
       expect(TextUtils.wrapUrls(input)).toBe(input);
     });
 
-    it('does not wrap URLs inside markdown links', () => {
+    it('wraps URLs inside markdown links to prevent Discord expansion', () => {
       const input = 'Click [here](https://example.com) for details';
-      // The URL is after [ so it should not be wrapped
+      const expected = 'Click [here](<https://example.com>) for details';
+      expect(TextUtils.wrapUrls(input)).toBe(expected);
+    });
+
+    it('does not double-wrap already wrapped markdown links', () => {
+      const input = 'Click [here](<https://example.com>) for details';
       expect(TextUtils.wrapUrls(input)).toBe(input);
+    });
+
+    it('wraps URLs in multiple markdown links', () => {
+      const input = 'Visit [Reuters](https://reuters.com) and [HRW](https://hrw.org)';
+      const expected = 'Visit [Reuters](<https://reuters.com>) and [HRW](<https://hrw.org>)';
+      expect(TextUtils.wrapUrls(input)).toBe(expected);
+    });
+
+    it('handles markdown links with complex URLs', () => {
+      const input = '[article](https://reuters.com/world/americas/story?id=123&utm_source=openai)';
+      const expected = '[article](<https://reuters.com/world/americas/story?id=123&utm_source=openai>)';
+      expect(TextUtils.wrapUrls(input)).toBe(expected);
     });
 
     it('handles mixed wrapped and unwrapped URLs', () => {

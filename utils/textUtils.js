@@ -1,9 +1,12 @@
 // ===== utils/textUtils.js =====
 const logger = require('../logger');
 
-// URL regex pattern - matches http/https URLs
-// Excludes trailing punctuation that's likely not part of the URL
-const URL_PATTERN = /(https?:\/\/[^\s<>]*[^\s<>.,;:!?)\]}"'])/g;
+// URL regex patterns
+// Pattern for markdown links: [text](url) - captures the URL part
+const MARKDOWN_LINK_PATTERN = /\[([^\]]+)\]\((<?)([^)>]+)(>?)\)/g;
+
+// Pattern for standalone URLs with http/https - excludes trailing punctuation
+const FULL_URL_PATTERN = /(https?:\/\/[^\s<>]*[^\s<>.,;:!?)\]}"'])/g;
 
 class TextUtils {
   /**
@@ -17,8 +20,18 @@ class TextUtils {
       return text;
     }
 
-    // Use replacement function to check context for each URL
-    return text.replace(URL_PATTERN, (match, url, offset, fullString) => {
+    // Step 1: Wrap URLs inside markdown links [text](url) -> [text](<url>)
+    let result = text.replace(MARKDOWN_LINK_PATTERN, (match, linkText, openBracket, url, closeBracket) => {
+      // If already wrapped in <>, return as-is
+      if (openBracket === '<' && closeBracket === '>') {
+        return match;
+      }
+      // Wrap the URL in angle brackets
+      return `[${linkText}](<${url}>)`;
+    });
+
+    // Step 2: Wrap standalone URLs (not inside markdown links)
+    result = result.replace(FULL_URL_PATTERN, (match, url, offset, fullString) => {
       // Check if already wrapped in angle brackets
       const charBefore = offset > 0 ? fullString[offset - 1] : '';
       const charAfter = fullString[offset + match.length] || '';
@@ -27,20 +40,17 @@ class TextUtils {
         return match; // Already wrapped
       }
 
-      // Check if inside a markdown link: [text](url)
-      // Look for ]( before the URL
-      const before = fullString.substring(Math.max(0, offset - 10), offset);
-      if (before.includes('](')) {
-        // Check if there's a closing ) after - this is a markdown link
-        const afterUrl = fullString.substring(offset + match.length);
-        if (afterUrl.startsWith(')')) {
-          return match; // Part of markdown link, don't wrap
-        }
+      // Check if inside a markdown link (already processed, but double-check)
+      const before = fullString.substring(Math.max(0, offset - 3), offset);
+      if (before.endsWith('](') || before.endsWith('](<')) {
+        return match; // Part of markdown link
       }
 
       // Wrap the URL
       return `<${url}>`;
     });
+
+    return result;
   }
 
   /**
