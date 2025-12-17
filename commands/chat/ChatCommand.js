@@ -1,6 +1,7 @@
 // commands/chat/ChatCommand.js
 const BaseCommand = require('../base/BaseCommand');
 const { validateImageAttachment, getSupportedFormatsText } = require('../../utils/imageValidation');
+const TextUtils = require('../../utils/textUtils');
 
 const DEFAULT_PERSONALITY = 'friendly';
 
@@ -132,6 +133,9 @@ class ChatCommand extends BaseCommand {
     if (imageWarning) {
       response = `> ${imageWarning}\n\n${response}`;
     }
+
+    // Wrap URLs to prevent Discord auto-expansion
+    response = TextUtils.wrapUrls(response);
 
     // Split if too long for Discord
     if (response.length > 2000) {
