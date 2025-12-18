@@ -59,13 +59,13 @@ class ImagineSlashCommand extends BaseSlashCommand {
       }
     }
 
-    const result = await this.imagenService.generate(
+    const result = await this.imagenService.generateImage(
       prompt,
-      interaction.user.id,
       {
         aspectRatio: ratio,
         referenceImageUrl: referenceUrl
-      }
+      },
+      { id: interaction.user.id, tag: interaction.user.tag }
     );
 
     if (!result.success) {
