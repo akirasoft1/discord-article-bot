@@ -73,9 +73,13 @@ class ImagineSlashCommand extends BaseSlashCommand {
       return;
     }
 
-    // Create attachment from the generated image
-    const attachment = new AttachmentBuilder(result.imageBuffer, {
-      name: 'generated-image.png',
+    // Get file extension from mime type
+    const extension = this._getFileExtension(result.mimeType);
+    const filename = `generated-image-${Date.now()}.${extension}`;
+
+    // Create attachment from the generated image buffer
+    const attachment = new AttachmentBuilder(result.buffer, {
+      name: filename,
       description: prompt.substring(0, 100)
     });
 
@@ -83,6 +87,21 @@ class ImagineSlashCommand extends BaseSlashCommand {
       content: `**Prompt:** ${prompt}`,
       files: [attachment]
     });
+  }
+
+  /**
+   * Get file extension from mime type
+   * @param {string} mimeType
+   * @returns {string}
+   */
+  _getFileExtension(mimeType) {
+    const mimeToExt = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/gif': 'gif',
+      'image/webp': 'webp'
+    };
+    return mimeToExt[mimeType] || 'png';
   }
 }
 
