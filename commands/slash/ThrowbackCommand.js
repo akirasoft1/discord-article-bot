@@ -1,0 +1,63 @@
+// commands/slash/ThrowbackCommand.js
+// Slash command for "on this day" IRC throwbacks
+
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const BaseSlashCommand = require('../base/BaseSlashCommand');
+const logger = require('../../logger');
+
+class ThrowbackSlashCommand extends BaseSlashCommand {
+  constructor(qdrantService) {
+    super({
+      data: new SlashCommandBuilder()
+        .setName('throwback')
+        .setDescription('Show a random IRC conversation from this day in history'),
+      deferReply: true,
+      cooldown: 10
+    });
+
+    this.qdrantService = qdrantService;
+  }
+
+  async execute(interaction, context) {
+    this.logExecution(interaction);
+
+    const today = new Date();
+    const month = today.getMonth() + 1;
+    const day = today.getDate();
+
+    const results = await this.qdrantService.getThrowback(month, day);
+
+    if (!results || results.length === 0) {
+      await this.sendReply(interaction, {
+        content: `No IRC history found for ${month}/${day}. Check back another day!`,
+        ephemeral: false
+      });
+      return;
+    }
+
+    // Pick a random conversation
+    const randomIndex = Math.floor(Math.random() * results.length);
+    const result = results[randomIndex];
+    const payload = result.payload || {};
+
+    const year = payload.year || 'Unknown year';
+    const channel = payload.channel || 'Unknown channel';
+    const nick = payload.nick || payload.author || 'Unknown';
+    const message = payload.message || payload.content || payload.text || 'No content';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`On This Day: ${month}/${day}/${year}`)
+      .setDescription(`From ${channel}`)
+      .setColor(0xFFA500)
+      .addFields({
+        name: nick,
+        value: message.length > 1000 ? message.substring(0, 997) + '...' : message,
+        inline: false
+      })
+      .setFooter({ text: 'Use /throwback again for another memory' });
+
+    await interaction.editReply({ embeds: [embed] });
+  }
+}
+
+module.exports = ThrowbackSlashCommand;
