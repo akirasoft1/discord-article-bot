@@ -25,17 +25,29 @@ class ForgetSlashCommand extends BaseSlashCommand {
   }
 
   async execute(interaction, context) {
-    const memoryId = interaction.options.getString('memory_id');
+    const memoryIdInput = interaction.options.getString('memory_id');
     const userId = interaction.user.id;
 
-    this.logExecution(interaction, `memory_id=${memoryId}`);
+    this.logExecution(interaction, `memory_id=${memoryIdInput}`);
 
-    if (memoryId.toLowerCase() === 'all') {
+    if (memoryIdInput.toLowerCase() === 'all') {
+      // First check how many memories they have
+      const memResult = await this.mem0Service.getUserMemories(userId, { limit: 100 });
+      const memoryCount = memResult.results?.length || 0;
+
+      if (memoryCount === 0) {
+        await this.sendReply(interaction, {
+          content: 'You have no memories to delete.',
+          ephemeral: true
+        });
+        return;
+      }
+
       // Show confirmation buttons
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`forget_confirm_${userId}`)
-          .setLabel('Yes, delete all memories')
+          .setLabel(`Yes, delete all ${memoryCount} memories`)
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
           .setCustomId(`forget_cancel_${userId}`)
@@ -44,7 +56,7 @@ class ForgetSlashCommand extends BaseSlashCommand {
       );
 
       await interaction.editReply({
-        content: 'Are you sure you want to delete **all** your memories? This cannot be undone.',
+        content: `⚠️ **Warning:** This will delete **all ${memoryCount} memories** I have about you.\n\nThis action cannot be undone.`,
         components: [row],
         ephemeral: true
       });
@@ -58,16 +70,49 @@ class ForgetSlashCommand extends BaseSlashCommand {
       return;
     }
 
-    // Delete specific memory
-    const result = await this.mem0Service.deleteMemory(memoryId, userId);
+    // Check if input is a number (memory list position)
+    const memoryNumber = parseInt(memoryIdInput, 10);
+    if (!isNaN(memoryNumber) && memoryNumber > 0) {
+      // Delete by position number
+      const memResult = await this.mem0Service.getUserMemories(userId, { limit: 20 });
+      const memories = memResult.results || [];
 
-    if (result.success) {
+      if (memories.length === 0) {
+        await this.sendReply(interaction, {
+          content: 'You have no memories to delete.',
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (memoryNumber > memories.length) {
+        await this.sendError(interaction, `Invalid number. You have ${memories.length} memories. Use a number between 1 and ${memories.length}.`);
+        return;
+      }
+
+      // Get the memory at this position (1-indexed)
+      const memory = memories[memoryNumber - 1];
+      const memoryContent = memory.memory || memory.text || 'Unknown';
+
+      // deleteMemory only takes memoryId
+      await this.mem0Service.deleteMemory(memory.id);
+
       await this.sendReply(interaction, {
-        content: `Memory deleted successfully.`,
+        content: `✅ Memory #${memoryNumber} deleted: "${memoryContent.substring(0, 50)}${memoryContent.length > 50 ? '...' : ''}"`,
         ephemeral: true
       });
-    } else {
-      await this.sendError(interaction, result.error || 'Failed to delete memory. Make sure the memory ID is correct.');
+      return;
+    }
+
+    // Delete by full memory ID (legacy support)
+    try {
+      await this.mem0Service.deleteMemory(memoryIdInput);
+      await this.sendReply(interaction, {
+        content: `✅ Memory deleted successfully.`,
+        ephemeral: true
+      });
+    } catch (error) {
+      await this.sendError(interaction, 'Failed to delete memory. Please check the memory number is correct using `/memories`.');
     }
   }
 
@@ -81,17 +126,18 @@ class ForgetSlashCommand extends BaseSlashCommand {
     if (interaction.customId === `forget_confirm_${userId}`) {
       await interaction.deferUpdate();
 
-      const result = await this.mem0Service.deleteAllMemories(userId);
+      try {
+        // Use the correct method name: deleteAllUserMemories
+        await this.mem0Service.deleteAllUserMemories(userId);
 
-      if (result.success) {
         await interaction.editReply({
-          content: `All your memories have been deleted. I no longer remember anything about you.`,
+          content: `✅ All your memories have been deleted. I no longer remember anything about you.\n\nNew memories will be created as we chat.`,
           components: [],
           ephemeral: true
         });
-      } else {
+      } catch (error) {
         await interaction.editReply({
-          content: `Error: ${result.error || 'Failed to delete memories.'}`,
+          content: `Error: Failed to delete memories. Please try again later.`,
           components: [],
           ephemeral: true
         });
@@ -101,7 +147,7 @@ class ForgetSlashCommand extends BaseSlashCommand {
 
     } else if (interaction.customId === `forget_cancel_${userId}`) {
       await interaction.update({
-        content: 'Memory deletion cancelled.',
+        content: '❌ Memory deletion cancelled.',
         components: [],
         ephemeral: true
       });

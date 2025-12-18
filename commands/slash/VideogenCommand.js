@@ -84,24 +84,28 @@ class VideogenSlashCommand extends BaseSlashCommand {
       content: `Generating video... This may take a few minutes.\n**Prompt:** ${prompt}`
     });
 
-    const result = await this.veoService.generate(
+    // Progress callback to update status
+    const onProgress = async (status) => {
+      try {
+        await interaction.editReply({
+          content: `${status}\n**Prompt:** ${prompt}`
+        });
+      } catch (e) {
+        // Ignore edit errors (interaction may have timed out)
+      }
+    };
+
+    // Use the correct method signature: generateVideo(prompt, firstFrameUrl, lastFrameUrl, options, user, onProgress)
+    const result = await this.veoService.generateVideo(
       prompt,
-      interaction.user.id,
+      firstFrameUrl,
+      lastFrameUrl,
       {
         duration,
-        aspectRatio: ratio,
-        firstFrameUrl,
-        lastFrameUrl,
-        onProgress: async (status) => {
-          try {
-            await interaction.editReply({
-              content: `${status}\n**Prompt:** ${prompt}`
-            });
-          } catch (e) {
-            // Ignore edit errors
-          }
-        }
-      }
+        aspectRatio: ratio
+      },
+      { id: interaction.user.id, tag: interaction.user.tag },
+      onProgress
     );
 
     if (!result.success) {
@@ -109,10 +113,10 @@ class VideogenSlashCommand extends BaseSlashCommand {
       return;
     }
 
-    // Send the video
-    if (result.videoBuffer) {
-      const attachment = new AttachmentBuilder(result.videoBuffer, {
-        name: 'generated-video.mp4',
+    // Send the video - use result.buffer (not result.videoBuffer)
+    if (result.buffer) {
+      const attachment = new AttachmentBuilder(result.buffer, {
+        name: `generated-video-${Date.now()}.mp4`,
         description: prompt.substring(0, 100)
       });
 
@@ -120,10 +124,8 @@ class VideogenSlashCommand extends BaseSlashCommand {
         content: `**Prompt:** ${prompt}`,
         files: [attachment]
       });
-    } else if (result.videoUrl) {
-      await interaction.editReply({
-        content: `**Prompt:** ${prompt}\n\n**Video:** ${result.videoUrl}`
-      });
+    } else {
+      await this.sendError(interaction, 'Video generation completed but no video data was returned.');
     }
   }
 }

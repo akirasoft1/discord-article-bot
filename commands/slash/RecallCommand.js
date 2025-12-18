@@ -41,28 +41,29 @@ class RecallSlashCommand extends BaseSlashCommand {
 
     this.logExecution(interaction, `query="${query}", myMessages=${myMessages}, year=${year || 'any'}`);
 
-    // Build filter
-    const filter = {};
+    // Build search options object
+    const searchOptions = { limit: 5 };
 
     if (year) {
-      filter.year = year;
+      searchOptions.year = year;
     }
 
-    if (myMessages) {
+    if (myMessages && this.nickMappingService) {
       // Get user's IRC nicks
-      const mapping = await this.nickMappingService?.getMapping(interaction.user.id);
-      if (mapping && mapping.ircNicks && mapping.ircNicks.length > 0) {
-        filter.nicks = mapping.ircNicks;
+      const ircNicks = this.nickMappingService.getIrcNicks(interaction.user.id);
+      if (ircNicks && ircNicks.length > 0) {
+        searchOptions.participants = ircNicks;
       } else {
         await this.sendReply(interaction, {
-          content: 'You don\'t have any IRC nicks mapped to your Discord account. Use the nick mapping command to set them up.',
+          content: 'You don\'t have any IRC nicks mapped to your Discord account. Ask an admin to add your nick mappings.',
           ephemeral: true
         });
         return;
       }
     }
 
-    const results = await this.qdrantService.search(query, 5, filter);
+    // Use correct signature: search(query, options)
+    const results = await this.qdrantService.search(query, searchOptions);
 
     if (!results || results.length === 0) {
       await this.sendReply(interaction, {

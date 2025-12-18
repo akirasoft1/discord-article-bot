@@ -22,22 +22,21 @@ class ThrowbackSlashCommand extends BaseSlashCommand {
     this.logExecution(interaction);
 
     const today = new Date();
-    const month = today.getMonth() + 1;
+    const month = today.getMonth() + 1;  // JS months are 0-indexed
     const day = today.getDate();
 
-    const results = await this.qdrantService.getThrowback(month, day);
+    // Use correct method: getRandomFromDate(month, day) - returns a single random result
+    const result = await this.qdrantService.getRandomFromDate(month, day);
 
-    if (!results || results.length === 0) {
+    if (!result) {
+      const monthName = today.toLocaleDateString('en-US', { month: 'long' });
       await this.sendReply(interaction, {
-        content: `No IRC history found for ${month}/${day}. Check back another day!`,
+        content: `No IRC conversations found from ${monthName} ${day} in history.\nTry again tomorrow for a different throwback!`,
         ephemeral: false
       });
       return;
     }
 
-    // Pick a random conversation
-    const randomIndex = Math.floor(Math.random() * results.length);
-    const result = results[randomIndex];
     const payload = result.payload || {};
 
     const year = payload.year || 'Unknown year';

@@ -23,11 +23,14 @@ class MemoriesSlashCommand extends BaseSlashCommand {
     this.logExecution(interaction);
 
     const userId = interaction.user.id;
-    const memories = await this.mem0Service.getMemories(userId);
 
-    if (!memories || memories.length === 0) {
+    // Use getUserMemories which returns { results: Array }
+    const result = await this.mem0Service.getUserMemories(userId, { limit: 20 });
+    const memories = result.results || [];
+
+    if (memories.length === 0) {
       await this.sendReply(interaction, {
-        content: 'I don\'t have any memories about you yet! Chat with me and I\'ll start remembering things.',
+        content: 'I don\'t have any memories about you yet! Chat with me and I\'ll start remembering things, or use `/remember` to tell me something.',
         ephemeral: true
       });
       return;
@@ -35,26 +38,21 @@ class MemoriesSlashCommand extends BaseSlashCommand {
 
     const embed = new EmbedBuilder()
       .setTitle('What I Remember About You')
-      .setDescription(`You have **${memories.length}** stored memories`)
+      .setDescription(`You have **${memories.length}${memories.length >= 20 ? '+' : ''}** stored memories`)
       .setColor(0x5865F2)
-      .setFooter({ text: 'Use /forget to delete specific memories' });
+      .setFooter({ text: 'Use /forget <number> to delete specific memories' });
 
-    // Show up to 20 memories
-    const displayMemories = memories.slice(0, 20);
-    let memoryText = displayMemories.map((m, i) =>
-      `**${i + 1}.** ${m.memory || m.text || 'Unknown'}\n\`ID: ${m.id}\``
+    // Format memories for display
+    let memoryText = memories.map((m, i) =>
+      `**${i + 1}.** ${m.memory || m.text || 'Unknown'}`
     ).join('\n\n');
-
-    if (memories.length > 20) {
-      memoryText += `\n\n*...and ${memories.length - 20} more*`;
-    }
 
     // Split if too long
     if (memoryText.length > 4000) {
       memoryText = memoryText.substring(0, 3997) + '...';
     }
 
-    embed.addFields({ name: 'Memories', value: memoryText });
+    embed.addFields({ name: 'Memories', value: memoryText || 'No memories found' });
 
     await interaction.editReply({ embeds: [embed], ephemeral: true });
   }

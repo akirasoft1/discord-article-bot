@@ -4,6 +4,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const BaseSlashCommand = require('../base/BaseSlashCommand');
 const logger = require('../../logger');
+const { shouldRedirectToLinkwarden, getLinkwardenRedirectMessage } = require('../../utils/linkwardenRedirect');
 
 class ResummarizeSlashCommand extends BaseSlashCommand {
   constructor(summarizationService) {
@@ -34,6 +35,14 @@ class ResummarizeSlashCommand extends BaseSlashCommand {
   }
 
   async execute(interaction, context) {
+    // When Linkwarden is enabled, redirect users to use the browser extension
+    if (shouldRedirectToLinkwarden()) {
+      await interaction.editReply({
+        content: getLinkwardenRedirectMessage()
+      });
+      return;
+    }
+
     const url = interaction.options.getString('url');
     const style = interaction.options.getString('style') || 'default';
 
@@ -47,20 +56,41 @@ class ResummarizeSlashCommand extends BaseSlashCommand {
       return;
     }
 
-    const result = await this.summarizationService.summarize(
+    // Create a mock message object that processUrl can work with
+    const mockMessage = {
+      channel: {
+        send: async (content) => {
+          if (typeof content === 'string') {
+            await interaction.editReply({ content });
+          } else {
+            await interaction.editReply(content);
+          }
+        },
+        sendTyping: async () => {}
+      },
+      reply: async (content) => {
+        if (typeof content === 'string') {
+          await interaction.editReply({ content });
+        } else {
+          await interaction.editReply(content);
+        }
+      },
+      react: async () => {}
+    };
+
+    const user = {
+      id: interaction.user.id,
+      tag: interaction.user.tag || interaction.user.username
+    };
+
+    // Call processUrl with forceReSummarize=true
+    await this.summarizationService.processUrl(
       url,
-      interaction.user.id,
-      interaction.user.tag || interaction.user.username,
+      mockMessage,
+      user,
       style !== 'default' ? style : null,
-      true // Force re-summarize
+      true // Force re-summarize (bypass duplicate check)
     );
-
-    if (!result.success) {
-      await this.sendError(interaction, result.error || 'Failed to summarize article.');
-      return;
-    }
-
-    await this.sendLongResponse(interaction, result.summary);
   }
 }
 

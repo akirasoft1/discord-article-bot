@@ -28,22 +28,22 @@ class HistorySlashCommand extends BaseSlashCommand {
 
     this.logExecution(interaction, `user=${targetUser.tag}`);
 
-    // Get the user's IRC nicks
-    const mapping = await this.nickMappingService?.getMapping(targetUser.id);
+    // Get the user's IRC nicks using the correct method
+    const ircNicks = this.nickMappingService?.getIrcNicks(targetUser.id) || [];
 
-    if (!mapping || !mapping.ircNicks || mapping.ircNicks.length === 0) {
+    if (ircNicks.length === 0) {
       const isSelf = targetUser.id === interaction.user.id;
       await this.sendReply(interaction, {
         content: isSelf
-          ? 'You don\'t have any IRC nicks mapped. Set them up to view your IRC history.'
+          ? 'You don\'t have any IRC nicks mapped. Ask an admin to add your nick mappings.'
           : `${targetUser.username} doesn't have any IRC nicks mapped.`,
         ephemeral: true
       });
       return;
     }
 
-    // Search for messages from those nicks
-    const results = await this.qdrantService.searchByNicks(mapping.ircNicks, 10);
+    // Use correct method: getByParticipants(participants, options)
+    const results = await this.qdrantService.getByParticipants(ircNicks, { limit: 10 });
 
     if (!results || results.length === 0) {
       await this.sendReply(interaction, {
@@ -55,7 +55,7 @@ class HistorySlashCommand extends BaseSlashCommand {
 
     const embed = new EmbedBuilder()
       .setTitle(`IRC History for ${targetUser.username}`)
-      .setDescription(`Nicks: ${mapping.ircNicks.join(', ')}`)
+      .setDescription(`Nicks: ${ircNicks.slice(0, 5).join(', ')}${ircNicks.length > 5 ? '...' : ''}`)
       .setColor(0x5865F2)
       .setFooter({ text: `Showing ${results.length} recent messages` });
 
