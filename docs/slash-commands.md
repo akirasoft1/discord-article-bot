@@ -111,7 +111,7 @@ Jack: *continues naturally*
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `message` | Yes | Your message to the personality |
-| `personality` | No | Which personality (default: clair) |
+| `personality` | No | Which personality (default: friendly) |
 | `image` | No | Optional image attachment |
 
 ### `/summarize`
