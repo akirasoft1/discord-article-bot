@@ -27,7 +27,7 @@ class ChatSlashCommand extends BaseSlashCommand {
             .setMaxLength(2000))
         .addStringOption(option => {
           option.setName('personality')
-            .setDescription('Which personality to chat with (default: clair)')
+            .setDescription('Which personality to chat with (default: friendly)')
             .setRequired(false);
           // Add choices if we have them
           if (choices.length > 0) {
@@ -47,7 +47,7 @@ class ChatSlashCommand extends BaseSlashCommand {
   }
 
   async execute(interaction, context) {
-    const personalityId = interaction.options.getString('personality') || 'clair';
+    const personalityId = interaction.options.getString('personality') || 'friendly';
     const userMessage = interaction.options.getString('message');
     const attachment = interaction.options.getAttachment('image');
     const channelId = interaction.channel.id;
