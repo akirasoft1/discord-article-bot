@@ -48,6 +48,30 @@ const ChannelTrackCommand = require('./commands/admin/ChannelTrackCommand');
 const ChannelContextCommand = require('./commands/utility/ChannelContextCommand');
 const { version } = require('./package.json');
 
+// Import slash command infrastructure
+const SlashCommandHandler = require('./handlers/SlashCommandHandler');
+const {
+  ChatSlashCommand,
+  ChatThreadSlashCommand,
+  PersonalitiesSlashCommand,
+  ChatResetSlashCommand,
+  ChatResumeSlashCommand,
+  ChatListSlashCommand,
+  SummarizeSlashCommand,
+  ResummarizeSlashCommand,
+  ImagineSlashCommand,
+  VideogenSlashCommand,
+  MemoriesSlashCommand,
+  RememberSlashCommand,
+  ForgetSlashCommand,
+  RecallSlashCommand,
+  HistorySlashCommand,
+  ThrowbackSlashCommand,
+  HelpSlashCommand,
+  ContextSlashCommand,
+  ChannelTrackSlashCommand
+} = require('./commands/slash');
+
 class DiscordBot {
   constructor() {
     logger.info(`Creating DiscordBot v${version} instance`);
@@ -164,9 +188,13 @@ class DiscordBot {
       logger.info('Channel context tracking is disabled');
     }
 
-    // Initialize command handler
+    // Initialize command handlers (both prefix and slash)
     this.commandHandler = new CommandHandler();
     this.registerCommands();
+
+    // Initialize slash command handler
+    this.slashCommandHandler = new SlashCommandHandler(config);
+    this.registerSlashCommands();
 
     // Health server for Kubernetes probes
     this.healthServer = null;
@@ -288,7 +316,61 @@ class DiscordBot {
     this.commandHandler.register(new ChannelContextCommand());
     logger.info('Channel context commands registered (channeltrack, context)');
 
-    logger.info(`Registered ${this.commandHandler.getAllCommands().length} commands`);
+    logger.info(`Registered ${this.commandHandler.getAllCommands().length} prefix commands`);
+  }
+
+  registerSlashCommands() {
+    // Register chat/personality slash commands
+    this.slashCommandHandler.register(new ChatSlashCommand(this.chatService));
+    this.chatThreadCommand = new ChatThreadSlashCommand(this.chatService);
+    this.slashCommandHandler.register(this.chatThreadCommand);
+    this.slashCommandHandler.register(new PersonalitiesSlashCommand());
+    this.slashCommandHandler.register(new ChatResetSlashCommand(this.chatService));
+    this.slashCommandHandler.register(new ChatResumeSlashCommand(this.chatService));
+    this.slashCommandHandler.register(new ChatListSlashCommand(this.chatService));
+
+    // Register summarization slash commands
+    this.slashCommandHandler.register(new SummarizeSlashCommand(this.summarizationService));
+    this.slashCommandHandler.register(new ResummarizeSlashCommand(this.summarizationService));
+
+    // Register utility slash commands
+    this.slashCommandHandler.register(new HelpSlashCommand());
+    this.slashCommandHandler.register(new ContextSlashCommand(this.channelContextService));
+    this.slashCommandHandler.register(new ChannelTrackSlashCommand(
+      this.channelContextService,
+      this.summarizationService.mongoService
+    ));
+
+    // Register memory slash commands (if Mem0 is enabled)
+    if (this.mem0Service) {
+      this.slashCommandHandler.register(new MemoriesSlashCommand(this.mem0Service));
+      this.slashCommandHandler.register(new RememberSlashCommand(this.mem0Service));
+      this.forgetCommand = new ForgetSlashCommand(this.mem0Service);
+      this.slashCommandHandler.register(this.forgetCommand);
+      logger.info('Memory slash commands registered');
+    }
+
+    // Register image generation slash commands
+    if (this.imagenService) {
+      this.slashCommandHandler.register(new ImagineSlashCommand(this.imagenService));
+      logger.info('Imagen slash command registered');
+    }
+
+    // Register video generation slash commands
+    if (this.veoService) {
+      this.slashCommandHandler.register(new VideogenSlashCommand(this.veoService));
+      logger.info('Veo slash command registered');
+    }
+
+    // Register IRC history slash commands
+    if (this.qdrantService) {
+      this.slashCommandHandler.register(new RecallSlashCommand(this.qdrantService, this.nickMappingService));
+      this.slashCommandHandler.register(new HistorySlashCommand(this.qdrantService, this.nickMappingService));
+      this.slashCommandHandler.register(new ThrowbackSlashCommand(this.qdrantService));
+      logger.info('IRC history slash commands registered');
+    }
+
+    logger.info(`Registered ${this.slashCommandHandler.size} slash commands`);
   }
 
   setupEventHandlers() {
@@ -379,6 +461,12 @@ class DiscordBot {
         );
       }
 
+      // Handle messages in active chat threads
+      if (message.channel.isThread() && this.chatThreadCommand) {
+        const handled = await this.chatThreadCommand.handleThreadMessage(message);
+        if (handled) return;
+      }
+
       // Check if this is a reply to a bot message
       if (message.reference && message.reference.messageId) {
         try {
@@ -426,10 +514,50 @@ class DiscordBot {
     });
 
     this.client.on('interactionCreate', async interaction => {
-      if (!interaction.isButton()) return;
+      // Handle slash commands
+      if (interaction.isChatInputCommand()) {
+        const context = {
+          bot: this,
+          config: config
+        };
 
-      if (interaction.customId === 'poll_yes' || interaction.customId === 'poll_no') {
-        await interaction.reply({ content: `You voted ${interaction.customId === 'poll_yes' ? 'Yes' : 'No'}!`, ephemeral: true });
+        // Wrap slash command execution in a trace
+        await withRootSpan('discord.slash_command', {
+          'discord.command.name': interaction.commandName,
+          'discord.channel.id': interaction.channel?.id,
+          'discord.user.id': interaction.user.id,
+          'discord.user.tag': interaction.user.tag,
+          'discord.guild.id': interaction.guild?.id
+        }, async () => {
+          await this.slashCommandHandler.execute(interaction, context);
+        });
+        return;
+      }
+
+      // Handle autocomplete
+      if (interaction.isAutocomplete()) {
+        const context = { bot: this, config: config };
+        await this.slashCommandHandler.handleAutocomplete(interaction, context);
+        return;
+      }
+
+      // Handle button interactions
+      if (interaction.isButton()) {
+        // Handle forget confirmation buttons
+        if (interaction.customId.startsWith('forget_')) {
+          if (this.forgetCommand) {
+            await this.forgetCommand.handleButton(interaction);
+          }
+          return;
+        }
+
+        // Handle poll buttons (legacy)
+        if (interaction.customId === 'poll_yes' || interaction.customId === 'poll_no') {
+          await interaction.reply({
+            content: `You voted ${interaction.customId === 'poll_yes' ? 'Yes' : 'No'}!`,
+            ephemeral: true
+          });
+        }
       }
     });
 

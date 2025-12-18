@@ -35,6 +35,10 @@ const mongoUri = process.env.MONGO_URI.replace('${MONGO_PASSWORD}', process.env.
 module.exports = {
   discord: {
     token: process.env.DISCORD_TOKEN,
+    // Application/Client ID for slash command registration
+    clientId: process.env.DISCORD_CLIENT_ID || '',
+    // Optional: Guild ID for development (instant command updates)
+    testGuildId: process.env.DISCORD_TEST_GUILD_ID || '',
     intents: ['Guilds', 'GuildMessages', 'GuildMessageReactions', 'MessageContent'],
     prefix: process.env.DISCORD_PREFIX || '!',
     // Bot admin user IDs (comma-separated) - these users can run admin commands like !chatreset
