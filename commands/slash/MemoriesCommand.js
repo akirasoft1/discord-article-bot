@@ -36,23 +36,32 @@ class MemoriesSlashCommand extends BaseSlashCommand {
       return;
     }
 
+    // Format memories for display - each memory on its own line
+    const memoryLines = memories.map((m, i) => {
+      const content = m.memory || m.text || 'Unknown memory';
+      // Truncate individual memories if too long
+      const truncated = content.length > 100 ? content.substring(0, 97) + '...' : content;
+      return `**${i + 1}.** ${truncated}`;
+    });
+
+    // Join with newlines and ensure we don't exceed embed field limit (1024 chars)
+    let memoryText = memoryLines.join('\n');
+    if (memoryText.length > 1000) {
+      // Find a safe truncation point
+      memoryText = memoryText.substring(0, 997) + '...';
+    }
+
+    // Ensure memoryText is never empty (Discord requires non-empty field values)
+    if (!memoryText || memoryText.trim().length === 0) {
+      memoryText = 'No readable memories found.';
+    }
+
     const embed = new EmbedBuilder()
       .setTitle('What I Remember About You')
       .setDescription(`You have **${memories.length}${memories.length >= 20 ? '+' : ''}** stored memories`)
       .setColor(0x5865F2)
+      .addFields({ name: 'Your Memories', value: memoryText })
       .setFooter({ text: 'Use /forget <number> to delete specific memories' });
-
-    // Format memories for display
-    let memoryText = memories.map((m, i) =>
-      `**${i + 1}.** ${m.memory || m.text || 'Unknown'}`
-    ).join('\n\n');
-
-    // Split if too long
-    if (memoryText.length > 4000) {
-      memoryText = memoryText.substring(0, 3997) + '...';
-    }
-
-    embed.addFields({ name: 'Memories', value: memoryText || 'No memories found' });
 
     await interaction.editReply({ embeds: [embed], ephemeral: true });
   }
