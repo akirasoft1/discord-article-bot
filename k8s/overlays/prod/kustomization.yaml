@@ -4,7 +4,7 @@ kind: Kustomization
 metadata:
   name: discord-article-bot-prod
 
-namespace: discord-bot
+namespace: discord-article-bot
 
 resources:
   - ../../base
@@ -18,8 +18,8 @@ labels:
 # Production image configuration
 images:
   - name: discord-article-bot
-    newName: mvilliger/discord-article-bot:latest
-    newTag: v1.0.0
+    newName: mvilliger/discord-article-bot
+    newTag: "2.1.0"
 
 # Production-specific patches
 patches:
