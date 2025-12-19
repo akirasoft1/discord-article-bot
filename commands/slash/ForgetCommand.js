@@ -25,6 +25,15 @@ class ForgetSlashCommand extends BaseSlashCommand {
   }
 
   async execute(interaction, context) {
+    // Check if Mem0 service is enabled
+    if (!this.mem0Service.isEnabled()) {
+      await this.sendReply(interaction, {
+        content: 'Memory feature is not enabled on this bot.',
+        ephemeral: true
+      });
+      return;
+    }
+
     const memoryIdInput = interaction.options.getString('memory_id');
     const userId = interaction.user.id;
 

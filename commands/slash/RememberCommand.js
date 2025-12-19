@@ -24,6 +24,15 @@ class RememberSlashCommand extends BaseSlashCommand {
   }
 
   async execute(interaction, context) {
+    // Check if Mem0 service is enabled
+    if (!this.mem0Service.isEnabled()) {
+      await this.sendReply(interaction, {
+        content: 'Memory feature is not enabled on this bot.',
+        ephemeral: true
+      });
+      return;
+    }
+
     const fact = interaction.options.getString('fact');
     const userId = interaction.user.id;
     const channelId = interaction.channel?.id;

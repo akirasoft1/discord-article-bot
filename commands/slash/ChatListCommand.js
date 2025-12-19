@@ -22,7 +22,10 @@ class ChatListSlashCommand extends BaseSlashCommand {
     this.logExecution(interaction);
 
     const userId = interaction.user.id;
-    const conversations = await this.chatService.getResumableConversations(userId);
+    const guildId = interaction.guild?.id || null;
+
+    // Use correct method name with guildId parameter
+    const conversations = await this.chatService.listUserConversations(userId, guildId);
 
     if (!conversations || conversations.length === 0) {
       await interaction.reply({
@@ -34,21 +37,24 @@ class ChatListSlashCommand extends BaseSlashCommand {
 
     const embed = new EmbedBuilder()
       .setTitle('Your Resumable Conversations')
-      .setDescription('Use `/chatresume personality:<name> message:<your message>` to continue')
+      .setDescription('Use `/chatresume` to continue a conversation')
       .setColor(0x5865F2);
 
     for (const conv of conversations) {
-      const personality = personalityManager.get(conv.personalityId);
-      const emoji = personality?.emoji || '🎭';
-      const name = personality?.name || conv.personalityId;
+      // Use conversation's personality data which includes emoji and name
+      const emoji = conv.personality?.emoji || '🎭';
+      const name = conv.personality?.name || conv.personalityId || 'Unknown';
+      const personalityId = conv.personality?.id || conv.personalityId;
 
-      const expiredAt = new Date(conv.expiredAt);
-      const timeAgo = this.getTimeAgo(expiredAt);
+      const timeAgo = this.getTimeAgo(new Date(conv.lastActivity));
+      const preview = conv.lastUserMessage
+        ? `"${conv.lastUserMessage.substring(0, 50)}${conv.lastUserMessage.length > 50 ? '...' : ''}"`
+        : '';
 
       embed.addFields({
-        name: `${emoji} ${name}`,
-        value: `Expired ${timeAgo}\n\`/chatresume personality:${conv.personalityId}\``,
-        inline: true
+        name: `${emoji} ${name} (${conv.status || 'expired'})`,
+        value: `${conv.messageCount || 0} messages • ${timeAgo}\n${preview}\n\`/chatresume personality:${personalityId}\``,
+        inline: false
       });
     }
 

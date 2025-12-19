@@ -81,15 +81,32 @@ class RecallSlashCommand extends BaseSlashCommand {
 
     for (const result of results) {
       const payload = result.payload || {};
-      const date = payload.date || payload.timestamp || 'Unknown date';
-      const nick = payload.nick || payload.author || 'Unknown';
-      const message = payload.message || payload.content || payload.text || 'No content';
-      const channel = payload.channel || '';
+      const channel = payload.channel || 'DM';
+      const participants = (payload.participants || []).slice(0, 5).join(', ') || payload.nick || 'Unknown';
+      const text = payload.text || payload.message || payload.content || 'No content';
+      const score = result.score ? ` (${Math.round(result.score * 100)}% match)` : '';
 
-      const title = `${nick} ${channel ? `in ${channel}` : ''} (${date})`;
-      const value = message.length > 200 ? message.substring(0, 197) + '...' : message;
+      // Format date like the service does
+      let dateStr = '';
+      if (payload.start_time) {
+        try {
+          const date = new Date(payload.start_time);
+          dateStr = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        } catch {
+          dateStr = String(payload.year || '????');
+        }
+      } else {
+        dateStr = String(payload.year || payload.date || '????');
+      }
 
-      embed.addFields({ name: title, value: value, inline: false });
+      const title = `${dateStr} - ${channel}${score}`;
+      const value = text.length > 300 ? text.substring(0, 297) + '...' : text;
+
+      embed.addFields({
+        name: title,
+        value: `*${participants}*\n${value}`,
+        inline: false
+      });
     }
 
     await interaction.editReply({ embeds: [embed] });

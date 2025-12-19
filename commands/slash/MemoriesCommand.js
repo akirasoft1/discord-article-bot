@@ -22,6 +22,15 @@ class MemoriesSlashCommand extends BaseSlashCommand {
   async execute(interaction, context) {
     this.logExecution(interaction);
 
+    // Check if Mem0 service is enabled
+    if (!this.mem0Service.isEnabled()) {
+      await this.sendReply(interaction, {
+        content: 'Memory feature is not enabled on this bot.',
+        ephemeral: true
+      });
+      return;
+    }
+
     const userId = interaction.user.id;
 
     // Use getUserMemories which returns { results: Array }

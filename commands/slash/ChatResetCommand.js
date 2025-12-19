@@ -46,7 +46,8 @@ class ChatResetSlashCommand extends BaseSlashCommand {
       return;
     }
 
-    const result = await this.chatService.resetConversation(personalityId, channelId);
+    // Correct parameter order: channelId first, then personalityId
+    const result = await this.chatService.resetConversation(channelId, personalityId);
 
     if (result.success) {
       await interaction.reply({

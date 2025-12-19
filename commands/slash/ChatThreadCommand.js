@@ -107,7 +107,12 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
     );
 
     if (!result.success) {
-      await thread.send(`Error: ${result.error}`);
+      // Handle specific error reasons with helpful messages (without "Error: " prefix)
+      if (result.reason === 'expired' || result.reason === 'message_limit' || result.reason === 'token_limit') {
+        await thread.send(result.error);
+      } else {
+        await thread.send(`Error: ${result.error}`);
+      }
       return;
     }
 
@@ -160,8 +165,12 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
     );
 
     if (!result.success) {
+      // Handle specific error reasons with helpful messages (without "Error: " prefix)
+      const errorContent = (result.reason === 'expired' || result.reason === 'message_limit' || result.reason === 'token_limit')
+        ? result.error
+        : `Error: ${result.error}`;
       await message.reply({
-        content: `Error: ${result.error}`,
+        content: errorContent,
         allowedMentions: { repliedUser: false }
       });
       return true;

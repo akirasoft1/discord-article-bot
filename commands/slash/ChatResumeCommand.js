@@ -48,24 +48,8 @@ class ChatResumeSlashCommand extends BaseSlashCommand {
 
     this.logExecution(interaction, `personality=${personalityId}`);
 
-    const personality = personalityManager.get(personalityId);
-    if (!personality) {
-      await this.sendError(interaction, 'Unknown personality.');
-      return;
-    }
-
-    // Try to restore the previous conversation
-    const restored = await this.chatService.restoreConversation(personalityId, channelId);
-
-    if (!restored) {
-      await this.sendReply(interaction, {
-        content: `${personality.emoji} No expired conversation found with **${personality.name}**. Use \`/chat\` to start a new conversation.`
-      });
-      return;
-    }
-
-    // Continue the conversation
-    const result = await this.chatService.chat(
+    // Use resumeChat method which handles both restore and chat in one call
+    const result = await this.chatService.resumeChat(
       personalityId,
       userMessage,
       interaction.user,
@@ -74,6 +58,15 @@ class ChatResumeSlashCommand extends BaseSlashCommand {
     );
 
     if (!result.success) {
+      if (result.availablePersonalities) {
+        const availableList = result.availablePersonalities
+          .map(p => `\`${p.id}\` - ${p.emoji} ${p.name}`)
+          .join('\n');
+        await this.sendReply(interaction, {
+          content: `Unknown personality. Available options:\n${availableList}`
+        });
+        return;
+      }
       await this.sendError(interaction, result.error);
       return;
     }

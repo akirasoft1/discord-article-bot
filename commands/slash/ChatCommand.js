@@ -87,6 +87,13 @@ class ChatSlashCommand extends BaseSlashCommand {
         });
         return;
       }
+      // Handle specific error reasons with helpful messages (without "Error: " prefix)
+      if (result.reason === 'expired' || result.reason === 'message_limit' || result.reason === 'token_limit') {
+        await this.sendReply(interaction, {
+          content: result.error
+        });
+        return;
+      }
       await this.sendError(interaction, result.error);
       return;
     }

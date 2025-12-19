@@ -11,6 +11,7 @@ describe('MemoriesSlashCommand', () => {
   beforeEach(() => {
     // Mock Mem0Service
     mockMem0Service = {
+      isEnabled: jest.fn().mockReturnValue(true),
       getUserMemories: jest.fn()
     };
 
@@ -30,6 +31,19 @@ describe('MemoriesSlashCommand', () => {
   });
 
   describe('execute', () => {
+    it('should show message when memory service is disabled', async () => {
+      mockMem0Service.isEnabled.mockReturnValue(false);
+
+      await command.execute(mockInteraction, {});
+
+      expect(mockInteraction.editReply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: 'Memory feature is not enabled on this bot.'
+        })
+      );
+      expect(mockMem0Service.getUserMemories).not.toHaveBeenCalled();
+    });
+
     it('should show message when user has no memories', async () => {
       mockMem0Service.getUserMemories.mockResolvedValue({ results: [] });
 

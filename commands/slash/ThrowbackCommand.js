@@ -41,16 +41,20 @@ class ThrowbackSlashCommand extends BaseSlashCommand {
 
     const year = payload.year || 'Unknown year';
     const channel = payload.channel || 'Unknown channel';
-    const nick = payload.nick || payload.author || 'Unknown';
-    const message = payload.message || payload.content || payload.text || 'No content';
+    const participants = (payload.participants || []).slice(0, 5).join(', ') || payload.nick || 'Unknown';
+    const text = payload.text || payload.message || payload.content || 'No content';
+
+    // Calculate years ago
+    const yearsAgo = typeof year === 'number' ? (today.getFullYear() - year) : null;
+    const yearsAgoText = yearsAgo ? ` (${yearsAgo} years ago)` : '';
 
     const embed = new EmbedBuilder()
-      .setTitle(`On This Day: ${month}/${day}/${year}`)
+      .setTitle(`On This Day: ${month}/${day}/${year}${yearsAgoText}`)
       .setDescription(`From ${channel}`)
       .setColor(0xFFA500)
       .addFields({
-        name: nick,
-        value: message.length > 1000 ? message.substring(0, 997) + '...' : message,
+        name: participants,
+        value: text.length > 1000 ? text.substring(0, 997) + '...' : text,
         inline: false
       })
       .setFooter({ text: 'Use /throwback again for another memory' });
