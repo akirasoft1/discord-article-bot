@@ -6,7 +6,33 @@
 
 - **Namespace**: Always deploy to `discord-article-bot` namespace, not `default`
 - **Container name**: The deployment container is named `bot`, not `discord-article-bot`
-- **Deploy command**: `kubectl set image deployment/discord-article-bot bot=mvilliger/discord-article-bot:<version> -n discord-article-bot`
+- **Source of truth**: `k8s/overlays/deployed/` (gitignored, contains real secrets)
+- **Do NOT use kustomize**: The `k8s/base/` and `k8s/overlays/prod/` are out of sync and contain placeholder secrets
+
+### Deployment Steps
+
+1. Build and push Docker image:
+   ```bash
+   docker build -t mvilliger/discord-article-bot:<version> .
+   docker push mvilliger/discord-article-bot:<version>
+   ```
+
+2. Update image version in `k8s/overlays/deployed/deployment.yaml`
+
+3. Apply the deployment:
+   ```bash
+   kubectl apply -f k8s/overlays/deployed/ -n discord-article-bot
+   ```
+
+   Or for image-only updates:
+   ```bash
+   kubectl set image deployment/discord-article-bot bot=mvilliger/discord-article-bot:<version> -n discord-article-bot
+   ```
+
+4. Verify rollout:
+   ```bash
+   kubectl rollout status deployment/discord-article-bot -n discord-article-bot
+   ```
 
 ## Slash Commands vs Prefix Commands
 
