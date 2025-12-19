@@ -1,7 +1,9 @@
 // commands/chat/ChatCommand.js
+const { AttachmentBuilder } = require('discord.js');
 const BaseCommand = require('../base/BaseCommand');
 const { validateImageAttachment, getSupportedFormatsText } = require('../../utils/imageValidation');
 const TextUtils = require('../../utils/textUtils');
+const logger = require('../../logger');
 
 const DEFAULT_PERSONALITY = 'friendly';
 
@@ -137,17 +139,43 @@ class ChatCommand extends BaseCommand {
     // Wrap URLs to prevent Discord auto-expansion
     response = TextUtils.wrapUrls(response);
 
+    // Convert any generated images to Discord attachments
+    const imageAttachments = [];
+    if (result.images && result.images.length > 0) {
+      for (let i = 0; i < result.images.length; i++) {
+        const img = result.images[i];
+        try {
+          const buffer = Buffer.from(img.base64, 'base64');
+          const attachment = new AttachmentBuilder(buffer, {
+            name: `generated_image_${i + 1}.png`
+          });
+          imageAttachments.push(attachment);
+          logger.info(`Prepared image attachment: generated_image_${i + 1}.png`);
+        } catch (error) {
+          logger.error(`Failed to create image attachment: ${error.message}`);
+        }
+      }
+    }
+
     // Split if too long for Discord
     if (response.length > 2000) {
       const chunks = this.splitMessage(response, 2000);
       for (const chunk of chunks) {
         await message.channel.send(chunk);
       }
+      // Send images after text chunks
+      if (imageAttachments.length > 0) {
+        await message.channel.send({ files: imageAttachments });
+      }
     } else {
       await message.reply({
         content: response,
         allowedMentions: { repliedUser: false }
       });
+      // Send images as follow-up
+      if (imageAttachments.length > 0) {
+        await message.channel.send({ files: imageAttachments });
+      }
     }
   }
 

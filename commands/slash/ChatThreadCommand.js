@@ -1,7 +1,7 @@
 // commands/slash/ChatThreadCommand.js
 // Slash command for starting thread-based chat conversations
 
-const { SlashCommandBuilder, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, AttachmentBuilder } = require('discord.js');
 const BaseSlashCommand = require('../base/BaseSlashCommand');
 const TextUtils = require('../../utils/textUtils');
 const logger = require('../../logger');
@@ -126,6 +126,40 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
     for (const chunk of chunks) {
       await thread.send(chunk);
     }
+
+    // Send any generated images
+    await this._sendGeneratedImages(thread, result.images);
+  }
+
+  /**
+   * Convert base64 images to Discord attachments and send them
+   * @param {TextChannel|ThreadChannel} channel - Channel to send images to
+   * @param {Array<{id: string, base64: string}>} images - Generated images
+   * @private
+   */
+  async _sendGeneratedImages(channel, images) {
+    if (!images || images.length === 0) {
+      return;
+    }
+
+    const imageAttachments = [];
+    for (let i = 0; i < images.length; i++) {
+      const img = images[i];
+      try {
+        const buffer = Buffer.from(img.base64, 'base64');
+        const attachment = new AttachmentBuilder(buffer, {
+          name: `generated_image_${i + 1}.png`
+        });
+        imageAttachments.push(attachment);
+        logger.info(`Prepared image attachment for thread: generated_image_${i + 1}.png`);
+      } catch (error) {
+        logger.error(`Failed to create image attachment: ${error.message}`);
+      }
+    }
+
+    if (imageAttachments.length > 0) {
+      await channel.send({ files: imageAttachments });
+    }
   }
 
   /**
@@ -192,6 +226,9 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
         await message.channel.send(chunks[i]);
       }
     }
+
+    // Send any generated images
+    await this._sendGeneratedImages(message.channel, result.images);
 
     return true;
   }

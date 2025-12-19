@@ -1,6 +1,7 @@
 // handlers/ReplyHandler.js
 // Handles replies to bot messages for personality chats and summarization follow-ups
 
+const { AttachmentBuilder } = require('discord.js');
 const logger = require('../logger');
 const personalityManager = require('../personalities');
 const TextUtils = require('../utils/textUtils');
@@ -215,18 +216,58 @@ class ReplyHandler {
       `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
     );
 
+    // Convert any generated images to Discord attachments
+    const imageAttachments = this._createImageAttachments(result.images);
+
     // Split if too long for Discord
     if (response.length > 2000) {
       const chunks = this.splitMessage(response, 2000);
       for (const chunk of chunks) {
         await message.channel.send(chunk);
       }
+      // Send images after text chunks
+      if (imageAttachments.length > 0) {
+        await message.channel.send({ files: imageAttachments });
+      }
     } else {
       await message.reply({
         content: response,
         allowedMentions: { repliedUser: false }
       });
+      // Send images as follow-up
+      if (imageAttachments.length > 0) {
+        await message.channel.send({ files: imageAttachments });
+      }
     }
+  }
+
+  /**
+   * Create Discord attachments from base64 images
+   * @param {Array<{id: string, base64: string}>} images - Generated images
+   * @returns {Array<AttachmentBuilder>} Discord attachment builders
+   * @private
+   */
+  _createImageAttachments(images) {
+    const attachments = [];
+    if (!images || images.length === 0) {
+      return attachments;
+    }
+
+    for (let i = 0; i < images.length; i++) {
+      const img = images[i];
+      try {
+        const buffer = Buffer.from(img.base64, 'base64');
+        const attachment = new AttachmentBuilder(buffer, {
+          name: `generated_image_${i + 1}.png`
+        });
+        attachments.push(attachment);
+        logger.info(`Prepared image attachment: generated_image_${i + 1}.png`);
+      } catch (error) {
+        logger.error(`Failed to create image attachment: ${error.message}`);
+      }
+    }
+
+    return attachments;
   }
 
   /**

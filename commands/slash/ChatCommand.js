@@ -1,7 +1,7 @@
 // commands/slash/ChatCommand.js
 // Slash command for chatting with AI personalities
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
 const BaseSlashCommand = require('../base/BaseSlashCommand');
 const TextUtils = require('../../utils/textUtils');
 const logger = require('../../logger');
@@ -103,8 +103,32 @@ class ChatSlashCommand extends BaseSlashCommand {
       `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
     );
 
-    // Send response, handling long messages
-    await this.sendLongResponse(interaction, response);
+    // Convert any generated images to Discord attachments
+    const imageAttachments = [];
+    if (result.images && result.images.length > 0) {
+      for (let i = 0; i < result.images.length; i++) {
+        const img = result.images[i];
+        try {
+          const buffer = Buffer.from(img.base64, 'base64');
+          const attachment = new AttachmentBuilder(buffer, {
+            name: `generated_image_${i + 1}.png`
+          });
+          imageAttachments.push(attachment);
+          logger.info(`Prepared image attachment: generated_image_${i + 1}.png`);
+        } catch (error) {
+          logger.error(`Failed to create image attachment: ${error.message}`);
+        }
+      }
+    }
+
+    // Send response with images if any, handling long messages
+    if (imageAttachments.length > 0) {
+      // For messages with images, send text first then images
+      await this.sendLongResponse(interaction, response);
+      await interaction.followUp({ files: imageAttachments });
+    } else {
+      await this.sendLongResponse(interaction, response);
+    }
   }
 }
 

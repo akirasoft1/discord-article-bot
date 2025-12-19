@@ -646,4 +646,118 @@ describe('ChatService', () => {
       expect(metadata.channelName).toBeUndefined(); // Not available in this context
     });
   });
+
+  describe('_extractGeneratedImages', () => {
+    it('should extract completed image generation calls from response', () => {
+      const mockResponse = {
+        output: [
+          { type: 'message', content: [{ type: 'output_text', text: 'Here is your image' }] },
+          {
+            type: 'image_generation_call',
+            id: 'img-123',
+            status: 'completed',
+            result: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+          }
+        ]
+      };
+
+      const images = chatService._extractGeneratedImages(mockResponse);
+
+      expect(images).toHaveLength(1);
+      expect(images[0].id).toBe('img-123');
+      expect(images[0].base64).toBe('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+    });
+
+    it('should ignore in-progress image generation calls', () => {
+      const mockResponse = {
+        output: [
+          {
+            type: 'image_generation_call',
+            id: 'img-123',
+            status: 'in_progress',
+            result: null
+          }
+        ]
+      };
+
+      const images = chatService._extractGeneratedImages(mockResponse);
+
+      expect(images).toHaveLength(0);
+    });
+
+    it('should ignore failed image generation calls', () => {
+      const mockResponse = {
+        output: [
+          {
+            type: 'image_generation_call',
+            id: 'img-123',
+            status: 'failed',
+            result: null
+          }
+        ]
+      };
+
+      const images = chatService._extractGeneratedImages(mockResponse);
+
+      expect(images).toHaveLength(0);
+    });
+
+    it('should handle responses with no output array', () => {
+      const images = chatService._extractGeneratedImages({});
+      expect(images).toHaveLength(0);
+
+      const imagesNull = chatService._extractGeneratedImages(null);
+      expect(imagesNull).toHaveLength(0);
+    });
+
+    it('should handle responses with empty output array', () => {
+      const images = chatService._extractGeneratedImages({ output: [] });
+      expect(images).toHaveLength(0);
+    });
+
+    it('should extract multiple completed images', () => {
+      const mockResponse = {
+        output: [
+          {
+            type: 'image_generation_call',
+            id: 'img-1',
+            status: 'completed',
+            result: 'base64data1'
+          },
+          {
+            type: 'image_generation_call',
+            id: 'img-2',
+            status: 'completed',
+            result: 'base64data2'
+          }
+        ]
+      };
+
+      const images = chatService._extractGeneratedImages(mockResponse);
+
+      expect(images).toHaveLength(2);
+      expect(images[0].id).toBe('img-1');
+      expect(images[1].id).toBe('img-2');
+    });
+
+    it('should filter out non-image output items', () => {
+      const mockResponse = {
+        output: [
+          { type: 'message', content: [{ type: 'output_text', text: 'Hello' }] },
+          { type: 'web_search_call', id: 'search-1' },
+          {
+            type: 'image_generation_call',
+            id: 'img-1',
+            status: 'completed',
+            result: 'base64data'
+          }
+        ]
+      };
+
+      const images = chatService._extractGeneratedImages(mockResponse);
+
+      expect(images).toHaveLength(1);
+      expect(images[0].id).toBe('img-1');
+    });
+  });
 });

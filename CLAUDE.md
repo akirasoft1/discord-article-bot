@@ -1,4 +1,6 @@
 # Discord Article Bot - Development Guidelines
+## Important Notes
+- **Development Methodology**: Follow Test-Driven Development (TDD) practices. Write tests before implementing features or fixes.
 
 ## Deployment
 
