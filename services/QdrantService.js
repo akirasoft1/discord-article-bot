@@ -3,6 +3,8 @@
 
 const { QdrantClient } = require('@qdrant/js-client-rest');
 const logger = require('../logger');
+const { withSpan } = require('../tracing');
+const { VECTOR_DB, GEN_AI, ERROR } = require('../tracing-attributes');
 
 class QdrantService {
   constructor(openaiClient, config) {
@@ -98,29 +100,46 @@ class QdrantService {
    * @returns {Promise<Array>} Search results
    */
   async search(query, options = {}) {
-    try {
-      const embedding = await this.getEmbedding(query);
-      const filter = this._buildFilter(options);
+    return withSpan('qdrant.search', {
+      [VECTOR_DB.SYSTEM]: 'qdrant',
+      [VECTOR_DB.OPERATION]: 'search',
+      [VECTOR_DB.COLLECTION]: this.collection,
+      [VECTOR_DB.TOP_K]: options.limit || 5,
+      [VECTOR_DB.SCORE_THRESHOLD]: options.scoreThreshold || 0.3,
+      [VECTOR_DB.EMBEDDING_MODEL]: 'text-embedding-3-small',
+      'search.query_length': query.length,
+    }, async (span) => {
+      try {
+        const embedding = await this.getEmbedding(query);
+        const filter = this._buildFilter(options);
 
-      const searchParams = {
-        vector: embedding,
-        limit: options.limit || 5,
-        with_payload: true,
-        score_threshold: options.scoreThreshold || 0.3  // Lowered from 0.5 - IRC conversations have lower semantic similarity
-      };
+        span.setAttribute(VECTOR_DB.HAS_FILTER, !!filter);
 
-      if (filter) {
-        searchParams.filter = filter;
+        const searchParams = {
+          vector: embedding,
+          limit: options.limit || 5,
+          with_payload: true,
+          score_threshold: options.scoreThreshold || 0.3  // Lowered from 0.5 - IRC conversations have lower semantic similarity
+        };
+
+        if (filter) {
+          searchParams.filter = filter;
+        }
+
+        const results = await this.client.search(this.collection, searchParams);
+
+        span.setAttribute(VECTOR_DB.RESULTS_COUNT, results.length);
+        logger.debug(`IRC search for "${query}" returned ${results.length} results`);
+        return results;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'QdrantError',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`QdrantService search error: ${error.message}`);
+        throw error;
       }
-
-      const results = await this.client.search(this.collection, searchParams);
-
-      logger.debug(`IRC search for "${query}" returned ${results.length} results`);
-      return results;
-    } catch (error) {
-      logger.error(`QdrantService search error: ${error.message}`);
-      throw error;
-    }
+    });
   }
 
   /**
@@ -130,34 +149,49 @@ class QdrantService {
    * @returns {Promise<Object|null>} Random conversation or null
    */
   async getRandomFromDate(month, day) {
-    try {
-      // Build a date pattern to match
-      const monthStr = String(month).padStart(2, '0');
-      const dayStr = String(day).padStart(2, '0');
+    return withSpan('qdrant.scroll', {
+      [VECTOR_DB.SYSTEM]: 'qdrant',
+      [VECTOR_DB.OPERATION]: 'scroll',
+      [VECTOR_DB.COLLECTION]: this.collection,
+      'throwback.month': month,
+      'throwback.day': day,
+    }, async (span) => {
+      try {
+        // Build a date pattern to match
+        const monthStr = String(month).padStart(2, '0');
+        const dayStr = String(day).padStart(2, '0');
 
-      // Scroll through matching records
-      const response = await this.client.scroll(this.collection, {
-        filter: {
-          must: [{
-            key: 'start_time',
-            match: { text: `-${monthStr}-${dayStr}` }
-          }]
-        },
-        limit: 100,
-        with_payload: true
-      });
+        // Scroll through matching records
+        const response = await this.client.scroll(this.collection, {
+          filter: {
+            must: [{
+              key: 'start_time',
+              match: { text: `-${monthStr}-${dayStr}` }
+            }]
+          },
+          limit: 100,
+          with_payload: true
+        });
 
-      if (!response.points || response.points.length === 0) {
+        if (!response.points || response.points.length === 0) {
+          span.setAttribute(VECTOR_DB.RESULTS_COUNT, 0);
+          return null;
+        }
+
+        span.setAttribute(VECTOR_DB.RESULTS_COUNT, response.points.length);
+
+        // Pick a random one
+        const randomIndex = Math.floor(Math.random() * response.points.length);
+        return response.points[randomIndex];
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'QdrantError',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`QdrantService getRandomFromDate error: ${error.message}`);
         return null;
       }
-
-      // Pick a random one
-      const randomIndex = Math.floor(Math.random() * response.points.length);
-      return response.points[randomIndex];
-    } catch (error) {
-      logger.error(`QdrantService getRandomFromDate error: ${error.message}`);
-      return null;
-    }
+    });
   }
 
   /**
@@ -167,25 +201,39 @@ class QdrantService {
    * @returns {Promise<Array>} Matching conversations
    */
   async getByParticipants(participants, options = {}) {
-    try {
-      const filter = {
-        should: participants.map(p => ({
-          key: 'participants',
-          match: { value: p }
-        }))
-      };
+    return withSpan('qdrant.scroll', {
+      [VECTOR_DB.SYSTEM]: 'qdrant',
+      [VECTOR_DB.OPERATION]: 'scroll',
+      [VECTOR_DB.COLLECTION]: this.collection,
+      [VECTOR_DB.HAS_FILTER]: true,
+      'search.participants_count': participants.length,
+    }, async (span) => {
+      try {
+        const filter = {
+          should: participants.map(p => ({
+            key: 'participants',
+            match: { value: p }
+          }))
+        };
 
-      const response = await this.client.scroll(this.collection, {
-        filter,
-        limit: options.limit || 20,
-        with_payload: true
-      });
+        const response = await this.client.scroll(this.collection, {
+          filter,
+          limit: options.limit || 20,
+          with_payload: true
+        });
 
-      return response.points || [];
-    } catch (error) {
-      logger.error(`QdrantService getByParticipants error: ${error.message}`);
-      return [];
-    }
+        const results = response.points || [];
+        span.setAttribute(VECTOR_DB.RESULTS_COUNT, results.length);
+        return results;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'QdrantError',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`QdrantService getByParticipants error: ${error.message}`);
+        return [];
+      }
+    });
   }
 
   /**

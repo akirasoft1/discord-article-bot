@@ -3,6 +3,8 @@
 
 const { Memory } = require('mem0ai/oss');
 const logger = require('../logger');
+const { withSpan } = require('../tracing');
+const { MEMORY, DISCORD, ERROR } = require('../tracing-attributes');
 
 class Mem0Service {
   /**
@@ -80,27 +82,42 @@ class Mem0Service {
    * @returns {Promise<{results: Array, error?: string}>}
    */
   async addMemory(messages, userId, metadata = {}) {
-    try {
-      const result = await this.memory.add(messages, {
-        userId: userId,
-        agentId: metadata.personalityId || 'default',
-        runId: metadata.channelId,
-        metadata: {
-          channelName: metadata.channelName,
-          guildId: metadata.guildId,
-          timestamp: new Date().toISOString(),
-        },
-      });
+    return withSpan('mem0.add', {
+      [MEMORY.OPERATION]: 'add',
+      [MEMORY.USER_ID]: userId,
+      [MEMORY.AGENT_ID]: metadata.personalityId || 'default',
+      [DISCORD.CHANNEL_ID]: metadata.channelId || 'unknown',
+      'memory.messages_count': messages.length,
+    }, async (span) => {
+      try {
+        const result = await this.memory.add(messages, {
+          userId: userId,
+          agentId: metadata.personalityId || 'default',
+          runId: metadata.channelId,
+          metadata: {
+            channelName: metadata.channelName,
+            guildId: metadata.guildId,
+            timestamp: new Date().toISOString(),
+          },
+        });
 
-      if (result.results && result.results.length > 0) {
-        logger.debug(`Added ${result.results.length} memories for user ${userId}`);
+        const memoriesCount = result.results?.length || 0;
+        span.setAttribute(MEMORY.MEMORIES_COUNT, memoriesCount);
+
+        if (memoriesCount > 0) {
+          logger.debug(`Added ${memoriesCount} memories for user ${userId}`);
+        }
+
+        return result;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'Mem0Error',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`Error adding memory: ${error.message}`);
+        return { results: [], error: error.message };
       }
-
-      return result;
-    } catch (error) {
-      logger.error(`Error adding memory: ${error.message}`);
-      return { results: [], error: error.message };
-    }
+    });
   }
 
   /**
@@ -115,31 +132,47 @@ class Mem0Service {
    * @returns {Promise<{results: Array}>}
    */
   async searchMemories(query, userId, options = {}) {
-    try {
-      const searchConfig = {
-        userId: userId,
-        limit: options.limit || 5,
-      };
+    return withSpan('mem0.search', {
+      [MEMORY.OPERATION]: 'search',
+      [MEMORY.USER_ID]: userId,
+      [MEMORY.QUERY_LENGTH]: query.length,
+      'memory.limit': options.limit || 5,
+    }, async (span) => {
+      try {
+        const searchConfig = {
+          userId: userId,
+          limit: options.limit || 5,
+        };
 
-      // Add optional filters
-      if (options.personalityId) {
-        searchConfig.agentId = options.personalityId;
+        // Add optional filters
+        if (options.personalityId) {
+          searchConfig.agentId = options.personalityId;
+          span.setAttribute(MEMORY.AGENT_ID, options.personalityId);
+        }
+        if (options.channelId) {
+          searchConfig.runId = options.channelId;
+          span.setAttribute(DISCORD.CHANNEL_ID, options.channelId);
+        }
+
+        const result = await this.memory.search(query, searchConfig);
+
+        const memoriesCount = result.results?.length || 0;
+        span.setAttribute(MEMORY.MEMORIES_COUNT, memoriesCount);
+
+        if (memoriesCount > 0) {
+          logger.debug(`Found ${memoriesCount} relevant memories for user ${userId}`);
+        }
+
+        return result;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'Mem0Error',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`Error searching memories: ${error.message}`);
+        return { results: [] };
       }
-      if (options.channelId) {
-        searchConfig.runId = options.channelId;
-      }
-
-      const result = await this.memory.search(query, searchConfig);
-
-      if (result.results && result.results.length > 0) {
-        logger.debug(`Found ${result.results.length} relevant memories for user ${userId}`);
-      }
-
-      return result;
-    } catch (error) {
-      logger.error(`Error searching memories: ${error.message}`);
-      return { results: [] };
-    }
+    });
   }
 
   /**
@@ -152,24 +185,36 @@ class Mem0Service {
    * @returns {Promise<{results: Array}>}
    */
   async getUserMemories(userId, options = {}) {
-    try {
-      const config = {
-        userId: userId,
-      };
+    return withSpan('mem0.getAll', {
+      [MEMORY.OPERATION]: 'getAll',
+      [MEMORY.USER_ID]: userId,
+    }, async (span) => {
+      try {
+        const config = {
+          userId: userId,
+        };
 
-      if (options.limit) {
-        config.limit = options.limit;
-      }
-      if (options.personalityId) {
-        config.agentId = options.personalityId;
-      }
+        if (options.limit) {
+          config.limit = options.limit;
+          span.setAttribute('memory.limit', options.limit);
+        }
+        if (options.personalityId) {
+          config.agentId = options.personalityId;
+          span.setAttribute(MEMORY.AGENT_ID, options.personalityId);
+        }
 
-      const result = await this.memory.getAll(config);
-      return result;
-    } catch (error) {
-      logger.error(`Error getting user memories: ${error.message}`);
-      return { results: [] };
-    }
+        const result = await this.memory.getAll(config);
+        span.setAttribute(MEMORY.MEMORIES_COUNT, result.results?.length || 0);
+        return result;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'Mem0Error',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`Error getting user memories: ${error.message}`);
+        return { results: [] };
+      }
+    });
   }
 
   /**
@@ -179,14 +224,23 @@ class Mem0Service {
    * @returns {Promise<{message: string}>}
    */
   async deleteMemory(memoryId) {
-    try {
-      const result = await this.memory.delete(memoryId);
-      logger.info(`Deleted memory: ${memoryId}`);
-      return result;
-    } catch (error) {
-      logger.error(`Error deleting memory: ${error.message}`);
-      return { message: `Error: ${error.message}` };
-    }
+    return withSpan('mem0.delete', {
+      [MEMORY.OPERATION]: 'delete',
+      'memory.id': memoryId,
+    }, async (span) => {
+      try {
+        const result = await this.memory.delete(memoryId);
+        logger.info(`Deleted memory: ${memoryId}`);
+        return result;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'Mem0Error',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`Error deleting memory: ${error.message}`);
+        return { message: `Error: ${error.message}` };
+      }
+    });
   }
 
   /**
@@ -196,14 +250,23 @@ class Mem0Service {
    * @returns {Promise<{message: string}>}
    */
   async deleteAllUserMemories(userId) {
-    try {
-      const result = await this.memory.deleteAll({ userId: userId });
-      logger.info(`Deleted all memories for user: ${userId}`);
-      return result;
-    } catch (error) {
-      logger.error(`Error deleting all user memories: ${error.message}`);
-      return { message: `Error: ${error.message}` };
-    }
+    return withSpan('mem0.deleteAll', {
+      [MEMORY.OPERATION]: 'deleteAll',
+      [MEMORY.USER_ID]: userId,
+    }, async (span) => {
+      try {
+        const result = await this.memory.deleteAll({ userId: userId });
+        logger.info(`Deleted all memories for user: ${userId}`);
+        return result;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'Mem0Error',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`Error deleting all user memories: ${error.message}`);
+        return { message: `Error: ${error.message}` };
+      }
+    });
   }
 
   /**

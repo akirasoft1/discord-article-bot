@@ -5,6 +5,8 @@ const { AttachmentBuilder } = require('discord.js');
 const logger = require('../logger');
 const personalityManager = require('../personalities');
 const TextUtils = require('../utils/textUtils');
+const { withRootSpan, withSpan, setSpanAttributes } = require('../tracing');
+const { DISCORD, REPLY, ERROR, CHAT, SUMMARIZATION } = require('../tracing-attributes');
 
 class ReplyHandler {
   constructor(chatService, summarizationService, openaiClient, config) {
@@ -28,22 +30,43 @@ class ReplyHandler {
 
     const botContent = referencedMessage.content;
 
-    // Try to detect if this is a personality chat message
-    const personalityInfo = this.detectPersonalityFromMessage(botContent);
-    if (personalityInfo) {
-      logger.info(`Detected reply to personality chat: ${personalityInfo.id}`);
-      await this.handlePersonalityChatReply(message, personalityInfo);
-      return true;
-    }
+    // Wrap in root span for tracing entry point
+    return withRootSpan('discord.reply.handle', {
+      [DISCORD.USER_ID]: message.author.id,
+      [DISCORD.USER_TAG]: message.author.tag || message.author.username,
+      [DISCORD.CHANNEL_ID]: message.channel.id,
+      [DISCORD.GUILD_ID]: message.guild?.id || 'dm',
+      [DISCORD.MESSAGE_ID]: message.id,
+      [REPLY.OPERATION]: 'handle_reply',
+    }, async (span) => {
+      // Try to detect if this is a personality chat message
+      const personalityInfo = this.detectPersonalityFromMessage(botContent);
+      if (personalityInfo) {
+        logger.info(`Detected reply to personality chat: ${personalityInfo.id}`);
+        span.setAttributes({
+          [REPLY.TYPE]: 'personality_chat',
+          [REPLY.PERSONALITY_DETECTED]: true,
+          [CHAT.PERSONALITY_ID]: personalityInfo.id,
+          [CHAT.PERSONALITY_NAME]: personalityInfo.name,
+        });
+        await this.handlePersonalityChatReply(message, personalityInfo);
+        return true;
+      }
 
-    // Try to detect if this is a summarization message
-    if (this.isSummarizationMessage(botContent)) {
-      logger.info('Detected reply to summarization message');
-      await this.handleSummarizationReply(message, botContent);
-      return true;
-    }
+      // Try to detect if this is a summarization message
+      if (this.isSummarizationMessage(botContent)) {
+        logger.info('Detected reply to summarization message');
+        span.setAttributes({
+          [REPLY.TYPE]: 'summarization_followup',
+          [REPLY.IS_SUMMARIZATION]: true,
+        });
+        await this.handleSummarizationReply(message, botContent);
+        return true;
+      }
 
-    return false;
+      span.setAttribute(REPLY.TYPE, 'unhandled');
+      return false;
+    });
   }
 
   /**
@@ -165,80 +188,93 @@ class ReplyHandler {
    * @param {Object} personalityInfo - The detected personality info
    */
   async handlePersonalityChatReply(message, personalityInfo) {
-    const channelId = message.channel.id;
-    const guildId = message.guild?.id || null;
-    const userMessage = message.content;
+    return withSpan('discord.reply.personality_chat', {
+      [CHAT.PERSONALITY_ID]: personalityInfo.id,
+      [CHAT.PERSONALITY_NAME]: personalityInfo.name,
+      [DISCORD.CHANNEL_ID]: message.channel.id,
+    }, async (span) => {
+      const channelId = message.channel.id;
+      const guildId = message.guild?.id || null;
+      const userMessage = message.content;
 
-    // Show typing indicator
-    await message.channel.sendTyping();
+      // Show typing indicator
+      await message.channel.sendTyping();
 
-    // For replies, we let chatService.chat() handle the conversation logic
-    // It will check for idle timeout and either continue or start fresh
-    // We only show the "forgotten" message if the conversation was explicitly
-    // expired or reset (not just idle - idle conversations get auto-renewed by !chat)
-    const status = await this.chatService.mongoService.getConversationStatus(channelId, personalityInfo.id);
+      // For replies, we let chatService.chat() handle the conversation logic
+      // It will check for idle timeout and either continue or start fresh
+      // We only show the "forgotten" message if the conversation was explicitly
+      // expired or reset (not just idle - idle conversations get auto-renewed by !chat)
+      const status = await this.chatService.mongoService.getConversationStatus(channelId, personalityInfo.id);
 
-    logger.debug(`Reply handler - conversation status for ${personalityInfo.id} in ${channelId}: ${JSON.stringify(status)}`);
+      logger.debug(`Reply handler - conversation status for ${personalityInfo.id} in ${channelId}: ${JSON.stringify(status)}`);
+      span.setAttribute(REPLY.CONVERSATION_STATUS, status.status || 'new');
 
-    // Only show forgotten message for explicitly expired/reset conversations
-    // For idle conversations, chatService.chat() will handle them (start fresh)
-    if (status.exists && (status.status === 'expired' || status.status === 'reset')) {
-      logger.info(`Conversation ${personalityInfo.id} is ${status.status}, showing expired message`);
-      // Conversation was explicitly expired or reset - respond in character about forgetting
-      await this.handleExpiredConversationReply(message, personalityInfo);
-      return;
-    }
+      // Only show forgotten message for explicitly expired/reset conversations
+      // For idle conversations, chatService.chat() will handle them (start fresh)
+      if (status.exists && (status.status === 'expired' || status.status === 'reset')) {
+        logger.info(`Conversation ${personalityInfo.id} is ${status.status}, showing expired message`);
+        // Conversation was explicitly expired or reset - respond in character about forgetting
+        await this.handleExpiredConversationReply(message, personalityInfo);
+        return;
+      }
 
-    // Continue the conversation (or start fresh if idle - chatService handles this)
-    const result = await this.chatService.chat(
-      personalityInfo.id,
-      userMessage,
-      message.author,
-      channelId,
-      guildId
-    );
+      // Continue the conversation (or start fresh if idle - chatService handles this)
+      const result = await this.chatService.chat(
+        personalityInfo.id,
+        userMessage,
+        message.author,
+        channelId,
+        guildId
+      );
 
-    if (!result.success) {
-      if (result.availablePersonalities) {
+      if (!result.success) {
+        span.setAttributes({
+          [ERROR.TYPE]: 'chat_error',
+          [ERROR.MESSAGE]: result.error || 'Unknown error',
+        });
+        if (result.availablePersonalities) {
+          return message.reply({
+            content: `I couldn't find that personality. Something went wrong.`,
+            allowedMentions: { repliedUser: false }
+          });
+        }
         return message.reply({
-          content: `I couldn't find that personality. Something went wrong.`,
+          content: result.error,
           allowedMentions: { repliedUser: false }
         });
       }
-      return message.reply({
-        content: result.error,
-        allowedMentions: { repliedUser: false }
-      });
-    }
 
-    // Format response with personality header and wrap URLs
-    const response = TextUtils.wrapUrls(
-      `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
-    );
+      span.setAttribute(CHAT.HAS_IMAGE, result.images?.length > 0);
 
-    // Convert any generated images to Discord attachments
-    const imageAttachments = this._createImageAttachments(result.images);
+      // Format response with personality header and wrap URLs
+      const response = TextUtils.wrapUrls(
+        `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
+      );
 
-    // Split if too long for Discord
-    if (response.length > 2000) {
-      const chunks = this.splitMessage(response, 2000);
-      for (const chunk of chunks) {
-        await message.channel.send(chunk);
+      // Convert any generated images to Discord attachments
+      const imageAttachments = this._createImageAttachments(result.images);
+
+      // Split if too long for Discord
+      if (response.length > 2000) {
+        const chunks = this.splitMessage(response, 2000);
+        for (const chunk of chunks) {
+          await message.channel.send(chunk);
+        }
+        // Send images after text chunks
+        if (imageAttachments.length > 0) {
+          await message.channel.send({ files: imageAttachments });
+        }
+      } else {
+        await message.reply({
+          content: response,
+          allowedMentions: { repliedUser: false }
+        });
+        // Send images as follow-up
+        if (imageAttachments.length > 0) {
+          await message.channel.send({ files: imageAttachments });
+        }
       }
-      // Send images after text chunks
-      if (imageAttachments.length > 0) {
-        await message.channel.send({ files: imageAttachments });
-      }
-    } else {
-      await message.reply({
-        content: response,
-        allowedMentions: { repliedUser: false }
-      });
-      // Send images as follow-up
-      if (imageAttachments.length > 0) {
-        await message.channel.send({ files: imageAttachments });
-      }
-    }
+    });
   }
 
   /**
@@ -325,15 +361,24 @@ Respond IN CHARACTER explaining that you don't remember what you were discussing
    * @param {string} originalContent - The original bot message content
    */
   async handleSummarizationReply(message, originalContent) {
-    const userQuestion = message.content;
-    const articleUrl = this.extractArticleUrl(originalContent);
-    const summaryText = this.extractSummaryText(originalContent);
+    return withSpan('discord.reply.summarization_followup', {
+      [DISCORD.CHANNEL_ID]: message.channel.id,
+      [SUMMARIZATION.IS_FOLLOW_UP]: true,
+    }, async (span) => {
+      const userQuestion = message.content;
+      const articleUrl = this.extractArticleUrl(originalContent);
+      const summaryText = this.extractSummaryText(originalContent);
 
-    // Show typing indicator
-    await message.channel.sendTyping();
+      span.setAttributes({
+        [SUMMARIZATION.ARTICLE_URL]: articleUrl || 'unknown',
+        [SUMMARIZATION.CONTENT_LENGTH]: summaryText.length,
+      });
 
-    // Build context for the follow-up question
-    const systemPrompt = `You are a helpful assistant that answers follow-up questions about articles that have been summarized. Be concise and informative.
+      // Show typing indicator
+      await message.channel.sendTyping();
+
+      // Build context for the follow-up question
+      const systemPrompt = `You are a helpful assistant that answers follow-up questions about articles that have been summarized. Be concise and informative.
 
 Here is the context from a previously summarized article:
 ${summaryText}
@@ -342,49 +387,60 @@ ${articleUrl ? `Original article URL: ${articleUrl}` : ''}
 
 Answer the user's follow-up question based on the summary provided. If the question cannot be answered from the summary alone, acknowledge this and provide what insight you can. Keep responses focused and under 500 words.`;
 
-    try {
-      const response = await this.openaiClient.responses.create({
-        model: this.config.openai.model || 'gpt-5.1',
-        instructions: systemPrompt,
-        input: userQuestion,
-      });
+      try {
+        const response = await this.openaiClient.responses.create({
+          model: this.config.openai.model || 'gpt-5.1',
+          instructions: systemPrompt,
+          input: userQuestion,
+        });
 
-      const answer = response.output_text;
+        const answer = response.output_text;
 
-      // Record token usage
-      if (this.summarizationService?.mongoService) {
-        await this.summarizationService.mongoService.recordTokenUsage(
-          message.author.id,
-          message.author.tag || message.author.username,
-          response.usage?.input_tokens || 0,
-          response.usage?.output_tokens || 0,
-          'summarize_followup',
-          this.config.openai.model || 'gpt-5.1'
-        );
-      }
+        // Add token usage to span
+        span.setAttributes({
+          'gen_ai.usage.input_tokens': response.usage?.input_tokens || 0,
+          'gen_ai.usage.output_tokens': response.usage?.output_tokens || 0,
+        });
 
-      // Format and send response with URL wrapping
-      const formattedResponse = TextUtils.wrapUrls(`**Follow-up Answer:**\n\n${answer}`);
-
-      if (formattedResponse.length > 2000) {
-        const chunks = this.splitMessage(formattedResponse, 2000);
-        for (const chunk of chunks) {
-          await message.channel.send(chunk);
+        // Record token usage
+        if (this.summarizationService?.mongoService) {
+          await this.summarizationService.mongoService.recordTokenUsage(
+            message.author.id,
+            message.author.tag || message.author.username,
+            response.usage?.input_tokens || 0,
+            response.usage?.output_tokens || 0,
+            'summarize_followup',
+            this.config.openai.model || 'gpt-5.1'
+          );
         }
-      } else {
+
+        // Format and send response with URL wrapping
+        const formattedResponse = TextUtils.wrapUrls(`**Follow-up Answer:**\n\n${answer}`);
+
+        if (formattedResponse.length > 2000) {
+          const chunks = this.splitMessage(formattedResponse, 2000);
+          for (const chunk of chunks) {
+            await message.channel.send(chunk);
+          }
+        } else {
+          await message.reply({
+            content: formattedResponse,
+            allowedMentions: { repliedUser: false }
+          });
+        }
+
+      } catch (error) {
+        logger.error(`Error handling summarization follow-up: ${error.message}`);
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'Error',
+          [ERROR.MESSAGE]: error.message,
+        });
         await message.reply({
-          content: formattedResponse,
+          content: 'Sorry, I encountered an error while processing your question.',
           allowedMentions: { repliedUser: false }
         });
       }
-
-    } catch (error) {
-      logger.error(`Error handling summarization follow-up: ${error.message}`);
-      await message.reply({
-        content: 'Sorry, I encountered an error while processing your question.',
-        allowedMentions: { repliedUser: false }
-      });
-    }
+    });
   }
 
   /**

@@ -2,6 +2,8 @@
 // Service for interacting with the Linkwarden API to fetch archived links
 const axios = require('axios');
 const logger = require('../logger');
+const { withSpan } = require('../tracing');
+const { LINKWARDEN, HTTP, ERROR } = require('../tracing-attributes');
 
 class LinkwardenService {
   constructor(config) {
@@ -30,50 +32,67 @@ class LinkwardenService {
    * @returns {Promise<Array>} Array of new links ready to post
    */
   async getNewLinks() {
-    try {
-      // Get links from the source collection, sorted newest first
-      const response = await this.client.get('/api/v1/links', {
-        params: {
-          collectionId: this.sourceCollectionId,
-          sort: 0 // DateNewestFirst (from Linkwarden Sort enum)
-        }
-      });
-
-      if (response.data?.response) {
-        const links = response.data.response;
-
-        // Filter out links that already have the "posted" tag or aren't fully archived
-        const unpostedLinks = links.filter(link => {
-          const hasPostedTag = link.tags?.some(tag =>
-            tag.name.toLowerCase() === this.postedTagName.toLowerCase()
-          );
-          const isArchived = this.isArchiveComplete(link);
-
-          if (hasPostedTag) {
-            logger.debug(`Skipping link ${link.id} - already posted`);
-          } else if (!isArchived) {
-            logger.debug(`Skipping link ${link.id} - archive not complete yet`);
+    return withSpan('linkwarden.getNewLinks', {
+      [LINKWARDEN.OPERATION]: 'getNewLinks',
+      [LINKWARDEN.COLLECTION_ID]: this.sourceCollectionId,
+      [HTTP.METHOD]: 'GET',
+      [HTTP.URL]: `${this.baseUrl}/api/v1/links`,
+    }, async (span) => {
+      try {
+        // Get links from the source collection, sorted newest first
+        const response = await this.client.get('/api/v1/links', {
+          params: {
+            collectionId: this.sourceCollectionId,
+            sort: 0 // DateNewestFirst (from Linkwarden Sort enum)
           }
-
-          return !hasPostedTag && isArchived;
         });
 
-        if (unpostedLinks.length > 0) {
-          logger.info(`Found ${unpostedLinks.length} new unposted links in Linkwarden`);
+        span.setAttribute(HTTP.STATUS_CODE, response.status);
+
+        if (response.data?.response) {
+          const links = response.data.response;
+          span.setAttribute('linkwarden.total_links', links.length);
+
+          // Filter out links that already have the "posted" tag or aren't fully archived
+          const unpostedLinks = links.filter(link => {
+            const hasPostedTag = link.tags?.some(tag =>
+              tag.name.toLowerCase() === this.postedTagName.toLowerCase()
+            );
+            const isArchived = this.isArchiveComplete(link);
+
+            if (hasPostedTag) {
+              logger.debug(`Skipping link ${link.id} - already posted`);
+            } else if (!isArchived) {
+              logger.debug(`Skipping link ${link.id} - archive not complete yet`);
+            }
+
+            return !hasPostedTag && isArchived;
+          });
+
+          span.setAttribute(LINKWARDEN.LINKS_COUNT, unpostedLinks.length);
+
+          if (unpostedLinks.length > 0) {
+            logger.info(`Found ${unpostedLinks.length} new unposted links in Linkwarden`);
+          }
+
+          return unpostedLinks;
         }
 
-        return unpostedLinks;
+        return [];
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'LinkwardenError',
+          [ERROR.MESSAGE]: error.message,
+          [HTTP.STATUS_CODE]: error.response?.status || 0,
+        });
+        logger.error(`Error fetching links from Linkwarden: ${error.message}`);
+        if (error.response) {
+          logger.error(`Response status: ${error.response.status}`);
+          logger.error(`Response data: ${JSON.stringify(error.response.data)}`);
+        }
+        return [];
       }
-
-      return [];
-    } catch (error) {
-      logger.error(`Error fetching links from Linkwarden: ${error.message}`);
-      if (error.response) {
-        logger.error(`Response status: ${error.response.status}`);
-        logger.error(`Response data: ${JSON.stringify(error.response.data)}`);
-      }
-      return [];
-    }
+    });
   }
 
   /**
@@ -116,36 +135,51 @@ class LinkwardenService {
    * @returns {Promise<string|null>}
    */
   async getReadableContent(linkId) {
-    try {
-      // ArchivedFormat.readability = 3 in Linkwarden
-      const response = await this.client.get(`/api/v1/archives/${linkId}`, {
-        params: {
-          format: 3 // readability format
-        },
-        responseType: 'text',
-        // Don't throw on 404 - just return null
-        validateStatus: (status) => status < 500
-      });
+    return withSpan('linkwarden.getReadableContent', {
+      [LINKWARDEN.OPERATION]: 'getReadableContent',
+      [LINKWARDEN.LINK_ID]: linkId,
+      [LINKWARDEN.CONTENT_FORMAT]: 'readability',
+      [HTTP.METHOD]: 'GET',
+    }, async (span) => {
+      try {
+        // ArchivedFormat.readability = 3 in Linkwarden
+        const response = await this.client.get(`/api/v1/archives/${linkId}`, {
+          params: {
+            format: 3 // readability format
+          },
+          responseType: 'text',
+          // Don't throw on 404 - just return null
+          validateStatus: (status) => status < 500
+        });
 
-      if (response.status === 200 && response.data) {
-        const contentLength = response.data.length;
-        logger.info(`Retrieved readable content for link ${linkId} (${contentLength} chars)`);
+        span.setAttribute(HTTP.STATUS_CODE, response.status);
 
-        // Log a preview of the content for debugging (first 200 chars)
-        if (contentLength > 0) {
-          const preview = response.data.substring(0, 200).replace(/\n/g, ' ');
-          logger.debug(`Readable content preview for link ${linkId}: "${preview}..."`);
+        if (response.status === 200 && response.data) {
+          const contentLength = response.data.length;
+          span.setAttribute(LINKWARDEN.CONTENT_LENGTH, contentLength);
+          logger.info(`Retrieved readable content for link ${linkId} (${contentLength} chars)`);
+
+          // Log a preview of the content for debugging (first 200 chars)
+          if (contentLength > 0) {
+            const preview = response.data.substring(0, 200).replace(/\n/g, ' ');
+            logger.debug(`Readable content preview for link ${linkId}: "${preview}..."`);
+          }
+
+          return response.data;
         }
 
-        return response.data;
+        span.setAttribute(LINKWARDEN.CONTENT_LENGTH, 0);
+        logger.debug(`No readable content available for link ${linkId} (status: ${response.status})`);
+        return null;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'LinkwardenError',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`Error fetching readable content for link ${linkId}: ${error.message}`);
+        return null;
       }
-
-      logger.debug(`No readable content available for link ${linkId} (status: ${response.status})`);
-      return null;
-    } catch (error) {
-      logger.error(`Error fetching readable content for link ${linkId}: ${error.message}`);
-      return null;
-    }
+    });
   }
 
   /**
@@ -193,48 +227,67 @@ class LinkwardenService {
    * @returns {Promise<boolean>}
    */
   async markAsPosted(linkId) {
-    try {
-      const link = await this.getLinkById(linkId);
-      if (!link) {
-        logger.error(`Cannot mark link ${linkId} as posted - link not found`);
+    return withSpan('linkwarden.markAsPosted', {
+      [LINKWARDEN.OPERATION]: 'markAsPosted',
+      [LINKWARDEN.LINK_ID]: linkId,
+      [HTTP.METHOD]: 'PUT',
+    }, async (span) => {
+      try {
+        const link = await this.getLinkById(linkId);
+        if (!link) {
+          span.setAttribute('linkwarden.link_found', false);
+          logger.error(`Cannot mark link ${linkId} as posted - link not found`);
+          return false;
+        }
+
+        span.setAttributes({
+          'linkwarden.link_found': true,
+          [LINKWARDEN.LINK_URL]: link.url,
+        });
+
+        // Build updated tags array - keep existing tags and add "posted"
+        const existingTags = link.tags?.map(t => ({ name: t.name })) || [];
+        const hasPostedTag = existingTags.some(t =>
+          t.name.toLowerCase() === this.postedTagName.toLowerCase()
+        );
+
+        if (hasPostedTag) {
+          span.setAttribute('linkwarden.already_posted', true);
+          logger.debug(`Link ${linkId} already has posted tag`);
+          return true;
+        }
+
+        const updatedTags = [...existingTags, { name: this.postedTagName }];
+
+        // Include id and other fields in the body as the API seems to require 'id'
+        // and might treat PUT as a full replacement
+        const response = await this.client.put(`/api/v1/links/${linkId}`, {
+          id: linkId,
+          name: link.name,
+          description: link.description,
+          url: link.url,
+          type: link.type,
+          collectionId: link.collectionId,
+          collection: link.collection,
+          tags: updatedTags
+        });
+
+        span.setAttribute(HTTP.STATUS_CODE, response.status);
+        logger.info(`Marked link ${linkId} as posted`);
+        return true;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'LinkwardenError',
+          [ERROR.MESSAGE]: error.message,
+          [HTTP.STATUS_CODE]: error.response?.status || 0,
+        });
+        logger.error(`Error marking link ${linkId} as posted: ${error.message}`);
+        if (error.response) {
+          logger.error(`Response: ${JSON.stringify(error.response.data)}`);
+        }
         return false;
       }
-
-      // Build updated tags array - keep existing tags and add "posted"
-      const existingTags = link.tags?.map(t => ({ name: t.name })) || [];
-      const hasPostedTag = existingTags.some(t =>
-        t.name.toLowerCase() === this.postedTagName.toLowerCase()
-      );
-
-      if (hasPostedTag) {
-        logger.debug(`Link ${linkId} already has posted tag`);
-        return true;
-      }
-
-      const updatedTags = [...existingTags, { name: this.postedTagName }];
-
-      // Include id and other fields in the body as the API seems to require 'id' 
-      // and might treat PUT as a full replacement
-      await this.client.put(`/api/v1/links/${linkId}`, {
-        id: linkId,
-        name: link.name,
-        description: link.description,
-        url: link.url,
-        type: link.type,
-        collectionId: link.collectionId,
-        collection: link.collection,
-        tags: updatedTags
-      });
-
-      logger.info(`Marked link ${linkId} as posted`);
-      return true;
-    } catch (error) {
-      logger.error(`Error marking link ${linkId} as posted: ${error.message}`);
-      if (error.response) {
-        logger.error(`Response: ${JSON.stringify(error.response.data)}`);
-      }
-      return false;
-    }
+    });
   }
 
   /**

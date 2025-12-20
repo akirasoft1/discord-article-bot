@@ -1,6 +1,8 @@
 
 const { MongoClient } = require('mongodb');
 const logger = require('../logger');
+const { withSpan } = require('../tracing');
+const { DB, ERROR } = require('../tracing-attributes');
 
 class MongoService {
     constructor(mongoUri) {
@@ -10,11 +12,40 @@ class MongoService {
             logger.error(errorMessage);
             throw new Error(errorMessage);
         }
-        
+
         logger.info('Attempting to connect to MongoDB...');
         this.client = new MongoClient(mongoUri);
         this.db = null;
         this.connect();
+    }
+
+    /**
+     * Wrap a database operation with tracing
+     * @param {string} operation - Operation name (e.g., 'insertOne', 'find')
+     * @param {string} collection - Collection name
+     * @param {Function} fn - Async function to execute
+     * @returns {Promise<*>} Result of the operation
+     * @private
+     */
+    async _traced(operation, collection, fn) {
+        return withSpan(`mongodb.${operation}`, {
+            [DB.SYSTEM]: 'mongodb',
+            [DB.NAME]: 'discord',
+            [DB.OPERATION]: operation,
+            [DB.COLLECTION]: collection,
+            [DB.NAMESPACE]: `discord.${collection}`,
+        }, async (span) => {
+            try {
+                const result = await fn(span);
+                return result;
+            } catch (error) {
+                span.setAttributes({
+                    [ERROR.TYPE]: error.name || 'MongoError',
+                    [ERROR.MESSAGE]: error.message,
+                });
+                throw error;
+            }
+        });
     }
 
     async connect() {
@@ -32,7 +63,7 @@ class MongoService {
             logger.error('Cannot persist data: Not connected to MongoDB.');
             return;
         }
-        try {
+        return this._traced('insertOne', 'articles', async (span) => {
             const collection = this.db.collection('articles');
             const articleData = {
                 ...data,
@@ -41,10 +72,10 @@ class MongoService {
                 followUpUsers: [], // Array of user IDs who want follow-ups
                 reactions: {}, // Store reactions for controversy meter
             };
-            await collection.insertOne(articleData);
-        } catch (error) {
-            logger.error('Error persisting data to MongoDB:', error);
-        }
+            const result = await collection.insertOne(articleData);
+            span.setAttribute(DB.DOCUMENTS_AFFECTED, result.insertedId ? 1 : 0);
+            return result;
+        });
     }
 
     async updateFollowUpStatus(url, status) {
@@ -304,7 +335,15 @@ class MongoService {
             logger.error('Cannot record token usage: Not connected to MongoDB.');
             return false;
         }
-        try {
+        return this._traced('insertOne', 'token_usage', async (span) => {
+            span.setAttributes({
+                'token_usage.user_id': userId,
+                'token_usage.command_type': commandType,
+                'token_usage.model': model,
+                'token_usage.input_tokens': inputTokens,
+                'token_usage.output_tokens': outputTokens,
+                'token_usage.total_tokens': inputTokens + outputTokens,
+            });
             const collection = this.db.collection('token_usage');
             await collection.insertOne({
                 userId,
@@ -317,11 +356,9 @@ class MongoService {
                 timestamp: new Date()
             });
             logger.debug(`Recorded token usage for user ${username}: ${inputTokens} in, ${outputTokens} out`);
+            span.setAttribute(DB.DOCUMENTS_AFFECTED, 1);
             return true;
-        } catch (error) {
-            logger.error(`Error recording token usage for user ${userId}: ${error.message}`);
-            return false;
-        }
+        });
     }
 
     /**
@@ -469,7 +506,11 @@ class MongoService {
             logger.error('Cannot get/create conversation: Not connected to MongoDB.');
             return null;
         }
-        try {
+        return this._traced('getOrCreate', 'chat_conversations', async (span) => {
+            span.setAttributes({
+                'conversation.channel_id': channelId,
+                'conversation.personality_id': personalityId,
+            });
             const collection = this.db.collection('chat_conversations');
             const conversationId = this._getConversationId(channelId, personalityId);
 
@@ -496,13 +537,14 @@ class MongoService {
                 await collection.insertOne(newConversation);
                 conversation = newConversation;
                 logger.info(`Created new conversation: ${conversationId}`);
+                span.setAttribute('conversation.created', true);
+            } else {
+                span.setAttribute('conversation.created', false);
             }
 
+            span.setAttribute(DB.DOCUMENTS_RETURNED, 1);
             return conversation;
-        } catch (error) {
-            logger.error(`Error getting/creating conversation: ${error.message}`);
-            return null;
-        }
+        });
     }
 
     /**
@@ -521,7 +563,13 @@ class MongoService {
             logger.error('Cannot add message: Not connected to MongoDB.');
             return false;
         }
-        try {
+        return this._traced('updateOne', 'chat_conversations', async (span) => {
+            span.setAttributes({
+                'conversation.channel_id': channelId,
+                'conversation.personality_id': personalityId,
+                'message.role': role,
+                'message.tokens': tokens,
+            });
             const collection = this.db.collection('chat_conversations');
             const conversationId = this._getConversationId(channelId, personalityId);
 
@@ -536,7 +584,7 @@ class MongoService {
                 message.username = username;
             }
 
-            await collection.updateOne(
+            const result = await collection.updateOne(
                 { conversationId, status: 'active' },
                 {
                     $push: { messages: message },
@@ -545,12 +593,10 @@ class MongoService {
                 }
             );
 
+            span.setAttribute(DB.DOCUMENTS_AFFECTED, result.modifiedCount);
             logger.debug(`Added ${role} message to conversation ${conversationId}`);
             return true;
-        } catch (error) {
-            logger.error(`Error adding message to conversation: ${error.message}`);
-            return false;
-        }
+        });
     }
 
     /**
@@ -833,7 +879,14 @@ class MongoService {
             logger.error('Cannot record image generation: Not connected to MongoDB.');
             return false;
         }
-        try {
+        return this._traced('insertOne', 'image_generations', async (span) => {
+            span.setAttributes({
+                'image_gen.user_id': userId,
+                'image_gen.model': model,
+                'image_gen.aspect_ratio': aspectRatio,
+                'image_gen.success': success,
+                'image_gen.size_bytes': imageSizeBytes,
+            });
             const collection = this.db.collection('image_generations');
             await collection.insertOne({
                 userId,
@@ -847,11 +900,9 @@ class MongoService {
                 timestamp: new Date()
             });
             logger.debug(`Recorded image generation for user ${username}: ${success ? 'success' : 'failed'}`);
+            span.setAttribute(DB.DOCUMENTS_AFFECTED, 1);
             return true;
-        } catch (err) {
-            logger.error(`Error recording image generation for user ${userId}: ${err.message}`);
-            return false;
-        }
+        });
     }
 
     /**
