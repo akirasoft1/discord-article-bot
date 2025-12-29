@@ -630,6 +630,160 @@ describe('MongoService', () => {
     });
   });
 
+  // ========== Chat Thread Persistence Tests ==========
+
+  describe('Chat Thread Persistence', () => {
+    beforeEach(() => {
+      mockCollection.findOne = jest.fn();
+      mockCollection.updateOne = jest.fn().mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
+      mockCollection.deleteOne = jest.fn().mockResolvedValue({ deletedCount: 1 });
+      mockCollection.find = jest.fn().mockReturnValue({
+        toArray: jest.fn().mockResolvedValue([])
+      });
+    });
+
+    describe('saveChatThread', () => {
+      it('should save a new chat thread', async () => {
+        mockCollection.updateOne.mockResolvedValue({ upsertedCount: 1 });
+
+        const result = await mongoService.saveChatThread('thread123', {
+          personalityId: 'noir-detective',
+          userId: 'user456',
+          channelId: 'channel789',
+          guildId: 'guild000'
+        });
+
+        expect(result).toBe(true);
+        expect(mockCollection.updateOne).toHaveBeenCalledWith(
+          { threadId: 'thread123' },
+          {
+            $set: expect.objectContaining({
+              threadId: 'thread123',
+              personalityId: 'noir-detective',
+              userId: 'user456',
+              channelId: 'channel789',
+              guildId: 'guild000',
+              lastActivity: expect.any(Date)
+            }),
+            $setOnInsert: { createdAt: expect.any(Date) }
+          },
+          { upsert: true }
+        );
+      });
+
+      it('should return false if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.saveChatThread('thread123', {
+          personalityId: 'friendly'
+        });
+
+        expect(result).toBe(false);
+      });
+    });
+
+    describe('getChatThread', () => {
+      it('should return thread info if exists', async () => {
+        const threadInfo = {
+          threadId: 'thread123',
+          personalityId: 'noir-detective',
+          userId: 'user456',
+          channelId: 'channel789',
+          guildId: 'guild000',
+          createdAt: new Date()
+        };
+        mockCollection.findOne.mockResolvedValue(threadInfo);
+
+        const result = await mongoService.getChatThread('thread123');
+
+        expect(result).toEqual(threadInfo);
+        expect(mockCollection.findOne).toHaveBeenCalledWith({ threadId: 'thread123' });
+      });
+
+      it('should return null if thread does not exist', async () => {
+        mockCollection.findOne.mockResolvedValue(null);
+
+        const result = await mongoService.getChatThread('nonexistent');
+
+        expect(result).toBeNull();
+      });
+
+      it('should return null if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.getChatThread('thread123');
+
+        expect(result).toBeNull();
+      });
+    });
+
+    describe('deleteChatThread', () => {
+      it('should delete a chat thread', async () => {
+        const result = await mongoService.deleteChatThread('thread123');
+
+        expect(result).toBe(true);
+        expect(mockCollection.deleteOne).toHaveBeenCalledWith({ threadId: 'thread123' });
+      });
+
+      it('should return false if thread not found', async () => {
+        mockCollection.deleteOne.mockResolvedValue({ deletedCount: 0 });
+
+        const result = await mongoService.deleteChatThread('nonexistent');
+
+        expect(result).toBe(false);
+      });
+
+      it('should return false if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.deleteChatThread('thread123');
+
+        expect(result).toBe(false);
+      });
+    });
+
+    describe('getActiveChatThreads', () => {
+      it('should return all active chat threads', async () => {
+        const threads = [
+          { threadId: 'thread1', personalityId: 'friendly' },
+          { threadId: 'thread2', personalityId: 'noir-detective' }
+        ];
+        mockCollection.find.mockReturnValue({
+          toArray: jest.fn().mockResolvedValue(threads)
+        });
+
+        const result = await mongoService.getActiveChatThreads();
+
+        expect(result).toEqual(threads);
+        expect(mockCollection.find).toHaveBeenCalledWith({});
+      });
+
+      it('should return empty array if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.getActiveChatThreads();
+
+        expect(result).toEqual([]);
+      });
+    });
+
+    describe('cleanupOldChatThreads', () => {
+      it('should delete threads older than specified hours', async () => {
+        mockCollection.deleteMany = jest.fn().mockResolvedValue({ deletedCount: 5 });
+
+        const result = await mongoService.cleanupOldChatThreads(24);
+
+        expect(result).toBe(5);
+        expect(mockCollection.deleteMany).toHaveBeenCalledWith({
+          createdAt: { $lt: expect.any(Date) }
+        });
+      });
+
+      it('should return 0 if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.cleanupOldChatThreads(24);
+
+        expect(result).toBe(0);
+      });
+    });
+  });
+
   describe('Video Generation Tracking', () => {
     describe('recordVideoGeneration', () => {
       it('should record video generation successfully', async () => {

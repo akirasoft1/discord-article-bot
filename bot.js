@@ -299,7 +299,7 @@ class DiscordBot {
   registerSlashCommands() {
     // Register chat/personality slash commands
     this.slashCommandHandler.register(new ChatSlashCommand(this.chatService));
-    this.chatThreadCommand = new ChatThreadSlashCommand(this.chatService);
+    this.chatThreadCommand = new ChatThreadSlashCommand(this.chatService, this.summarizationService.mongoService);
     this.slashCommandHandler.register(this.chatThreadCommand);
     this.slashCommandHandler.register(new PersonalitiesSlashCommand());
     this.slashCommandHandler.register(new ChatResetSlashCommand(this.chatService));
@@ -385,6 +385,11 @@ class DiscordBot {
       if (this.channelContextService) {
         logger.info('Starting Channel Context service...');
         await this.channelContextService.start();
+      }
+
+      // Load persisted chat threads from database
+      if (this.chatThreadCommand) {
+        await this.chatThreadCommand.loadThreadsFromDatabase();
       }
     });
 

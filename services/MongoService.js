@@ -1230,6 +1230,116 @@ class MongoService {
             return null;
         }
     }
+
+    // ========== Chat Thread Persistence ==========
+
+    /**
+     * Save or update a chat thread mapping
+     * @param {string} threadId - Discord thread ID
+     * @param {Object} threadInfo - Thread information
+     * @param {string} threadInfo.personalityId - Personality ID for this thread
+     * @param {string} threadInfo.userId - User who created the thread
+     * @param {string} threadInfo.channelId - Parent channel ID
+     * @param {string} threadInfo.guildId - Guild ID
+     * @returns {boolean} Success status
+     */
+    async saveChatThread(threadId, threadInfo) {
+        if (!this.db) {
+            logger.error('Cannot save chat thread: Not connected to MongoDB.');
+            return false;
+        }
+        return this._traced('updateOne', 'chat_threads', async () => {
+            const collection = this.db.collection('chat_threads');
+            await collection.updateOne(
+                { threadId },
+                {
+                    $set: {
+                        threadId,
+                        personalityId: threadInfo.personalityId,
+                        userId: threadInfo.userId,
+                        channelId: threadInfo.channelId,
+                        guildId: threadInfo.guildId,
+                        lastActivity: new Date()
+                    },
+                    $setOnInsert: { createdAt: new Date() }
+                },
+                { upsert: true }
+            );
+            return true;
+        });
+    }
+
+    /**
+     * Get chat thread info by thread ID
+     * @param {string} threadId - Discord thread ID
+     * @returns {Object|null} Thread info or null if not found
+     */
+    async getChatThread(threadId) {
+        if (!this.db) {
+            logger.error('Cannot get chat thread: Not connected to MongoDB.');
+            return null;
+        }
+        return this._traced('findOne', 'chat_threads', async () => {
+            const collection = this.db.collection('chat_threads');
+            return await collection.findOne({ threadId });
+        });
+    }
+
+    /**
+     * Delete a chat thread mapping
+     * @param {string} threadId - Discord thread ID
+     * @returns {boolean} True if deleted, false if not found
+     */
+    async deleteChatThread(threadId) {
+        if (!this.db) {
+            logger.error('Cannot delete chat thread: Not connected to MongoDB.');
+            return false;
+        }
+        return this._traced('deleteOne', 'chat_threads', async () => {
+            const collection = this.db.collection('chat_threads');
+            const result = await collection.deleteOne({ threadId });
+            return result.deletedCount > 0;
+        });
+    }
+
+    /**
+     * Get all active chat threads (for loading on startup)
+     * @returns {Array} Array of thread info objects
+     */
+    async getActiveChatThreads() {
+        if (!this.db) {
+            logger.error('Cannot get active chat threads: Not connected to MongoDB.');
+            return [];
+        }
+        return this._traced('find', 'chat_threads', async () => {
+            const collection = this.db.collection('chat_threads');
+            return await collection.find({}).toArray();
+        });
+    }
+
+    /**
+     * Clean up old chat threads (older than specified hours)
+     * @param {number} hoursOld - Delete threads older than this many hours
+     * @returns {number} Number of deleted threads
+     */
+    async cleanupOldChatThreads(hoursOld = 24) {
+        if (!this.db) {
+            logger.error('Cannot cleanup chat threads: Not connected to MongoDB.');
+            return 0;
+        }
+        return this._traced('deleteMany', 'chat_threads', async () => {
+            const collection = this.db.collection('chat_threads');
+            const cutoffDate = new Date();
+            cutoffDate.setHours(cutoffDate.getHours() - hoursOld);
+            const result = await collection.deleteMany({
+                createdAt: { $lt: cutoffDate }
+            });
+            if (result.deletedCount > 0) {
+                logger.info(`Cleaned up ${result.deletedCount} old chat threads`);
+            }
+            return result.deletedCount;
+        });
+    }
 }
 
 module.exports = MongoService;

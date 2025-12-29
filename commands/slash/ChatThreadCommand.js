@@ -8,7 +8,7 @@ const logger = require('../../logger');
 const personalityManager = require('../../personalities');
 
 class ChatThreadSlashCommand extends BaseSlashCommand {
-  constructor(chatService) {
+  constructor(chatService, mongoService = null) {
     // Build personality choices dynamically
     const personalities = personalityManager.list();
     const choices = personalities.slice(0, 25).map(p => ({
@@ -39,8 +39,37 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
     });
 
     this.chatService = chatService;
-    // Track active chat threads: threadId -> { personalityId, userId, channelId }
+    this.mongoService = mongoService;
+    // In-memory cache of active threads: threadId -> { personalityId, userId, channelId }
+    // Backed by MongoDB for persistence across restarts
     this.activeThreads = new Map();
+  }
+
+  /**
+   * Load active threads from MongoDB on startup
+   * Should be called after bot is ready
+   */
+  async loadThreadsFromDatabase() {
+    if (!this.mongoService) {
+      logger.warn('MongoService not available - thread persistence disabled');
+      return;
+    }
+
+    try {
+      const threads = await this.mongoService.getActiveChatThreads();
+      for (const thread of threads) {
+        this.activeThreads.set(thread.threadId, {
+          personalityId: thread.personalityId,
+          userId: thread.userId,
+          channelId: thread.channelId,
+          guildId: thread.guildId,
+          createdAt: thread.createdAt
+        });
+      }
+      logger.info(`Loaded ${threads.length} active chat threads from database`);
+    } catch (error) {
+      logger.error(`Failed to load chat threads from database: ${error.message}`);
+    }
   }
 
   async execute(interaction, context) {
@@ -82,14 +111,21 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
       return;
     }
 
-    // Store thread mapping
-    this.activeThreads.set(thread.id, {
+    // Store thread mapping in memory and database
+    const threadInfo = {
       personalityId,
       userId: interaction.user.id,
       channelId,
       guildId,
       createdAt: new Date()
-    });
+    };
+    this.activeThreads.set(thread.id, threadInfo);
+
+    // Persist to MongoDB for survival across restarts
+    if (this.mongoService) {
+      await this.mongoService.saveChatThread(thread.id, threadInfo);
+      logger.debug(`Persisted chat thread ${thread.id} to database`);
+    }
 
     // Reply to the original interaction
     await this.sendReply(interaction, {
@@ -177,7 +213,25 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
    * @returns {boolean} True if handled (or attempted to handle)
    */
   async handleThreadMessage(message) {
-    const threadInfo = this.activeThreads.get(message.channel.id);
+    let threadInfo = this.activeThreads.get(message.channel.id);
+
+    // If not in memory cache, check MongoDB (thread may have been created before restart)
+    if (!threadInfo && this.mongoService) {
+      const dbThread = await this.mongoService.getChatThread(message.channel.id);
+      if (dbThread) {
+        // Restore to in-memory cache
+        threadInfo = {
+          personalityId: dbThread.personalityId,
+          userId: dbThread.userId,
+          channelId: dbThread.channelId,
+          guildId: dbThread.guildId,
+          createdAt: dbThread.createdAt
+        };
+        this.activeThreads.set(message.channel.id, threadInfo);
+        logger.debug(`Restored chat thread ${message.channel.id} from database`);
+      }
+    }
+
     if (!threadInfo) {
       return false;
     }
@@ -244,15 +298,21 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
 
   /**
    * Clean up old thread mappings (called periodically)
-   * Removes threads older than 24 hours
+   * Removes threads older than 24 hours from memory and database
    */
-  cleanupOldThreads() {
+  async cleanupOldThreads() {
     const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
 
+    // Clean up in-memory cache
     for (const [threadId, info] of this.activeThreads) {
       if (info.createdAt.getTime() < oneDayAgo) {
         this.activeThreads.delete(threadId);
       }
+    }
+
+    // Clean up database
+    if (this.mongoService) {
+      await this.mongoService.cleanupOldChatThreads(24);
     }
   }
 }
