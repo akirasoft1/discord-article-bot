@@ -438,13 +438,32 @@ class DiscordBot {
         );
       }
 
+      // Track if message was handled to prevent duplicate processing
+      let messageHandled = false;
+
       // Handle messages in active chat threads
+      // Thread handler takes precedence for messages in tracked threads
       if (message.channel.isThread() && this.chatThreadCommand) {
-        const handled = await this.chatThreadCommand.handleThreadMessage(message);
-        if (handled) return;
+        try {
+          const handled = await this.chatThreadCommand.handleThreadMessage(message);
+          if (handled) {
+            messageHandled = true;
+          }
+        } catch (error) {
+          logger.error(`Error in thread message handler: ${error.message}`);
+          // Mark as handled even on error to prevent double-processing
+          // since a partial response may have been sent
+          messageHandled = true;
+        }
+      }
+
+      // If already handled by thread handler, don't process as reply
+      if (messageHandled) {
+        return;
       }
 
       // Check if this is a reply to a bot message
+      // Only process if not already handled by thread handler
       if (message.reference && message.reference.messageId) {
         try {
           const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);

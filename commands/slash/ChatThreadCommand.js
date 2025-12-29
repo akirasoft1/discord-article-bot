@@ -174,7 +174,7 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
   /**
    * Handle a message in a chat thread (called from bot.js messageCreate)
    * @param {Message} message
-   * @returns {boolean} True if handled
+   * @returns {boolean} True if handled (or attempted to handle)
    */
   async handleThreadMessage(message) {
     const threadInfo = this.activeThreads.get(message.channel.id);
@@ -187,50 +187,59 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
       return false;
     }
 
-    // Show typing indicator
-    await message.channel.sendTyping();
+    // From this point on, we're handling this message - return true even on error
+    // to prevent duplicate processing by the reply handler
+    try {
+      // Show typing indicator
+      await message.channel.sendTyping();
 
-    const result = await this.chatService.chat(
-      threadInfo.personalityId,
-      message.content,
-      message.author,
-      message.channel.id,
-      threadInfo.guildId
-    );
+      const result = await this.chatService.chat(
+        threadInfo.personalityId,
+        message.content,
+        message.author,
+        message.channel.id,
+        threadInfo.guildId
+      );
 
-    if (!result.success) {
-      // Handle specific error reasons with helpful messages (without "Error: " prefix)
-      const errorContent = (result.reason === 'expired' || result.reason === 'message_limit' || result.reason === 'token_limit')
-        ? result.error
-        : `Error: ${result.error}`;
-      await message.reply({
-        content: errorContent,
-        allowedMentions: { repliedUser: false }
-      });
-      return true;
-    }
-
-    const response = TextUtils.wrapUrls(
-      `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
-    );
-
-    // Split long messages
-    const chunks = this.splitMessage(response, 2000);
-    for (let i = 0; i < chunks.length; i++) {
-      if (i === 0) {
+      if (!result.success) {
+        // Handle specific error reasons with helpful messages (without "Error: " prefix)
+        const errorContent = (result.reason === 'expired' || result.reason === 'message_limit' || result.reason === 'token_limit')
+          ? result.error
+          : `Error: ${result.error}`;
         await message.reply({
-          content: chunks[i],
+          content: errorContent,
           allowedMentions: { repliedUser: false }
         });
-      } else {
-        await message.channel.send(chunks[i]);
+        return true;
       }
+
+      const response = TextUtils.wrapUrls(
+        `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
+      );
+
+      // Split long messages
+      const chunks = this.splitMessage(response, 2000);
+      for (let i = 0; i < chunks.length; i++) {
+        if (i === 0) {
+          await message.reply({
+            content: chunks[i],
+            allowedMentions: { repliedUser: false }
+          });
+        } else {
+          await message.channel.send(chunks[i]);
+        }
+      }
+
+      // Send any generated images
+      await this._sendGeneratedImages(message.channel, result.images);
+
+      return true;
+    } catch (error) {
+      logger.error(`Error handling thread message: ${error.message}`);
+      // Return true to indicate we attempted to handle this message
+      // This prevents the reply handler from also trying to process it
+      return true;
     }
-
-    // Send any generated images
-    await this._sendGeneratedImages(message.channel, result.images);
-
-    return true;
   }
 
   /**
