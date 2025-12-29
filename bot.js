@@ -76,7 +76,10 @@ class DiscordBot {
   constructor() {
     logger.info(`Creating DiscordBot v${version} instance`);
     logger.info(`OpenAI API Key: ${config.openai.apiKey ? 'Loaded' : 'Not Loaded'}`);
-    
+
+    // DIAGNOSTIC: Track processed messages to detect duplicate events
+    this.processedMessages = new Map();
+
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -431,6 +434,20 @@ class DiscordBot {
     this.client.on('messageCreate', async message => {
       if (message.author.bot) return;
 
+      // DIAGNOSTIC: Check for duplicate messageCreate events
+      const msgKey = message.id;
+      const now = Date.now();
+      if (this.processedMessages.has(msgKey)) {
+        const prevTime = this.processedMessages.get(msgKey);
+        logger.warn(`[DIAG-DUP] DUPLICATE messageCreate event detected! msgId=${msgKey} content="${message.content.substring(0, 50)}" prevTime=${prevTime} now=${now} delta=${now - prevTime}ms`);
+        return; // Guard: don't process duplicate events
+      }
+      this.processedMessages.set(msgKey, now);
+      // Clean up old entries after 60 seconds
+      setTimeout(() => this.processedMessages.delete(msgKey), 60000);
+
+      logger.info(`[DIAG-MSG] messageCreate START msgId=${msgKey} author=${message.author.tag} content="${message.content.substring(0, 50)}" isThread=${message.channel.isThread()} hasReference=${!!message.reference}`);
+
       // Passive channel context recording (non-blocking)
       if (this.channelContextService?.isChannelTracked(message.channel.id)) {
         this.channelContextService.recordMessage(message).catch(err =>
@@ -440,15 +457,20 @@ class DiscordBot {
 
       // Handle messages in active chat threads
       if (message.channel.isThread() && this.chatThreadCommand) {
+        logger.info(`[DIAG-MSG] Checking thread handler msgId=${msgKey}`);
         const handled = await this.chatThreadCommand.handleThreadMessage(message);
+        logger.info(`[DIAG-MSG] Thread handler result msgId=${msgKey} handled=${handled}`);
         if (handled) return;
       }
 
       // Check if this is a reply to a bot message
       if (message.reference && message.reference.messageId) {
+        logger.info(`[DIAG-MSG] Message is a reply msgId=${msgKey} refId=${message.reference.messageId}`);
         try {
           const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
+          logger.info(`[DIAG-MSG] Fetched referenced message msgId=${msgKey} refAuthorBot=${referencedMessage?.author?.bot} refAuthorId=${referencedMessage?.author?.id} botId=${this.client.user.id}`);
           if (referencedMessage && referencedMessage.author.id === this.client.user.id) {
+            logger.info(`[DIAG-MSG] Processing as bot reply msgId=${msgKey} ENTERING handleReply`);
             // Wrap reply handling in a trace
             await withRootSpan('discord.reply', {
               'discord.channel.id': message.channel.id,
@@ -457,8 +479,10 @@ class DiscordBot {
               'discord.message.id': message.id,
             }, async () => {
               const handled = await this.replyHandler.handleReply(message, referencedMessage);
+              logger.info(`[DIAG-MSG] handleReply completed msgId=${msgKey} handled=${handled}`);
               return handled;
             });
+            logger.info(`[DIAG-MSG] Reply processing complete msgId=${msgKey} RETURNING`);
             return; // Reply was handled, don't process as command
           }
         } catch (error) {
