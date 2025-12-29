@@ -287,10 +287,6 @@ ${context}`;
    * @returns {Object} Response with message and token usage
    */
   async chat(personalityId, userMessage, user, channelId = null, guildId = null, imageUrl = null) {
-    // Generate unique request ID for tracing
-    const requestId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-    logger.info(`[DIAG-SVCHAT] chat() ENTRY requestId=${requestId} personality=${personalityId} channelId=${channelId} user=${user.username} msgPreview="${userMessage.substring(0, 30)}"`);
-
     const personality = personalityManager.get(personalityId);
 
     if (!personality) {
@@ -378,7 +374,6 @@ ${context}`;
         logger.info(`Including image in chat request: ${imageUrl.substring(0, 50)}...`);
       }
 
-      logger.info(`[DIAG-SVCHAT] BEFORE OpenAI API call requestId=${requestId}`);
       const model = this.config.openai.model || 'gpt-5.1';
       const response = await withSpan('openai.responses.create', {
         // GenAI semantic conventions
@@ -414,8 +409,6 @@ ${context}`;
 
         return result;
       });
-
-      logger.info(`[DIAG-SVCHAT] AFTER OpenAI API call requestId=${requestId}`);
 
       const assistantMessage = response.output_text;
       const inputTokens = response.usage?.input_tokens || 0;
@@ -465,7 +458,6 @@ ${context}`;
       });
 
       logger.info(`Chat response generated: ${inputTokens} in, ${outputTokens} out (conversation: ${conversation.messageCount + 2} messages)`);
-      logger.info(`[DIAG-SVCHAT] chat() SUCCESS EXIT requestId=${requestId}`);
 
       return {
         success: true,
@@ -488,7 +480,6 @@ ${context}`;
       };
 
     } catch (error) {
-      logger.error(`[DIAG-SVCHAT] chat() ERROR requestId=${requestId} error=${error.message}`);
       logger.error(`Chat error with personality ${personalityId}: ${error.message}`);
       return {
         success: false,

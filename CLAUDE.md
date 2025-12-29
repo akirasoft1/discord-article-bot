@@ -80,6 +80,25 @@ gemini -p "@commands/slash/ @commands/chat/ @commands/irc/ @commands/utility/ Co
 - Slash command tests need to mock all service methods including `isEnabled()`
 - Global slash commands take up to 1 hour to propagate; use `DISCORD_TEST_GUILD_ID` for faster testing
 
+## Debugging Common Issues
+
+### Duplicate Messages / Multiple Replies
+
+**ALWAYS CHECK FIRST**: Are there multiple bot instances running with the same Discord token?
+
+```bash
+# Check ALL namespaces for bot deployments
+kubectl get pods -A | grep -i discord
+kubectl get deployments -A | grep -i discord
+```
+
+Multiple instances with the same token will ALL receive Discord events and ALL respond, causing:
+- Duplicate replies (different content if conversation contexts differ)
+- One reply faster than the other
+- Replies with stale/old conversation context
+
+**Root cause example (Dec 2025)**: A forgotten deployment in `default` namespace ran alongside the production deployment in `discord-article-bot` namespace for 10 days, causing duplicate replies to every message.
+
 ## File Locations
 
 - Slash commands: `commands/slash/`

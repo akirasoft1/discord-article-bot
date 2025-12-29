@@ -23,17 +23,12 @@ class ReplyHandler {
    * @returns {boolean} True if the reply was handled, false otherwise
    */
   async handleReply(message, referencedMessage) {
-    const msgId = message.id;
-    logger.info(`[DIAG-REPLY] handleReply ENTRY msgId=${msgId}`);
-
     // Only handle replies to bot messages
     if (!referencedMessage.author.bot) {
-      logger.info(`[DIAG-REPLY] handleReply EXIT (not bot message) msgId=${msgId}`);
       return false;
     }
 
     const botContent = referencedMessage.content;
-    logger.info(`[DIAG-REPLY] handleReply processing msgId=${msgId} botContentLength=${botContent.length}`);
 
     // Wrap in root span for tracing entry point
     return withRootSpan('discord.reply.handle', {
@@ -46,24 +41,21 @@ class ReplyHandler {
     }, async (span) => {
       // Try to detect if this is a personality chat message
       const personalityInfo = this.detectPersonalityFromMessage(botContent);
-      logger.info(`[DIAG-REPLY] Personality detection msgId=${msgId} detected=${!!personalityInfo} personality=${personalityInfo?.id || 'none'}`);
       if (personalityInfo) {
-        logger.info(`[DIAG-REPLY] Detected reply to personality chat msgId=${msgId} personality=${personalityInfo.id}`);
+        logger.info(`Detected reply to personality chat: ${personalityInfo.id}`);
         span.setAttributes({
           [REPLY.TYPE]: 'personality_chat',
           [REPLY.PERSONALITY_DETECTED]: true,
           [CHAT.PERSONALITY_ID]: personalityInfo.id,
           [CHAT.PERSONALITY_NAME]: personalityInfo.name,
         });
-        logger.info(`[DIAG-REPLY] BEFORE handlePersonalityChatReply msgId=${msgId}`);
         await this.handlePersonalityChatReply(message, personalityInfo);
-        logger.info(`[DIAG-REPLY] AFTER handlePersonalityChatReply msgId=${msgId}`);
         return true;
       }
 
       // Try to detect if this is a summarization message
       if (this.isSummarizationMessage(botContent)) {
-        logger.info(`[DIAG-REPLY] Detected reply to summarization message msgId=${msgId}`);
+        logger.info('Detected reply to summarization message');
         span.setAttributes({
           [REPLY.TYPE]: 'summarization_followup',
           [REPLY.IS_SUMMARIZATION]: true,
@@ -73,7 +65,6 @@ class ReplyHandler {
       }
 
       span.setAttribute(REPLY.TYPE, 'unhandled');
-      logger.info(`[DIAG-REPLY] handleReply EXIT (unhandled type) msgId=${msgId}`);
       return false;
     });
   }
@@ -197,9 +188,6 @@ class ReplyHandler {
    * @param {Object} personalityInfo - The detected personality info
    */
   async handlePersonalityChatReply(message, personalityInfo) {
-    const msgId = message.id;
-    logger.info(`[DIAG-CHAT] handlePersonalityChatReply ENTRY msgId=${msgId} personality=${personalityInfo.id}`);
-
     return withSpan('discord.reply.personality_chat', {
       [CHAT.PERSONALITY_ID]: personalityInfo.id,
       [CHAT.PERSONALITY_NAME]: personalityInfo.name,
@@ -209,7 +197,6 @@ class ReplyHandler {
       const guildId = message.guild?.id || null;
       const userMessage = message.content;
 
-      logger.info(`[DIAG-CHAT] Sending typing indicator msgId=${msgId}`);
       // Show typing indicator
       await message.channel.sendTyping();
 
@@ -225,14 +212,13 @@ class ReplyHandler {
       // Only show forgotten message for explicitly expired/reset conversations
       // For idle conversations, chatService.chat() will handle them (start fresh)
       if (status.exists && (status.status === 'expired' || status.status === 'reset')) {
-        logger.info(`[DIAG-CHAT] Conversation expired/reset msgId=${msgId} status=${status.status}`);
+        logger.info(`Conversation ${personalityInfo.id} is ${status.status}, showing expired message`);
         // Conversation was explicitly expired or reset - respond in character about forgetting
         await this.handleExpiredConversationReply(message, personalityInfo);
         return;
       }
 
       // Continue the conversation (or start fresh if idle - chatService handles this)
-      logger.info(`[DIAG-CHAT] BEFORE chatService.chat() msgId=${msgId} personality=${personalityInfo.id} channelId=${channelId}`);
       const result = await this.chatService.chat(
         personalityInfo.id,
         userMessage,
@@ -240,7 +226,6 @@ class ReplyHandler {
         channelId,
         guildId
       );
-      logger.info(`[DIAG-CHAT] AFTER chatService.chat() msgId=${msgId} success=${result.success}`);
 
       if (!result.success) {
         span.setAttributes({
@@ -271,31 +256,24 @@ class ReplyHandler {
 
       // Split if too long for Discord
       if (response.length > 2000) {
-        logger.info(`[DIAG-CHAT] Response too long, splitting msgId=${msgId} length=${response.length}`);
         const chunks = this.splitMessage(response, 2000);
-        for (let i = 0; i < chunks.length; i++) {
-          logger.info(`[DIAG-CHAT] SENDING chunk ${i + 1}/${chunks.length} msgId=${msgId}`);
-          await message.channel.send(chunks[i]);
+        for (const chunk of chunks) {
+          await message.channel.send(chunk);
         }
         // Send images after text chunks
         if (imageAttachments.length > 0) {
-          logger.info(`[DIAG-CHAT] SENDING images after chunks msgId=${msgId}`);
           await message.channel.send({ files: imageAttachments });
         }
       } else {
-        logger.info(`[DIAG-CHAT] SENDING reply msgId=${msgId} responseLength=${response.length}`);
         await message.reply({
           content: response,
           allowedMentions: { repliedUser: false }
         });
-        logger.info(`[DIAG-CHAT] SENT reply msgId=${msgId}`);
         // Send images as follow-up
         if (imageAttachments.length > 0) {
-          logger.info(`[DIAG-CHAT] SENDING images follow-up msgId=${msgId}`);
           await message.channel.send({ files: imageAttachments });
         }
       }
-      logger.info(`[DIAG-CHAT] handlePersonalityChatReply COMPLETE msgId=${msgId}`);
     });
   }
 
