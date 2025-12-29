@@ -76,7 +76,7 @@ class DiscordBot {
   constructor() {
     logger.info(`Creating DiscordBot v${version} instance`);
     logger.info(`OpenAI API Key: ${config.openai.apiKey ? 'Loaded' : 'Not Loaded'}`);
-    
+
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
