@@ -468,4 +468,205 @@ describe('ChannelContextService', () => {
       expect(buffer.messages.size()).toBeLessThanOrEqual(20);
     });
   });
+
+  // ========== PARTICIPANT TRACKING TESTS ==========
+
+  describe('Participant Tracking', () => {
+    beforeEach(async () => {
+      await service.start();
+      await service.enableChannel('channel1', 'guild1', 'user1');
+    });
+
+    describe('updateParticipant', () => {
+      it('should add a new participant to the channel', () => {
+        service.updateParticipant('channel1', 'user123', 'TestUser');
+
+        const buffer = service.channelBuffers.get('channel1');
+        expect(buffer.activeParticipants).toBeDefined();
+        expect(buffer.activeParticipants.has('user123')).toBe(true);
+
+        const participant = buffer.activeParticipants.get('user123');
+        expect(participant.username).toBe('TestUser');
+        expect(participant.messageCount).toBe(1);
+        expect(participant.lastSeen).toBeInstanceOf(Date);
+      });
+
+      it('should update existing participant message count', () => {
+        service.updateParticipant('channel1', 'user123', 'TestUser');
+        service.updateParticipant('channel1', 'user123', 'TestUser');
+        service.updateParticipant('channel1', 'user123', 'TestUser');
+
+        const buffer = service.channelBuffers.get('channel1');
+        const participant = buffer.activeParticipants.get('user123');
+        expect(participant.messageCount).toBe(3);
+      });
+
+      it('should update username if it changes', () => {
+        service.updateParticipant('channel1', 'user123', 'OldName');
+        service.updateParticipant('channel1', 'user123', 'NewName');
+
+        const buffer = service.channelBuffers.get('channel1');
+        const participant = buffer.activeParticipants.get('user123');
+        expect(participant.username).toBe('NewName');
+      });
+
+      it('should track multiple participants', () => {
+        service.updateParticipant('channel1', 'user1', 'Alice');
+        service.updateParticipant('channel1', 'user2', 'Bob');
+        service.updateParticipant('channel1', 'user3', 'Charlie');
+
+        const buffer = service.channelBuffers.get('channel1');
+        expect(buffer.activeParticipants.size).toBe(3);
+      });
+
+      it('should not throw for untracked channel', () => {
+        expect(() => {
+          service.updateParticipant('untracked', 'user1', 'Test');
+        }).not.toThrow();
+      });
+    });
+
+    describe('getActiveParticipants', () => {
+      it('should return participants active within window', () => {
+        service.updateParticipant('channel1', 'user1', 'Alice');
+        service.updateParticipant('channel1', 'user2', 'Bob');
+
+        const participants = service.getActiveParticipants('channel1', 30);
+
+        expect(participants).toHaveLength(2);
+        expect(participants.map(p => p.username)).toContain('Alice');
+        expect(participants.map(p => p.username)).toContain('Bob');
+      });
+
+      it('should exclude participants outside the time window', () => {
+        service.updateParticipant('channel1', 'user1', 'Alice');
+
+        // Manually set lastSeen to 40 minutes ago
+        const buffer = service.channelBuffers.get('channel1');
+        const participant = buffer.activeParticipants.get('user1');
+        participant.lastSeen = new Date(Date.now() - 40 * 60 * 1000);
+
+        const participants = service.getActiveParticipants('channel1', 30);
+        expect(participants).toHaveLength(0);
+      });
+
+      it('should return empty array for untracked channel', () => {
+        const participants = service.getActiveParticipants('untracked', 30);
+        expect(participants).toEqual([]);
+      });
+
+      it('should sort by message count descending', () => {
+        service.updateParticipant('channel1', 'user1', 'Alice');
+        service.updateParticipant('channel1', 'user2', 'Bob');
+        service.updateParticipant('channel1', 'user2', 'Bob');
+        service.updateParticipant('channel1', 'user2', 'Bob');
+        service.updateParticipant('channel1', 'user3', 'Charlie');
+        service.updateParticipant('channel1', 'user3', 'Charlie');
+
+        const participants = service.getActiveParticipants('channel1', 30);
+
+        expect(participants[0].username).toBe('Bob');
+        expect(participants[0].messageCount).toBe(3);
+        expect(participants[1].username).toBe('Charlie');
+        expect(participants[1].messageCount).toBe(2);
+        expect(participants[2].username).toBe('Alice');
+        expect(participants[2].messageCount).toBe(1);
+      });
+    });
+
+    describe('getParticipantContext', () => {
+      it('should return formatted participant list', () => {
+        service.updateParticipant('channel1', 'user1', 'Alice');
+        service.updateParticipant('channel1', 'user2', 'Bob');
+        service.updateParticipant('channel1', 'user2', 'Bob');
+
+        const context = service.getParticipantContext('channel1');
+
+        expect(context).toContain('Active participants');
+        expect(context).toContain('Bob');
+        expect(context).toContain('Alice');
+      });
+
+      it('should return empty string for no participants', () => {
+        const context = service.getParticipantContext('channel1');
+        expect(context).toBe('');
+      });
+
+      it('should return empty string for untracked channel', () => {
+        const context = service.getParticipantContext('untracked');
+        expect(context).toBe('');
+      });
+    });
+
+    describe('recordMessage integration with participant tracking', () => {
+      it('should update participant when recording message', async () => {
+        const mockMessage = {
+          id: 'msg1',
+          channel: { id: 'channel1' },
+          guild: { id: 'guild1' },
+          author: { id: 'user123', username: 'TestUser', bot: false },
+          content: 'Hello world',
+          reference: null,
+        };
+
+        await service.recordMessage(mockMessage);
+
+        const buffer = service.channelBuffers.get('channel1');
+        expect(buffer.activeParticipants.has('user123')).toBe(true);
+        expect(buffer.activeParticipants.get('user123').username).toBe('TestUser');
+      });
+
+      it('should not track bot users as participants', async () => {
+        const mockMessage = {
+          id: 'msg1',
+          channel: { id: 'channel1' },
+          guild: { id: 'guild1' },
+          author: { id: 'bot123', username: 'BotUser', bot: true },
+          content: 'Bot message',
+          reference: null,
+        };
+
+        await service.recordMessage(mockMessage);
+
+        const buffer = service.channelBuffers.get('channel1');
+        expect(buffer.activeParticipants.has('bot123')).toBe(false);
+      });
+    });
+
+    describe('buildHybridContext with participants', () => {
+      it('should include participant context in hybrid context', async () => {
+        // Add participants
+        service.updateParticipant('channel1', 'user1', 'Alice');
+        service.updateParticipant('channel1', 'user2', 'Bob');
+
+        // Add a message to buffer
+        const buffer = service.channelBuffers.get('channel1');
+        buffer.messages.push({
+          authorName: 'Alice',
+          content: 'Hello everyone',
+          isBot: false,
+        });
+
+        // Mock semantic search
+        mockQdrantClient.search.mockResolvedValue([]);
+
+        const context = await service.buildHybridContext('channel1', 'test message');
+
+        expect(context).toContain('Active participants');
+        expect(context).toContain('Alice');
+        expect(context).toContain('Bob');
+      });
+    });
+
+    describe('enableChannel initializes participants', () => {
+      it('should initialize activeParticipants map when enabling channel', async () => {
+        await service.enableChannel('newchannel', 'guild1', 'user1');
+
+        const buffer = service.channelBuffers.get('newchannel');
+        expect(buffer.activeParticipants).toBeDefined();
+        expect(buffer.activeParticipants).toBeInstanceOf(Map);
+        expect(buffer.activeParticipants.size).toBe(0);
+      });
+    });
+  });
 });

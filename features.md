@@ -49,9 +49,18 @@
 - **Automatic Extraction**: Mem0 extracts relevant facts from conversations using GPT-4o-mini
 - **Semantic Search**: Relevant memories retrieved via vector similarity search
 - **Per-User Memories**: Each Discord user has their own memory store
+- **Shared Channel Memories**: Channel-wide facts visible to ALL users in that channel
+- **3-Way Memory Search**: Parallel retrieval of personality, explicit, and shared channel memories
 - **Personality-Scoped**: Memories can be filtered by personality for relevant context
 - **Graceful Degradation**: Bot works normally if memory service (Qdrant) is unavailable
 - **GDPR Compliance**: Users can request deletion of all their memories
+
+### Multiplayer Chat
+- **Participant Awareness**: Bot tracks who's active in each channel (30-minute window)
+- **Multi-User Context**: System prompt includes list of active participants and their recent topics
+- **@Mention Entry**: Mention the bot (`@BotName`) to start a conversation with default personality
+- **Seamless Replies**: Reply to any bot message to continue the conversation naturally
+- **Shared Context**: All users in a channel see the same conversation history per personality
 
 ### Image Generation (Nano Banana)
 - **AI Image Generation**: Generate images from text prompts using Google's Gemini API
@@ -60,6 +69,10 @@
 - **Per-User Cooldowns**: Configurable cooldown to prevent abuse
 - **Usage Tracking**: All generations tracked in MongoDB
 - **Safety Filters**: Relies on Gemini's built-in content safety
+- **Intelligent Retry**: When generation fails, AI analyzes the prompt and suggests alternatives
+- **Interactive Approval**: React with 1️⃣ 2️⃣ 3️⃣ to retry with suggested prompts, ❌ to dismiss
+- **Failure Analysis**: Detailed analysis of why prompts fail (safety, rate limits, etc.)
+- **Learning Loop**: Retry attempts tracked in MongoDB to improve future suggestions
 
 ### Video Generation (Veo)
 - **AI Video Generation**: Generate videos using Google's Veo 3.1

@@ -760,4 +760,149 @@ describe('ChatService', () => {
       expect(images[0].id).toBe('img-1');
     });
   });
+
+  // ========== SHARED CHANNEL MEMORIES (3-WAY SEARCH) ==========
+
+  describe('Shared Channel Memory Integration', () => {
+    let chatServiceWithSharedMem;
+    let mockMem0ServiceWithShared;
+    const mockUser = {
+      id: 'user123',
+      username: 'TestUser',
+      tag: 'TestUser#1234'
+    };
+
+    beforeEach(() => {
+      mockMem0ServiceWithShared = {
+        isEnabled: jest.fn().mockReturnValue(true),
+        searchMemories: jest.fn().mockResolvedValue({
+          results: [{ id: 'personal-1', memory: 'User prefers dark mode' }]
+        }),
+        searchSharedChannelMemories: jest.fn().mockResolvedValue({
+          results: [{ id: 'shared-1', memory: 'Team uses React for frontend' }]
+        }),
+        addMemory: jest.fn().mockResolvedValue({ results: [] }),
+        formatMemoriesForContext: jest.fn().mockReturnValue('\n\nRelevant things: User prefers dark mode\n'),
+        formatSharedMemoriesForContext: jest.fn().mockReturnValue('\n\nShared knowledge: Team uses React\n'),
+      };
+
+      chatServiceWithSharedMem = new ChatService(
+        mockOpenAIClient,
+        mockConfig,
+        mockMongoService,
+        mockMem0ServiceWithShared
+      );
+    });
+
+    it('should perform 3-way parallel search when channel ID is provided', async () => {
+      mockMem0ServiceWithShared.searchMemories
+        .mockResolvedValueOnce({ results: [{ id: 'personality-1', memory: 'From personality' }] })
+        .mockResolvedValueOnce({ results: [{ id: 'explicit-1', memory: 'From explicit' }] });
+
+      await chatServiceWithSharedMem.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      // Should search personality memories
+      expect(mockMem0ServiceWithShared.searchMemories).toHaveBeenCalledWith(
+        'Hello!',
+        'user123',
+        expect.objectContaining({ personalityId: 'test-personality' })
+      );
+
+      // Should search explicit memories
+      expect(mockMem0ServiceWithShared.searchMemories).toHaveBeenCalledWith(
+        'Hello!',
+        'user123',
+        expect.objectContaining({ personalityId: 'explicit_memory' })
+      );
+
+      // Should search shared channel memories
+      expect(mockMem0ServiceWithShared.searchSharedChannelMemories).toHaveBeenCalledWith(
+        'Hello!',
+        'channel123',
+        expect.objectContaining({ limit: 2 })
+      );
+    });
+
+    it('should combine shared channel memories with personal memories', async () => {
+      mockMem0ServiceWithShared.searchMemories
+        .mockResolvedValueOnce({ results: [{ id: 'personality-1', memory: 'User likes Python' }] })
+        .mockResolvedValueOnce({ results: [{ id: 'explicit-1', memory: 'User prefers dark mode' }] });
+      mockMem0ServiceWithShared.searchSharedChannelMemories.mockResolvedValue({
+        results: [{ id: 'shared-1', memory: 'Team uses React' }]
+      });
+
+      await chatServiceWithSharedMem.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      // Should format personal memories
+      expect(mockMem0ServiceWithShared.formatMemoriesForContext).toHaveBeenCalled();
+
+      // Should format shared channel memories
+      expect(mockMem0ServiceWithShared.formatSharedMemoriesForContext).toHaveBeenCalled();
+    });
+
+    it('should include shared memories in system prompt', async () => {
+      mockMem0ServiceWithShared.searchMemories.mockResolvedValue({ results: [] });
+      mockMem0ServiceWithShared.searchSharedChannelMemories.mockResolvedValue({
+        results: [{ id: 'shared-1', memory: 'Team uses React' }]
+      });
+      mockMem0ServiceWithShared.formatMemoriesForContext.mockReturnValue('');
+      mockMem0ServiceWithShared.formatSharedMemoriesForContext.mockReturnValue('\n\nShared: Team uses React\n');
+
+      await chatServiceWithSharedMem.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      const callArgs = mockOpenAIClient.responses.create.mock.calls[0][0];
+      expect(callArgs.instructions).toContain('Shared: Team uses React');
+    });
+
+    it('should gracefully handle shared memory search errors', async () => {
+      mockMem0ServiceWithShared.searchMemories.mockResolvedValue({ results: [] });
+      mockMem0ServiceWithShared.searchSharedChannelMemories.mockRejectedValue(new Error('Qdrant down'));
+
+      const result = await chatServiceWithSharedMem.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      // Chat should still succeed
+      expect(result.success).toBe(true);
+    });
+
+    it('should skip shared memory search when mem0 is disabled', async () => {
+      mockMem0ServiceWithShared.isEnabled.mockReturnValue(false);
+
+      await chatServiceWithSharedMem.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      expect(mockMem0ServiceWithShared.searchSharedChannelMemories).not.toHaveBeenCalled();
+    });
+
+    it('should deduplicate across all three memory sources', async () => {
+      // Same ID appears in multiple sources
+      mockMem0ServiceWithShared.searchMemories
+        .mockResolvedValueOnce({ results: [{ id: 'shared-id', memory: 'Same fact' }] })
+        .mockResolvedValueOnce({ results: [{ id: 'shared-id', memory: 'Same fact' }] });
+      mockMem0ServiceWithShared.searchSharedChannelMemories.mockResolvedValue({
+        results: [{ id: 'shared-id', memory: 'Same fact' }]
+      });
+
+      await chatServiceWithSharedMem.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      // formatMemoriesForContext should receive deduplicated memories
+      const formatCall = mockMem0ServiceWithShared.formatMemoriesForContext.mock.calls[0][0];
+      expect(formatCall).toHaveLength(1); // Only 1 unique memory
+    });
+
+    it('should prioritize explicit > shared > personality memories', async () => {
+      mockMem0ServiceWithShared.searchMemories
+        .mockResolvedValueOnce({ results: [{ id: 'personality-1', memory: 'From personality' }] })
+        .mockResolvedValueOnce({ results: [{ id: 'explicit-1', memory: 'From explicit' }] });
+      mockMem0ServiceWithShared.searchSharedChannelMemories.mockResolvedValue({
+        results: [{ id: 'shared-1', memory: 'From shared' }]
+      });
+
+      await chatServiceWithSharedMem.chat('test-personality', 'Hello!', mockUser, 'channel123', 'guild456');
+
+      const formatCall = mockMem0ServiceWithShared.formatMemoriesForContext.mock.calls[0][0];
+      // Explicit first, then shared, then personality
+      expect(formatCall[0].id).toBe('explicit-1');
+      expect(formatCall[1].id).toBe('shared-1');
+      expect(formatCall[2].id).toBe('personality-1');
+    });
+  });
 });

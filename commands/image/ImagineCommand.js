@@ -3,7 +3,7 @@ const BaseCommand = require('../base/BaseCommand');
 const logger = require('../../logger');
 
 class ImagineCommand extends BaseCommand {
-  constructor(imagenService) {
+  constructor(imagenService, imageRetryHandler = null) {
     super({
       name: 'imagine',
       aliases: ['img', 'generate', 'image'],
@@ -22,6 +22,7 @@ class ImagineCommand extends BaseCommand {
       ]
     });
     this.imagenService = imagenService;
+    this.imageRetryHandler = imageRetryHandler;
   }
 
   /**
@@ -149,10 +150,26 @@ class ImagineCommand extends BaseCommand {
     );
 
     if (!result.success) {
-      return message.reply({
+      // Send basic error message first
+      await message.reply({
         content: `Failed to generate image: ${result.error}`,
         allowedMentions: { repliedUser: false }
       });
+
+      // If we have a retry handler and failure context, offer intelligent retry options
+      if (this.imageRetryHandler && result.failureContext) {
+        try {
+          await this.imageRetryHandler.handleFailedGeneration(
+            message,
+            prompt,
+            result.failureContext,
+            message.author
+          );
+        } catch (retryError) {
+          logger.error(`Failed to offer retry options: ${retryError.message}`);
+        }
+      }
+      return;
     }
 
     // Create attachment and send

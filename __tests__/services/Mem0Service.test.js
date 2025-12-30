@@ -268,4 +268,201 @@ describe('Mem0Service', () => {
       expect(mem0Service.isEnabled()).toBe(true);
     });
   });
+
+  // ========== SHARED CHANNEL MEMORY TESTS ==========
+
+  describe('Shared Channel Memories', () => {
+    beforeEach(() => {
+      mem0Service = new Mem0Service(mockConfig);
+    });
+
+    describe('addSharedChannelMemory', () => {
+      it('should add memory with channel:{channelId} as userId', async () => {
+        const messages = [
+          { role: 'user', content: '[Alice]: We decided to use React for the frontend' },
+          { role: 'user', content: '[Bob]: And Node.js for the backend' }
+        ];
+        const channelId = 'channel-123';
+        const metadata = { guildId: 'guild-456', channelName: 'dev-discussions' };
+
+        mockMemory.add.mockResolvedValue({
+          results: [{ id: 'mem-1', memory: 'Team decided to use React for frontend and Node.js for backend' }]
+        });
+
+        const result = await mem0Service.addSharedChannelMemory(messages, channelId, metadata);
+
+        expect(mockMemory.add).toHaveBeenCalledWith(
+          messages,
+          expect.objectContaining({
+            userId: `channel:${channelId}`,
+            agentId: 'shared_channel',
+          })
+        );
+        expect(result).toHaveProperty('results');
+      });
+
+      it('should include channel metadata in the memory', async () => {
+        mockMemory.add.mockResolvedValue({ results: [] });
+
+        await mem0Service.addSharedChannelMemory(
+          [{ role: 'user', content: 'test' }],
+          'channel-123',
+          { guildId: 'guild-456', channelName: 'general' }
+        );
+
+        expect(mockMemory.add).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.objectContaining({
+            metadata: expect.objectContaining({
+              channelId: 'channel-123',
+              guildId: 'guild-456',
+              channelName: 'general',
+              isSharedMemory: true,
+            })
+          })
+        );
+      });
+
+      it('should handle errors gracefully', async () => {
+        mockMemory.add.mockRejectedValue(new Error('Failed to add memory'));
+
+        const result = await mem0Service.addSharedChannelMemory(
+          [{ role: 'user', content: 'test' }],
+          'channel-123',
+          {}
+        );
+
+        expect(result).toEqual({ results: [], error: 'Failed to add memory' });
+      });
+    });
+
+    describe('searchSharedChannelMemories', () => {
+      it('should search memories using channel:{channelId} as userId', async () => {
+        const query = 'What tech stack did we decide on?';
+        const channelId = 'channel-123';
+
+        mockMemory.search.mockResolvedValue({
+          results: [
+            { id: 'mem-1', memory: 'Team uses React and Node.js', score: 0.9 }
+          ]
+        });
+
+        const result = await mem0Service.searchSharedChannelMemories(query, channelId);
+
+        expect(mockMemory.search).toHaveBeenCalledWith(
+          query,
+          expect.objectContaining({
+            userId: `channel:${channelId}`,
+            agentId: 'shared_channel',
+          })
+        );
+        expect(result.results).toHaveLength(1);
+      });
+
+      it('should respect limit option', async () => {
+        mockMemory.search.mockResolvedValue({ results: [] });
+
+        await mem0Service.searchSharedChannelMemories('query', 'channel-123', { limit: 3 });
+
+        expect(mockMemory.search).toHaveBeenCalledWith(
+          'query',
+          expect.objectContaining({ limit: 3 })
+        );
+      });
+
+      it('should use default limit of 5', async () => {
+        mockMemory.search.mockResolvedValue({ results: [] });
+
+        await mem0Service.searchSharedChannelMemories('query', 'channel-123');
+
+        expect(mockMemory.search).toHaveBeenCalledWith(
+          'query',
+          expect.objectContaining({ limit: 5 })
+        );
+      });
+
+      it('should return empty results on error', async () => {
+        mockMemory.search.mockRejectedValue(new Error('Search failed'));
+
+        const result = await mem0Service.searchSharedChannelMemories('query', 'channel-123');
+
+        expect(result).toEqual({ results: [] });
+      });
+    });
+
+    describe('getSharedChannelMemories', () => {
+      it('should get all memories for a channel', async () => {
+        const channelId = 'channel-123';
+
+        mockMemory.getAll.mockResolvedValue({
+          results: [
+            { id: 'mem-1', memory: 'Team uses React' },
+            { id: 'mem-2', memory: 'Standup is at 10am' }
+          ]
+        });
+
+        const result = await mem0Service.getSharedChannelMemories(channelId);
+
+        expect(mockMemory.getAll).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: `channel:${channelId}`,
+            agentId: 'shared_channel',
+          })
+        );
+        expect(result.results).toHaveLength(2);
+      });
+
+      it('should support limit option', async () => {
+        mockMemory.getAll.mockResolvedValue({ results: [] });
+
+        await mem0Service.getSharedChannelMemories('channel-123', { limit: 10 });
+
+        expect(mockMemory.getAll).toHaveBeenCalledWith(
+          expect.objectContaining({ limit: 10 })
+        );
+      });
+
+      it('should return empty results on error', async () => {
+        mockMemory.getAll.mockRejectedValue(new Error('Failed'));
+
+        const result = await mem0Service.getSharedChannelMemories('channel-123');
+
+        expect(result).toEqual({ results: [] });
+      });
+    });
+
+    describe('formatSharedMemoriesForContext', () => {
+      it('should format shared memories with channel context header', () => {
+        const memories = [
+          { memory: 'Team decided to use React' },
+          { memory: 'Daily standup is at 10am' }
+        ];
+
+        const context = mem0Service.formatSharedMemoriesForContext(memories);
+
+        expect(context).toContain('Team decided to use React');
+        expect(context).toContain('Daily standup is at 10am');
+        expect(context).toContain('Shared knowledge in this channel');
+      });
+
+      it('should return empty string for empty memories', () => {
+        expect(mem0Service.formatSharedMemoriesForContext([])).toBe('');
+        expect(mem0Service.formatSharedMemoriesForContext(null)).toBe('');
+        expect(mem0Service.formatSharedMemoriesForContext(undefined)).toBe('');
+      });
+    });
+
+    describe('deleteSharedChannelMemories', () => {
+      it('should delete all shared memories for a channel', async () => {
+        mockMemory.deleteAll.mockResolvedValue({ message: 'All memories deleted' });
+
+        const result = await mem0Service.deleteSharedChannelMemories('channel-123');
+
+        expect(mockMemory.deleteAll).toHaveBeenCalledWith(
+          expect.objectContaining({ userId: 'channel:channel-123' })
+        );
+        expect(result.message).toBe('All memories deleted');
+      });
+    });
+  });
 });
