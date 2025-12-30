@@ -4,7 +4,7 @@
 require('./tracing');
 
 const http = require('http');
-const { Client, GatewayIntentBits, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, AttachmentBuilder } = require('discord.js');
 const OpenAI = require('openai');
 const fs = require('fs').promises;
 const config = require('./config/config');
@@ -86,6 +86,11 @@ class DiscordBot {
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.MessageContent
+      ],
+      partials: [
+        Partials.Message,
+        Partials.Reaction,
+        Partials.User
       ]
     });
 
@@ -438,8 +443,12 @@ class DiscordBot {
           }
 
           // Handle image retry reactions
-          if (this.imageRetryHandler?.isPendingRetry(reaction.message.id)) {
-            await this.imageRetryHandler.handleRetryReaction(reaction, user);
+          if (this.imageRetryHandler) {
+            logger.debug(`Checking image retry for message ${reaction.message.id}, emoji: ${reaction.emoji.name}`);
+            if (this.imageRetryHandler.isPendingRetry(reaction.message.id)) {
+              logger.info(`Processing image retry reaction for message ${reaction.message.id}`);
+              await this.imageRetryHandler.handleRetryReaction(reaction, user);
+            }
           }
         });
 

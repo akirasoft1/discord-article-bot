@@ -70,10 +70,7 @@ class ImagineSlashCommand extends BaseSlashCommand {
     );
 
     if (!result.success) {
-      // Send basic error message first
-      await this.sendError(interaction, result.error || 'Failed to generate image.');
-
-      // If we have a retry handler and failure context, offer intelligent retry options
+      // If we have a retry handler and failure context, offer intelligent retry options instead of error
       if (this.imageRetryHandler && result.failureContext) {
         try {
           // Create a mock message object for the retry handler to use
@@ -83,6 +80,11 @@ class ImagineSlashCommand extends BaseSlashCommand {
             id: interaction.id
           };
 
+          // Edit the deferred reply to acknowledge the failure briefly
+          await interaction.editReply({
+            content: `⚠️ Image generation didn't produce an image. Analyzing your prompt for suggestions...`
+          });
+
           await this.imageRetryHandler.handleFailedGeneration(
             mockMessage,
             prompt,
@@ -91,7 +93,14 @@ class ImagineSlashCommand extends BaseSlashCommand {
           );
         } catch (retryError) {
           logger.error(`Failed to offer retry options: ${retryError.message}`);
+          // Fallback to error message if retry handler fails
+          await interaction.editReply({
+            content: `Failed to generate image: ${result.error || 'Unknown error'}`
+          });
         }
+      } else {
+        // No retry handler available, show error message
+        await this.sendError(interaction, result.error || 'Failed to generate image.');
       }
       return;
     }

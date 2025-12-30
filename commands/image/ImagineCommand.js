@@ -150,15 +150,15 @@ class ImagineCommand extends BaseCommand {
     );
 
     if (!result.success) {
-      // Send basic error message first
-      await message.reply({
-        content: `Failed to generate image: ${result.error}`,
-        allowedMentions: { repliedUser: false }
-      });
-
-      // If we have a retry handler and failure context, offer intelligent retry options
+      // If we have a retry handler and failure context, offer intelligent retry options instead of error
       if (this.imageRetryHandler && result.failureContext) {
         try {
+          // Send a brief acknowledgment
+          await message.reply({
+            content: `⚠️ Image generation didn't produce an image. Analyzing your prompt for suggestions...`,
+            allowedMentions: { repliedUser: false }
+          });
+
           await this.imageRetryHandler.handleFailedGeneration(
             message,
             prompt,
@@ -167,7 +167,18 @@ class ImagineCommand extends BaseCommand {
           );
         } catch (retryError) {
           logger.error(`Failed to offer retry options: ${retryError.message}`);
+          // Fallback to error message
+          await message.reply({
+            content: `Failed to generate image: ${result.error}`,
+            allowedMentions: { repliedUser: false }
+          });
         }
+      } else {
+        // No retry handler available, show error message
+        await message.reply({
+          content: `Failed to generate image: ${result.error}`,
+          allowedMentions: { repliedUser: false }
+        });
       }
       return;
     }

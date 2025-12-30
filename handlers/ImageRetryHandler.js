@@ -32,7 +32,9 @@ class ImageRetryHandler {
    * @returns {boolean}
    */
   isPendingRetry(messageId) {
-    return this.pendingRetries.has(messageId);
+    const isPending = this.pendingRetries.has(messageId);
+    logger.debug(`isPendingRetry check - messageId: ${messageId}, isPending: ${isPending}, pendingCount: ${this.pendingRetries.size}`);
+    return isPending;
   }
 
   /**
@@ -107,6 +109,7 @@ class ImageRetryHandler {
       };
 
       this.pendingRetries.set(embedMessage.id, pendingData);
+      logger.info(`Stored pending retry for embed message ${embedMessage.id}, total pending: ${this.pendingRetries.size}`);
 
       // Set timeout to clean up
       const timeout = setTimeout(() => {
@@ -117,7 +120,7 @@ class ImageRetryHandler {
       // Store timeout reference for cleanup
       pendingData.timeout = timeout;
 
-      logger.info(`Handled failed generation for user ${user.username}, offered ${numSuggestions} alternatives`);
+      logger.info(`Handled failed generation for user ${user.username}, offered ${numSuggestions} alternatives, embedMessageId: ${embedMessage.id}`);
 
     } catch (error) {
       logger.error(`Error handling failed generation: ${error.message}`);
