@@ -1,4 +1,93 @@
 # Discord Article Bot - Development Guidelines
+
+## Feature Development Workflow (TDD + Build + Deploy)
+
+When implementing new features or fixes, follow this complete workflow:
+
+### 1. Create Feature Branch
+```bash
+git checkout main && git pull origin main
+git checkout -b feat/<feature-name>
+# or fix/<issue-name> for bug fixes
+```
+
+### 2. TDD: Write Tests First (Red Phase)
+- Write failing tests in `__tests__/` that define expected behavior
+- Run tests to confirm they fail: `npm test -- --testPathPatterns="<TestFile>"`
+- Tests should cover: happy path, edge cases, error handling
+
+### 3. Implement Feature (Green Phase)
+- Write minimal code to make tests pass
+- Run tests frequently to verify progress
+- Commit checkpoints with descriptive messages
+
+### 4. Refactor (if needed)
+- Clean up implementation while keeping tests green
+- Ensure code follows existing patterns in codebase
+
+### 5. Run Full Test Suite
+```bash
+npm test
+```
+All tests must pass before proceeding.
+
+### 6. Update Documentation
+- Update `features.md` with new capabilities
+- Update `README.md` if user-facing features changed
+- Update `CLAUDE.md` if development practices changed
+
+### 7. Commit Changes
+```bash
+git add -A
+git commit -m "feat: <description>
+
+<detailed explanation>
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+```
+
+### 8. Bump Version
+```bash
+npm version patch --no-git-tag-version  # for fixes
+npm version minor --no-git-tag-version  # for features
+git add package.json package-lock.json
+git commit -m "chore: bump version to <version>"
+```
+
+### 9. Build and Push Docker Image
+```bash
+docker build -t mvilliger/discord-article-bot:<version> .
+docker push mvilliger/discord-article-bot:<version>
+```
+
+### 10. Deploy to Kubernetes
+```bash
+kubectl set image deployment/discord-article-bot bot=mvilliger/discord-article-bot:<version> -n discord-article-bot
+kubectl rollout status deployment/discord-article-bot -n discord-article-bot --timeout=120s
+```
+
+### 11. Verify Deployment
+```bash
+kubectl get pods -n discord-article-bot
+kubectl logs -f deployment/discord-article-bot -n discord-article-bot
+```
+
+### 12. Push Branch and Create PR
+```bash
+git push -u origin feat/<feature-name>
+# Create PR via GitHub (gh auth may be expired)
+```
+
+### Checkpoint Commits
+For larger features, commit checkpoints along the way:
+- After tests are written (even if failing)
+- After major implementation milestones
+- Before risky refactoring
+
+---
+
 ## Important Notes
 - **Development Methodology**: Follow Test-Driven Development (TDD) practices. Write tests before implementing features or fixes.
 
