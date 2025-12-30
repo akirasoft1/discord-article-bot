@@ -169,7 +169,8 @@ class ChannelContextService {
       this.channelBuffers.set(channelId, {
         messages: new CircularBuffer(this.config.recentMessageCount),
         lastActivity: new Date(),
-        guildId: guildId
+        guildId: guildId,
+        activeParticipants: new Map()
       });
     }
 
@@ -206,7 +207,8 @@ class ChannelContextService {
         this.channelBuffers.set(channel.channelId, {
           messages: new CircularBuffer(this.config.recentMessageCount),
           lastActivity: channel.lastActivity || new Date(),
-          guildId: channel.guildId
+          guildId: channel.guildId,
+          activeParticipants: new Map()
         });
       }
       logger.info(`Loaded ${channels.length} tracked channels from database`);
@@ -220,7 +222,8 @@ class ChannelContextService {
           this.channelBuffers.set(channelId, {
             messages: new CircularBuffer(this.config.recentMessageCount),
             lastActivity: new Date(),
-            guildId: null // Will be set when first message arrives
+            guildId: null, // Will be set when first message arrives
+            activeParticipants: new Map()
           });
           // Persist to MongoDB for consistency
           await this.mongoService.enableChannelTracking(channelId, null, 'config');
@@ -254,7 +257,8 @@ class ChannelContextService {
       this.channelBuffers.set(channelId, {
         messages: new CircularBuffer(this.config.recentMessageCount),
         lastActivity: new Date(),
-        guildId: guildId
+        guildId: guildId,
+        activeParticipants: new Map()
       });
     }
 
@@ -274,6 +278,11 @@ class ChannelContextService {
     // Add to in-memory buffer (Tier 1)
     buffer.messages.push(record);
     buffer.lastActivity = new Date();
+
+    // Track participant activity (for non-bot users)
+    if (!message.author.bot) {
+      this.updateParticipant(channelId, message.author.id, message.author.username);
+    }
 
     // Queue for batch indexing (Tier 2)
     this.pendingIndex.push({
@@ -328,6 +337,83 @@ class ChannelContextService {
   getBufferSize(channelId) {
     const buffer = this.channelBuffers.get(channelId);
     return buffer ? buffer.messages.size() : 0;
+  }
+
+  // ========== Participant Tracking ==========
+
+  /**
+   * Update participant activity in a channel
+   * Called when a user sends a message in a tracked channel
+   * @param {string} channelId - Channel ID
+   * @param {string} userId - User ID
+   * @param {string} username - User's display name
+   */
+  updateParticipant(channelId, userId, username) {
+    const buffer = this.channelBuffers.get(channelId);
+    if (!buffer) return;
+
+    // Ensure activeParticipants map exists (for backwards compatibility)
+    if (!buffer.activeParticipants) {
+      buffer.activeParticipants = new Map();
+    }
+
+    const existing = buffer.activeParticipants.get(userId);
+    if (existing) {
+      existing.messageCount += 1;
+      existing.lastSeen = new Date();
+      existing.username = username; // Update in case username changed
+    } else {
+      buffer.activeParticipants.set(userId, {
+        username: username,
+        lastSeen: new Date(),
+        messageCount: 1
+      });
+    }
+  }
+
+  /**
+   * Get active participants in a channel within a time window
+   * @param {string} channelId - Channel ID
+   * @param {number} windowMinutes - Time window in minutes (default: 30)
+   * @returns {Array<{userId: string, username: string, lastSeen: Date, messageCount: number}>}
+   */
+  getActiveParticipants(channelId, windowMinutes = 30) {
+    const buffer = this.channelBuffers.get(channelId);
+    if (!buffer || !buffer.activeParticipants) return [];
+
+    const cutoff = new Date(Date.now() - windowMinutes * 60 * 1000);
+    const active = [];
+
+    for (const [userId, data] of buffer.activeParticipants) {
+      if (data.lastSeen >= cutoff) {
+        active.push({
+          userId,
+          username: data.username,
+          lastSeen: data.lastSeen,
+          messageCount: data.messageCount
+        });
+      }
+    }
+
+    // Sort by message count descending (most active first)
+    return active.sort((a, b) => b.messageCount - a.messageCount);
+  }
+
+  /**
+   * Get formatted participant context for system prompt injection
+   * @param {string} channelId - Channel ID
+   * @param {number} windowMinutes - Time window in minutes (default: 30)
+   * @returns {string} Formatted participant list
+   */
+  getParticipantContext(channelId, windowMinutes = 30) {
+    const participants = this.getActiveParticipants(channelId, windowMinutes);
+    if (participants.length === 0) return '';
+
+    const participantList = participants
+      .map(p => `- ${p.username} (${p.messageCount} messages)`)
+      .join('\n');
+
+    return `Active participants in this channel:\n${participantList}`;
   }
 
   // ========== Tier 2: Qdrant Semantic Index ==========
@@ -606,9 +692,15 @@ class ChannelContextService {
 
       let context = '';
 
+      // Participant awareness
+      const participantContext = this.getParticipantContext(channelId);
+      if (participantContext) {
+        context += `\n${participantContext}`;
+      }
+
       // Tier 1: Recent conversation
       if (recent) {
-        context += `\nRecent channel conversation:\n${recent}`;
+        context += `\n\nRecent channel conversation:\n${recent}`;
       }
 
       // Tier 2: Semantically relevant past messages

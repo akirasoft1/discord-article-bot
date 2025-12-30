@@ -286,6 +286,183 @@ class Mem0Service {
 
     return `\n\nRelevant things you remember about this user:\n${memoryLines}\n`;
   }
+
+  // ========== Shared Channel Memories ==========
+
+  /**
+   * Add shared channel memory visible to all users in a channel
+   * Uses convention: userId = "channel:{channelId}", agentId = "shared_channel"
+   *
+   * @param {Array<{role: string, content: string}>} messages - Conversation messages
+   * @param {string} channelId - Discord channel ID
+   * @param {Object} metadata - Additional context
+   * @returns {Promise<{results: Array, error?: string}>}
+   */
+  async addSharedChannelMemory(messages, channelId, metadata = {}) {
+    return withSpan('mem0.addShared', {
+      [MEMORY.OPERATION]: 'addShared',
+      [DISCORD.CHANNEL_ID]: channelId,
+      'memory.is_shared': true,
+      'memory.messages_count': messages.length,
+    }, async (span) => {
+      try {
+        const result = await this.memory.add(messages, {
+          userId: `channel:${channelId}`,
+          agentId: 'shared_channel',
+          runId: channelId,
+          metadata: {
+            channelId: channelId,
+            guildId: metadata.guildId,
+            channelName: metadata.channelName,
+            isSharedMemory: true,
+            timestamp: new Date().toISOString(),
+          },
+        });
+
+        const memoriesCount = result.results?.length || 0;
+        span.setAttribute(MEMORY.MEMORIES_COUNT, memoriesCount);
+
+        if (memoriesCount > 0) {
+          logger.debug(`Added ${memoriesCount} shared memories for channel ${channelId}`);
+        }
+
+        return result;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'Mem0Error',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`Error adding shared channel memory: ${error.message}`);
+        return { results: [], error: error.message };
+      }
+    });
+  }
+
+  /**
+   * Search for relevant shared channel memories
+   *
+   * @param {string} query - Search query
+   * @param {string} channelId - Discord channel ID
+   * @param {Object} options - Search options
+   * @param {number} options.limit - Maximum number of results (default: 5)
+   * @returns {Promise<{results: Array}>}
+   */
+  async searchSharedChannelMemories(query, channelId, options = {}) {
+    return withSpan('mem0.searchShared', {
+      [MEMORY.OPERATION]: 'searchShared',
+      [DISCORD.CHANNEL_ID]: channelId,
+      [MEMORY.QUERY_LENGTH]: query.length,
+      'memory.is_shared': true,
+    }, async (span) => {
+      try {
+        const result = await this.memory.search(query, {
+          userId: `channel:${channelId}`,
+          agentId: 'shared_channel',
+          limit: options.limit || 5,
+        });
+
+        const memoriesCount = result.results?.length || 0;
+        span.setAttribute(MEMORY.MEMORIES_COUNT, memoriesCount);
+
+        if (memoriesCount > 0) {
+          logger.debug(`Found ${memoriesCount} shared memories for channel ${channelId}`);
+        }
+
+        return result;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'Mem0Error',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`Error searching shared channel memories: ${error.message}`);
+        return { results: [] };
+      }
+    });
+  }
+
+  /**
+   * Get all shared memories for a channel
+   *
+   * @param {string} channelId - Discord channel ID
+   * @param {Object} options - Options
+   * @param {number} options.limit - Maximum number of results
+   * @returns {Promise<{results: Array}>}
+   */
+  async getSharedChannelMemories(channelId, options = {}) {
+    return withSpan('mem0.getShared', {
+      [MEMORY.OPERATION]: 'getShared',
+      [DISCORD.CHANNEL_ID]: channelId,
+      'memory.is_shared': true,
+    }, async (span) => {
+      try {
+        const config = {
+          userId: `channel:${channelId}`,
+          agentId: 'shared_channel',
+        };
+
+        if (options.limit) {
+          config.limit = options.limit;
+          span.setAttribute('memory.limit', options.limit);
+        }
+
+        const result = await this.memory.getAll(config);
+        span.setAttribute(MEMORY.MEMORIES_COUNT, result.results?.length || 0);
+        return result;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'Mem0Error',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`Error getting shared channel memories: ${error.message}`);
+        return { results: [] };
+      }
+    });
+  }
+
+  /**
+   * Delete all shared memories for a channel
+   *
+   * @param {string} channelId - Discord channel ID
+   * @returns {Promise<{message: string}>}
+   */
+  async deleteSharedChannelMemories(channelId) {
+    return withSpan('mem0.deleteShared', {
+      [MEMORY.OPERATION]: 'deleteShared',
+      [DISCORD.CHANNEL_ID]: channelId,
+      'memory.is_shared': true,
+    }, async (span) => {
+      try {
+        const result = await this.memory.deleteAll({ userId: `channel:${channelId}` });
+        logger.info(`Deleted shared memories for channel: ${channelId}`);
+        return result;
+      } catch (error) {
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'Mem0Error',
+          [ERROR.MESSAGE]: error.message,
+        });
+        logger.error(`Error deleting shared channel memories: ${error.message}`);
+        return { message: `Error: ${error.message}` };
+      }
+    });
+  }
+
+  /**
+   * Format shared channel memories for injection into system prompt context
+   *
+   * @param {Array<{memory: string}>} memories - Array of memory objects
+   * @returns {string} Formatted context string
+   */
+  formatSharedMemoriesForContext(memories) {
+    if (!memories || memories.length === 0) {
+      return '';
+    }
+
+    const memoryLines = memories
+      .map(m => `- ${m.memory}`)
+      .join('\n');
+
+    return `\n\nShared knowledge in this channel:\n${memoryLines}\n`;
+  }
 }
 
 module.exports = Mem0Service;

@@ -381,7 +381,16 @@ class ImagenService {
             };
             const errorMsg = blockReasonMessages[feedback.blockReason] ||
               `Your prompt was blocked (reason: ${feedback.blockReason}). Please try a different prompt.`;
-            return { success: false, error: errorMsg };
+            return {
+              success: false,
+              error: errorMsg,
+              failureContext: {
+                type: 'safety',
+                originalPrompt: trimmedPrompt,
+                promptFeedback: feedback,
+                details: { blockReason: feedback.blockReason, safetyRatings: feedback.safetyRatings }
+              }
+            };
           }
         } else {
           logger.warn('No promptFeedback in response - Gemini returned empty candidates without explanation');
@@ -390,7 +399,16 @@ class ImagenService {
         // Log raw response structure at debug level for troubleshooting
         logger.debug(`Full response structure (no candidates): hasPromptFeedback=${!!response.promptFeedback}, hasUsageMetadata=${!!response.usageMetadata}, responseKeys=[${Object.keys(response).join(', ')}]`);
 
-        return { success: false, error: 'No image was generated. Please try a different prompt.' };
+        return {
+          success: false,
+          error: 'No image was generated. Please try a different prompt.',
+          failureContext: {
+            type: 'no_candidates',
+            originalPrompt: trimmedPrompt,
+            promptFeedback: response.promptFeedback || null,
+            details: { hasPromptFeedback: !!response.promptFeedback }
+          }
+        };
       }
 
       const candidate = response.candidates[0];
@@ -403,7 +421,12 @@ class ImagenService {
         logger.warn(`Image generation blocked by safety filter - prompt: "${trimmedPrompt.substring(0, 100)}", finishReason: ${candidate.finishReason}, safetyRatings: [${safetyInfo}]`);
         return {
           success: false,
-          error: 'Your prompt was blocked by safety filters. Please try a different prompt.'
+          error: 'Your prompt was blocked by safety filters. Please try a different prompt.',
+          failureContext: {
+            type: 'safety',
+            originalPrompt: trimmedPrompt,
+            details: { finishReason: candidate.finishReason, safetyRatings: candidate.safetyRatings }
+          }
         };
       }
 
@@ -416,7 +439,15 @@ class ImagenService {
       const content = candidate.content;
       if (!content || !content.parts) {
         logger.warn(`No content parts in image generation response - prompt: "${trimmedPrompt.substring(0, 100)}", hasContent: ${!!content}, finishReason: ${candidate.finishReason}`);
-        return { success: false, error: 'No image was generated. Please try a different prompt.' };
+        return {
+          success: false,
+          error: 'No image was generated. Please try a different prompt.',
+          failureContext: {
+            type: 'no_candidates',
+            originalPrompt: trimmedPrompt,
+            details: { hasContent: !!content, finishReason: candidate.finishReason }
+          }
+        };
       }
 
       // Find the image part in the response
@@ -427,10 +458,28 @@ class ImagenService {
         const partTypes = content.parts.map(p => Object.keys(p).join(',')).join('; ');
         if (textPart) {
           logger.warn(`Image generation returned text instead of image - prompt: "${trimmedPrompt.substring(0, 100)}", textResponse: "${textPart.text.substring(0, 200)}", partsCount: ${content.parts.length}, partTypes: [${partTypes}]`);
+          return {
+            success: false,
+            error: 'No image was generated. Please try a different prompt.',
+            failureContext: {
+              type: 'text_response',
+              originalPrompt: trimmedPrompt,
+              textResponse: textPart.text,
+              details: { partTypes, partsCount: content.parts.length }
+            }
+          };
         } else {
           logger.warn(`No image data in response parts - prompt: "${trimmedPrompt.substring(0, 100)}", partsCount: ${content.parts.length}, partTypes: [${partTypes}]`);
         }
-        return { success: false, error: 'No image was generated. Please try a different prompt.' };
+        return {
+          success: false,
+          error: 'No image was generated. Please try a different prompt.',
+          failureContext: {
+            type: 'no_candidates',
+            originalPrompt: trimmedPrompt,
+            details: { partTypes, partsCount: content.parts.length }
+          }
+        };
       }
 
       // Decode base64 image data
@@ -469,11 +518,15 @@ class ImagenService {
       logger.error(`Image generation error: ${error.message}`);
 
       let errorMessage;
+      let failureType = 'unknown';
+
       // Handle specific error types
       if (error.message.includes('rate limit') || error.message.includes('quota')) {
         errorMessage = 'API rate limit exceeded. Please try again later.';
+        failureType = 'rate_limit';
       } else if (error.message.includes('safety') || error.message.includes('blocked')) {
         errorMessage = 'Your prompt was blocked by safety filters. Please try a different prompt.';
+        failureType = 'safety';
       } else {
         errorMessage = `Image generation failed: ${error.message}`;
       }
@@ -492,7 +545,15 @@ class ImagenService {
         );
       }
 
-      return { success: false, error: errorMessage };
+      return {
+        success: false,
+        error: errorMessage,
+        failureContext: {
+          type: failureType,
+          originalPrompt: trimmedPrompt,
+          details: { errorMessage: error.message }
+        }
+      };
     }
   }
 

@@ -4,7 +4,7 @@
 require('./tracing');
 
 const http = require('http');
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, AttachmentBuilder } = require('discord.js');
 const OpenAI = require('openai');
 const fs = require('fs').promises;
 const config = require('./config/config');
@@ -26,6 +26,9 @@ const Mem0Service = require('./services/Mem0Service');
 const QdrantService = require('./services/QdrantService');
 const NickMappingService = require('./services/NickMappingService');
 const ChannelContextService = require('./services/ChannelContextService');
+const ImagePromptAnalyzerService = require('./services/ImagePromptAnalyzerService');
+const ImageRetryHandler = require('./handlers/ImageRetryHandler');
+const TextUtils = require('./utils/textUtils');
 
 // Prefix command imports disabled - using slash commands
 // const SummarizeCommand = require('./commands/summarization/SummarizeCommand');
@@ -133,6 +136,18 @@ class DiscordBot {
       try {
         this.imagenService = new ImagenService(config, this.summarizationService.mongoService);
         logger.info('Imagen (image generation) service initialized');
+
+        // Initialize Image Prompt Analyzer for failure analysis and suggestions
+        this.imagePromptAnalyzerService = new ImagePromptAnalyzerService(
+          this.openaiClient,
+          config,
+          this.summarizationService.mongoService
+        );
+        this.imageRetryHandler = new ImageRetryHandler(
+          this.imagenService,
+          this.imagePromptAnalyzerService
+        );
+        logger.info('Image prompt analyzer and retry handler initialized');
       } catch (error) {
         logger.warn(`Failed to initialize Imagen service: ${error.message}`);
       }
@@ -329,7 +344,7 @@ class DiscordBot {
 
     // Register image generation slash commands
     if (this.imagenService) {
-      this.slashCommandHandler.register(new ImagineSlashCommand(this.imagenService));
+      this.slashCommandHandler.register(new ImagineSlashCommand(this.imagenService, this.imageRetryHandler));
       logger.info('Imagen slash command registered');
     }
 
@@ -421,6 +436,11 @@ class DiscordBot {
               }
             }
           }
+
+          // Handle image retry reactions
+          if (this.imageRetryHandler?.isPendingRetry(reaction.message.id)) {
+            await this.imageRetryHandler.handleRetryReaction(reaction, user);
+          }
         });
 
       } catch (error) {
@@ -464,6 +484,12 @@ class DiscordBot {
         } catch (error) {
           logger.error(`Error fetching referenced message: ${error.message}`);
         }
+      }
+
+      // Handle @mentions of the bot - seamless entry into conversation
+      if (message.mentions.has(this.client.user)) {
+        await this._handleMentionChat(message);
+        return;
       }
 
       // Prefix commands disabled - migration to slash commands complete
@@ -542,6 +568,156 @@ class DiscordBot {
     if (process.env.DEBUG === 'true') {
       this.client.on('debug', info => logger.debug(info));
     }
+  }
+
+  /**
+   * Handle @mention of the bot in a channel
+   * Uses the 'friendly' personality for conversational interaction
+   * @param {Message} message - The Discord message mentioning the bot
+   */
+  async _handleMentionChat(message) {
+    const DEFAULT_PERSONALITY = 'friendly';
+
+    // Strip the mention from the message content to get the actual message
+    const mentionPattern = new RegExp(`<@!?${this.client.user.id}>`, 'g');
+    const userMessage = message.content.replace(mentionPattern, '').trim();
+
+    // If the user only mentioned the bot with no message, respond with a friendly greeting
+    if (!userMessage) {
+      await message.reply({
+        content: `😊 **Friendly Assistant**\n\nHey! You can ask me anything - just include your question after the @mention.`,
+        allowedMentions: { repliedUser: false }
+      });
+      return;
+    }
+
+    await withRootSpan('discord.mention_chat', {
+      'discord.channel.id': message.channel.id,
+      'discord.user.id': message.author.id,
+      'discord.user.tag': message.author.tag || message.author.username,
+      'discord.message.id': message.id,
+      'chat.personality.id': DEFAULT_PERSONALITY,
+      'chat.trigger': 'mention',
+    }, async () => {
+      // Show typing indicator
+      await message.channel.sendTyping();
+
+      const channelId = message.channel.id;
+      const guildId = message.guild?.id || null;
+
+      // Call ChatService with the friendly personality
+      const result = await this.chatService.chat(
+        DEFAULT_PERSONALITY,
+        userMessage,
+        message.author,
+        channelId,
+        guildId
+      );
+
+      if (!result.success) {
+        if (result.availablePersonalities) {
+          return message.reply({
+            content: `Something went wrong. Please try again.`,
+            allowedMentions: { repliedUser: false }
+          });
+        }
+        return message.reply({
+          content: result.error,
+          allowedMentions: { repliedUser: false }
+        });
+      }
+
+      // Format response with personality header and wrap URLs
+      const response = TextUtils.wrapUrls(
+        `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
+      );
+
+      // Convert any generated images to Discord attachments
+      const imageAttachments = this._createImageAttachments(result.images);
+
+      // Split if too long for Discord (2000 char limit)
+      if (response.length > 2000) {
+        const chunks = this._splitMessage(response, 2000);
+        for (const chunk of chunks) {
+          await message.channel.send(chunk);
+        }
+        // Send images after text chunks
+        if (imageAttachments.length > 0) {
+          await message.channel.send({ files: imageAttachments });
+        }
+      } else {
+        await message.reply({
+          content: response,
+          allowedMentions: { repliedUser: false }
+        });
+        // Send images as follow-up
+        if (imageAttachments.length > 0) {
+          await message.channel.send({ files: imageAttachments });
+        }
+      }
+    });
+  }
+
+  /**
+   * Create Discord attachments from base64 images
+   * @param {Array<{id: string, base64: string}>} images - Generated images
+   * @returns {Array<AttachmentBuilder>} Discord attachment builders
+   * @private
+   */
+  _createImageAttachments(images) {
+    const attachments = [];
+    if (!images || images.length === 0) {
+      return attachments;
+    }
+
+    for (let i = 0; i < images.length; i++) {
+      const img = images[i];
+      try {
+        const buffer = Buffer.from(img.base64, 'base64');
+        const attachment = new AttachmentBuilder(buffer, {
+          name: `generated_image_${i + 1}.png`
+        });
+        attachments.push(attachment);
+        logger.info(`Prepared image attachment: generated_image_${i + 1}.png`);
+      } catch (error) {
+        logger.error(`Failed to create image attachment: ${error.message}`);
+      }
+    }
+
+    return attachments;
+  }
+
+  /**
+   * Split a message into chunks at natural break points
+   * @param {string} text - Text to split
+   * @param {number} maxLength - Maximum length per chunk
+   * @returns {Array<string>} Array of chunks
+   * @private
+   */
+  _splitMessage(text, maxLength) {
+    const chunks = [];
+    let remaining = text;
+
+    while (remaining.length > 0) {
+      if (remaining.length <= maxLength) {
+        chunks.push(remaining);
+        break;
+      }
+
+      // Find a good break point (newline, then space)
+      let breakPoint = remaining.lastIndexOf('\n', maxLength);
+      if (breakPoint === -1 || breakPoint < maxLength / 2) {
+        breakPoint = remaining.lastIndexOf(' ', maxLength);
+      }
+      if (breakPoint === -1 || breakPoint < maxLength / 2) {
+        breakPoint = maxLength;
+      }
+
+      chunks.push(remaining.substring(0, breakPoint).trim());
+      remaining = remaining.substring(breakPoint).trim();
+    }
+
+    return chunks;
   }
 
   startRssFeedMonitoring() {

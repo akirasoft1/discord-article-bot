@@ -33,16 +33,17 @@ class ChatService {
   /**
    * Build enhanced system prompt for group conversations
    * @param {Object} personality - Personality object
-   * @param {string} memoryContext - Optional memory context to include
+   * @param {string} memoryContext - Optional personal memory context to include
    * @param {string} channelContext - Optional channel conversation context
+   * @param {string} sharedContext - Optional shared channel memory context
    * @returns {string} Enhanced system prompt
    */
-  _buildGroupSystemPrompt(personality, memoryContext = '', channelContext = '') {
+  _buildGroupSystemPrompt(personality, memoryContext = '', channelContext = '', sharedContext = '') {
     return `${personality.systemPrompt}
 
 You are in a group conversation with multiple users in a Discord channel.
 Their names appear before their messages like "[Username]: message".
-Address users by name when relevant. Do not announce when new users join the conversation.${memoryContext}${channelContext}`;
+Address users by name when relevant. Do not announce when new users join the conversation.${memoryContext}${sharedContext}${channelContext}`;
   }
 
   /**
@@ -99,22 +100,22 @@ ${context}`;
 
   /**
    * Retrieve relevant memories for a user (if Mem0 is enabled)
-   * Searches both personality-specific memories AND explicit memories from !remember
+   * Performs 3-way parallel search: personality + explicit + shared channel memories
    * @param {string} userMessage - The user's message to search for relevant memories
    * @param {string} userId - Discord user ID
    * @param {string} personalityId - Personality ID for filtering
-   * @returns {Promise<{memories: Array, context: string}>}
+   * @param {string} channelId - Optional channel ID for shared channel memories
+   * @returns {Promise<{memories: Array, context: string, sharedContext: string}>}
    * @private
    */
-  async _getRelevantMemories(userMessage, userId, personalityId) {
+  async _getRelevantMemories(userMessage, userId, personalityId, channelId = null) {
     if (!this.mem0Service || !this.mem0Service.isEnabled()) {
-      return { memories: [], context: '' };
+      return { memories: [], context: '', sharedContext: '' };
     }
 
     try {
-      // Search for both personality-specific memories AND explicit memories from !remember
-      // Run both searches in parallel for efficiency
-      const [personalityResult, explicitResult] = await Promise.all([
+      // 3-way parallel search: personality + explicit + shared channel memories
+      const searches = [
         this.mem0Service.searchMemories(userMessage, userId, {
           personalityId: personalityId,
           limit: 3
@@ -123,13 +124,25 @@ ${context}`;
           personalityId: 'explicit_memory',
           limit: 3
         })
-      ]);
+      ];
+
+      // Add shared channel memory search if channelId is provided and method exists
+      if (channelId && this.mem0Service.searchSharedChannelMemories) {
+        searches.push(
+          this.mem0Service.searchSharedChannelMemories(userMessage, channelId, { limit: 2 })
+        );
+      }
+
+      const results = await Promise.all(searches);
+      const [personalityResult, explicitResult, sharedResult] = results;
 
       // Combine results, deduplicating by memory ID
+      // Priority order: explicit > shared > personality
       const seenIds = new Set();
       const combinedMemories = [];
+      const sharedMemories = [];
 
-      // Add explicit memories first (they're user-specified, so prioritize them)
+      // Add explicit memories first (user-specified, highest priority)
       for (const memory of (explicitResult.results || [])) {
         if (memory.id && !seenIds.has(memory.id)) {
           seenIds.add(memory.id);
@@ -137,7 +150,18 @@ ${context}`;
         }
       }
 
-      // Add personality-specific memories
+      // Add shared channel memories (team knowledge, second priority)
+      if (sharedResult) {
+        for (const memory of (sharedResult.results || [])) {
+          if (memory.id && !seenIds.has(memory.id)) {
+            seenIds.add(memory.id);
+            combinedMemories.push(memory);
+            sharedMemories.push(memory);
+          }
+        }
+      }
+
+      // Add personality-specific memories (lowest priority)
       for (const memory of (personalityResult.results || [])) {
         if (memory.id && !seenIds.has(memory.id)) {
           seenIds.add(memory.id);
@@ -145,18 +169,23 @@ ${context}`;
         }
       }
 
-      // Limit to top 5 total
+      // Limit to top 5 total for personal context
       const memories = combinedMemories.slice(0, 5);
       const context = this.mem0Service.formatMemoriesForContext(memories);
 
+      // Format shared channel memories separately if method exists
+      const sharedContext = (sharedMemories.length > 0 && this.mem0Service.formatSharedMemoriesForContext)
+        ? this.mem0Service.formatSharedMemoriesForContext(sharedMemories)
+        : '';
+
       if (memories.length > 0) {
-        logger.debug(`Found ${memories.length} relevant memories for user ${userId} (explicit + ${personalityId})`);
+        logger.debug(`Found ${memories.length} relevant memories for user ${userId} (explicit + shared + ${personalityId})`);
       }
 
-      return { memories, context };
+      return { memories, context, sharedContext };
     } catch (error) {
       logger.error(`Error retrieving memories: ${error.message}`);
-      return { memories: [], context: '' };
+      return { memories: [], context: '', sharedContext: '' };
     }
   }
 
@@ -334,14 +363,15 @@ ${context}`;
       logger.info(`Chat request from ${user.username} using personality: ${personality.name} (channel: ${channelId})`);
 
       // Retrieve relevant memories for this user (if Mem0 is enabled)
+      // 3-way search: personality memories + explicit memories + shared channel memories
       // Also retrieve channel context for conversation awareness (if enabled)
-      const [{ context: memoryContext }, channelContext] = await Promise.all([
-        this._getRelevantMemories(userMessage, user.id, personalityId),
+      const [{ context: memoryContext, sharedContext }, channelContext] = await Promise.all([
+        this._getRelevantMemories(userMessage, user.id, personalityId, channelId),
         this._getChannelContext(channelId, userMessage)
       ]);
 
       // Build system prompt and format history
-      const systemPrompt = this._buildGroupSystemPrompt(personality, memoryContext, channelContext);
+      const systemPrompt = this._buildGroupSystemPrompt(personality, memoryContext, channelContext, sharedContext);
       const historyMessages = this._formatMessagesForAPI(conversation.messages || []);
 
       // Format current user message

@@ -6,7 +6,7 @@ const BaseSlashCommand = require('../base/BaseSlashCommand');
 const logger = require('../../logger');
 
 class ImagineSlashCommand extends BaseSlashCommand {
-  constructor(imagenService) {
+  constructor(imagenService, imageRetryHandler = null) {
     super({
       data: new SlashCommandBuilder()
         .setName('imagine')
@@ -38,6 +38,7 @@ class ImagineSlashCommand extends BaseSlashCommand {
     });
 
     this.imagenService = imagenService;
+    this.imageRetryHandler = imageRetryHandler;
   }
 
   async execute(interaction, context) {
@@ -69,7 +70,29 @@ class ImagineSlashCommand extends BaseSlashCommand {
     );
 
     if (!result.success) {
+      // Send basic error message first
       await this.sendError(interaction, result.error || 'Failed to generate image.');
+
+      // If we have a retry handler and failure context, offer intelligent retry options
+      if (this.imageRetryHandler && result.failureContext) {
+        try {
+          // Create a mock message object for the retry handler to use
+          const mockMessage = {
+            channel: interaction.channel,
+            guild: interaction.guild,
+            id: interaction.id
+          };
+
+          await this.imageRetryHandler.handleFailedGeneration(
+            mockMessage,
+            prompt,
+            result.failureContext,
+            interaction.user
+          );
+        } catch (retryError) {
+          logger.error(`Failed to offer retry options: ${retryError.message}`);
+        }
+      }
       return;
     }
 

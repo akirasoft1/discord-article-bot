@@ -660,4 +660,113 @@ describe('ImagenService', () => {
       });
     });
   });
+
+  // ========== EXTENDED FAILURE CONTEXT TESTS ==========
+  describe('failureContext in error responses', () => {
+    const mockUser = {
+      id: 'user123',
+      username: 'TestUser',
+      tag: 'TestUser#1234'
+    };
+
+    it('should include failureContext for safety filter rejections', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            finishReason: 'SAFETY',
+            safetyRatings: [{ category: 'HARM_CATEGORY_DANGEROUS_CONTENT', probability: 'HIGH' }]
+          }]
+        }
+      });
+
+      const result = await imagenService.generateImage('Inappropriate content', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.failureContext).toBeDefined();
+      expect(result.failureContext.type).toBe('safety');
+      expect(result.failureContext.details).toBeDefined();
+    });
+
+    it('should include failureContext for promptFeedback block', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [],
+          promptFeedback: {
+            blockReason: 'SAFETY',
+            safetyRatings: [{ category: 'HARM', probability: 'HIGH', blocked: true }]
+          }
+        }
+      });
+
+      const result = await imagenService.generateImage('Blocked content', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.failureContext).toBeDefined();
+      expect(result.failureContext.type).toBe('safety');
+      expect(result.failureContext.promptFeedback).toBeDefined();
+      expect(result.failureContext.promptFeedback.blockReason).toBe('SAFETY');
+    });
+
+    it('should include failureContext for empty candidates', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: []
+        }
+      });
+
+      const result = await imagenService.generateImage('A sunset', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.failureContext).toBeDefined();
+      expect(result.failureContext.type).toBe('no_candidates');
+    });
+
+    it('should include textResponse in failureContext when model returns text instead of image', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{ text: 'I cannot generate images of real people.' }]
+            },
+            finishReason: 'STOP'
+          }]
+        }
+      });
+
+      const result = await imagenService.generateImage('A photo of a celebrity', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.failureContext).toBeDefined();
+      expect(result.failureContext.type).toBe('text_response');
+      expect(result.failureContext.textResponse).toContain('cannot generate');
+    });
+
+    it('should include failureContext for rate limit errors', async () => {
+      mockGeminiModel.generateContent.mockRejectedValue(new Error('API rate limit exceeded'));
+
+      const result = await imagenService.generateImage('A sunset', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.failureContext).toBeDefined();
+      expect(result.failureContext.type).toBe('rate_limit');
+    });
+
+    it('should include failureContext for generic API errors', async () => {
+      mockGeminiModel.generateContent.mockRejectedValue(new Error('Unknown API error'));
+
+      const result = await imagenService.generateImage('A sunset', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.failureContext).toBeDefined();
+      expect(result.failureContext.type).toBe('unknown');
+    });
+
+    it('should include original prompt in failureContext', async () => {
+      mockGeminiModel.generateContent.mockRejectedValue(new Error('Some error'));
+
+      const result = await imagenService.generateImage('My unique prompt', {}, mockUser);
+
+      expect(result.failureContext.originalPrompt).toBe('My unique prompt');
+    });
+  });
 });

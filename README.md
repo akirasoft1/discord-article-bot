@@ -37,9 +37,19 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - **Automatic Extraction**: Mem0 extracts preferences, facts, and context from conversations
 - **Semantic Search**: Relevant memories are retrieved based on conversation context
 - **Per-User Memories**: Each user has their own memory store
+- **Shared Channel Memories**: Channel-wide facts visible to ALL users in that channel
+- **3-Way Memory Search**: Parallel retrieval of personality, explicit, and shared channel memories
 - **Personality-Scoped**: Memories can be filtered by personality for relevant context
 - **Graceful Degradation**: Bot works normally if memory service is unavailable
 - **Privacy Controls**: Users can request deletion of their memories (GDPR compliance)
+
+### Multiplayer Chat
+
+- **Participant Awareness**: Bot tracks who's active in each channel (30-minute window)
+- **Multi-User Context**: System prompt includes list of active participants
+- **@Mention Entry**: Mention the bot to start a conversation with the default personality
+- **Seamless Replies**: Reply to any bot message to continue conversations naturally
+- **Shared Context**: All users in a channel see the same conversation history per personality
 
 ### Image Generation (Nano Banana)
 
@@ -49,6 +59,8 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - **Per-User Cooldowns**: Configurable cooldown to prevent abuse
 - **Usage Tracking**: All generations tracked in MongoDB
 - **Safety Filters**: Relies on Gemini's built-in content safety
+- **Intelligent Retry**: AI analyzes failed prompts and suggests alternatives
+- **Interactive Approval**: React with 1️⃣ 2️⃣ 3️⃣ to retry with suggested prompts
 
 ### Video Generation (Veo)
 
