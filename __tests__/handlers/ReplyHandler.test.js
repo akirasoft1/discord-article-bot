@@ -515,4 +515,278 @@ describe('ReplyHandler', () => {
       expect(replyHandler.escapeRegex('🕵️')).toBe('🕵️');
     });
   });
+
+  describe('isImageGenerationMessage', () => {
+    it('should detect image generation message with Prompt prefix', () => {
+      const content = '**Prompt:** A beautiful sunset over mountains';
+      const attachments = [{ contentType: 'image/png' }];
+      expect(replyHandler.isImageGenerationMessage(content, attachments)).toBe(true);
+    });
+
+    it('should detect image generation message with image attachment', () => {
+      const content = '**Prompt:** A cyberpunk city at night';
+      const attachments = [{ contentType: 'image/jpeg' }];
+      expect(replyHandler.isImageGenerationMessage(content, attachments)).toBe(true);
+    });
+
+    it('should return false without Prompt prefix', () => {
+      const content = 'Just a regular message with an image';
+      const attachments = [{ contentType: 'image/png' }];
+      expect(replyHandler.isImageGenerationMessage(content, attachments)).toBe(false);
+    });
+
+    it('should return false without image attachment', () => {
+      const content = '**Prompt:** A beautiful sunset';
+      const attachments = [];
+      expect(replyHandler.isImageGenerationMessage(content, attachments)).toBe(false);
+    });
+
+    it('should return false for personality messages with Prompt-like content', () => {
+      const content = '🕵️ **Jack Shadows**\n\n**Prompt:** I need you to find something.';
+      const attachments = [];
+      expect(replyHandler.isImageGenerationMessage(content, attachments)).toBe(false);
+    });
+
+    it('should handle webp image attachments', () => {
+      const content = '**Prompt:** An abstract art piece';
+      const attachments = [{ contentType: 'image/webp' }];
+      expect(replyHandler.isImageGenerationMessage(content, attachments)).toBe(true);
+    });
+  });
+
+  describe('extractOriginalPrompt', () => {
+    it('should extract prompt from standard format', () => {
+      const content = '**Prompt:** A beautiful sunset over mountains';
+      expect(replyHandler.extractOriginalPrompt(content)).toBe('A beautiful sunset over mountains');
+    });
+
+    it('should extract prompt with special characters', () => {
+      const content = '**Prompt:** A "cyberpunk" city at night, neon lights & rain';
+      expect(replyHandler.extractOriginalPrompt(content)).toBe('A "cyberpunk" city at night, neon lights & rain');
+    });
+
+    it('should return null for messages without Prompt prefix', () => {
+      const content = 'Just a regular message';
+      expect(replyHandler.extractOriginalPrompt(content)).toBeNull();
+    });
+
+    it('should handle multi-line prompts (take first line only)', () => {
+      const content = '**Prompt:** A sunset over mountains\nSome other text on another line';
+      expect(replyHandler.extractOriginalPrompt(content)).toBe('A sunset over mountains');
+    });
+
+    it('should trim whitespace from extracted prompt', () => {
+      const content = '**Prompt:**   A sunset with extra spaces   ';
+      expect(replyHandler.extractOriginalPrompt(content)).toBe('A sunset with extra spaces');
+    });
+  });
+
+  describe('handleImageReply', () => {
+    let mockMessage;
+    let mockImagenService;
+    const originalPrompt = 'A beautiful sunset over mountains';
+
+    beforeEach(() => {
+      mockImagenService = {
+        generateImage: jest.fn().mockResolvedValue({
+          success: true,
+          buffer: Buffer.from('fake-image-data'),
+          mimeType: 'image/png'
+        })
+      };
+
+      // Inject the imagenService into the handler
+      replyHandler.imagenService = mockImagenService;
+
+      mockMessage = {
+        content: 'Make it more colorful and add some birds',
+        author: {
+          id: 'user123',
+          username: 'TestUser',
+          tag: 'TestUser#1234'
+        },
+        channel: {
+          id: 'channel123',
+          send: jest.fn().mockResolvedValue({}),
+          sendTyping: jest.fn().mockResolvedValue({})
+        },
+        guild: { id: 'guild456' },
+        reply: jest.fn().mockResolvedValue({})
+      };
+    });
+
+    it('should call OpenAI to generate enhanced prompt', async () => {
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      expect(mockOpenAIClient.responses.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instructions: expect.stringContaining('image generation prompt'),
+          input: expect.stringContaining(originalPrompt)
+        })
+      );
+    });
+
+    it('should include user feedback in prompt generation', async () => {
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      const callArgs = mockOpenAIClient.responses.create.mock.calls[0][0];
+      expect(callArgs.input).toContain('Make it more colorful');
+    });
+
+    it('should call ImagenService with enhanced prompt', async () => {
+      mockOpenAIClient.responses.create.mockResolvedValue({
+        output_text: 'A beautiful colorful sunset over mountains with birds flying',
+        usage: { input_tokens: 50, output_tokens: 20 }
+      });
+
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      expect(mockImagenService.generateImage).toHaveBeenCalledWith(
+        'A beautiful colorful sunset over mountains with birds flying',
+        expect.any(Object),
+        expect.objectContaining({ id: 'user123' })
+      );
+    });
+
+    it('should send regenerated image to channel', async () => {
+      mockOpenAIClient.responses.create.mockResolvedValue({
+        output_text: 'Enhanced prompt here',
+        usage: { input_tokens: 50, output_tokens: 20 }
+      });
+
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      expect(mockMessage.reply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          files: expect.arrayContaining([
+            expect.objectContaining({
+              name: expect.stringContaining('.png')
+            })
+          ])
+        })
+      );
+    });
+
+    it('should include the enhanced prompt in response', async () => {
+      mockOpenAIClient.responses.create.mockResolvedValue({
+        output_text: 'Enhanced sunset with birds',
+        usage: { input_tokens: 50, output_tokens: 20 }
+      });
+
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      expect(mockMessage.reply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('**Prompt:**')
+        })
+      );
+    });
+
+    it('should handle image generation failure gracefully', async () => {
+      mockOpenAIClient.responses.create.mockResolvedValue({
+        output_text: 'Enhanced prompt',
+        usage: { input_tokens: 50, output_tokens: 20 }
+      });
+      mockImagenService.generateImage.mockResolvedValue({
+        success: false,
+        error: 'Content blocked by safety filter'
+      });
+
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      expect(mockMessage.reply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('Failed to regenerate')
+        })
+      );
+    });
+
+    it('should handle prompt enhancement failure gracefully', async () => {
+      mockOpenAIClient.responses.create.mockRejectedValue(new Error('API Error'));
+
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      expect(mockMessage.reply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('error')
+        })
+      );
+    });
+
+    it('should show typing indicator while processing', async () => {
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      expect(mockMessage.channel.sendTyping).toHaveBeenCalled();
+    });
+  });
+
+  describe('handleReply with image generation messages', () => {
+    let mockMessage;
+    let mockReferencedMessage;
+    let mockImagenService;
+
+    beforeEach(() => {
+      mockImagenService = {
+        generateImage: jest.fn().mockResolvedValue({
+          success: true,
+          buffer: Buffer.from('fake-image-data'),
+          mimeType: 'image/png'
+        })
+      };
+
+      replyHandler.imagenService = mockImagenService;
+
+      mockMessage = {
+        content: 'Add some clouds',
+        author: {
+          id: 'user123',
+          username: 'TestUser',
+          tag: 'TestUser#1234',
+          bot: false
+        },
+        channel: {
+          id: 'channel123',
+          send: jest.fn().mockResolvedValue({}),
+          sendTyping: jest.fn().mockResolvedValue({})
+        },
+        guild: { id: 'guild456' },
+        reply: jest.fn().mockResolvedValue({})
+      };
+
+      mockReferencedMessage = {
+        author: { bot: true },
+        content: '**Prompt:** A sunset over mountains',
+        attachments: {
+          size: 1,
+          first: () => ({ contentType: 'image/png' }),
+          map: (fn) => [fn({ contentType: 'image/png' })]
+        }
+      };
+    });
+
+    it('should handle reply to image generation message', async () => {
+      const result = await replyHandler.handleReply(mockMessage, mockReferencedMessage);
+
+      expect(result).toBe(true);
+      expect(mockOpenAIClient.responses.create).toHaveBeenCalled();
+      expect(mockImagenService.generateImage).toHaveBeenCalled();
+    });
+
+    it('should prioritize personality detection over image detection', async () => {
+      // Message that looks like both personality and image
+      mockReferencedMessage.content = '🕵️ **Jack Shadows**\n\nHere is the image.';
+      mockReferencedMessage.attachments = {
+        size: 1,
+        first: () => ({ contentType: 'image/png' }),
+        map: (fn) => [fn({ contentType: 'image/png' })]
+      };
+
+      const result = await replyHandler.handleReply(mockMessage, mockReferencedMessage);
+
+      expect(result).toBe(true);
+      // Should use personality chat, not image reply
+      expect(mockChatService.chat).toHaveBeenCalled();
+      expect(mockImagenService.generateImage).not.toHaveBeenCalled();
+    });
+  });
 });

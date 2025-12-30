@@ -73,6 +73,7 @@
 - **Interactive Approval**: React with 1️⃣ 2️⃣ 3️⃣ to retry with suggested prompts, ❌ to dismiss
 - **Failure Analysis**: Detailed analysis of why prompts fail (safety, rate limits, etc.)
 - **Learning Loop**: Retry attempts tracked in MongoDB to improve future suggestions
+- **Reply to Regenerate**: Reply to any generated image with feedback to create an enhanced version
 
 ### Video Generation (Veo)
 - **AI Video Generation**: Generate videos using Google's Veo 3.1
