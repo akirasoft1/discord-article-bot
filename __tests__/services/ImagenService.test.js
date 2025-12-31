@@ -77,6 +77,106 @@ describe('ImagenService', () => {
 
       expect(() => new ImagenService(noKeyConfig)).toThrow('GEMINI_API_KEY is required');
     });
+
+    it('should initialize admin model when adminModel is configured', () => {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      GoogleGenerativeAI.mockClear();
+
+      const adminConfig = {
+        imagen: {
+          ...mockConfig.imagen,
+          adminModel: 'gemini-3-pro-image-preview'
+        },
+        discord: {
+          adminUserIds: ['admin123']
+        }
+      };
+
+      const service = new ImagenService(adminConfig, mockMongoService);
+
+      // Should have called getGenerativeModel twice (default + admin)
+      const genAIInstance = GoogleGenerativeAI.mock.results[0].value;
+      expect(genAIInstance.getGenerativeModel).toHaveBeenCalledTimes(2);
+      expect(service.adminModel).not.toBeNull();
+    });
+
+    it('should not initialize admin model when adminModel is empty', () => {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      GoogleGenerativeAI.mockClear();
+
+      const noAdminConfig = {
+        imagen: {
+          ...mockConfig.imagen,
+          adminModel: ''
+        }
+      };
+
+      const service = new ImagenService(noAdminConfig, mockMongoService);
+
+      // Should have called getGenerativeModel once (default only)
+      const genAIInstance = GoogleGenerativeAI.mock.results[0].value;
+      expect(genAIInstance.getGenerativeModel).toHaveBeenCalledTimes(1);
+      expect(service.adminModel).toBeNull();
+    });
+  });
+
+  describe('admin model selection', () => {
+    let adminService;
+    const adminUserId = 'admin123';
+    const regularUserId = 'user456';
+
+    beforeEach(() => {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      GoogleGenerativeAI.mockClear();
+
+      const adminConfig = {
+        imagen: {
+          ...mockConfig.imagen,
+          adminModel: 'gemini-3-pro-image-preview'
+        },
+        discord: {
+          adminUserIds: [adminUserId]
+        }
+      };
+
+      adminService = new ImagenService(adminConfig, mockMongoService);
+    });
+
+    describe('isAdmin', () => {
+      it('should return true for admin user IDs', () => {
+        expect(adminService.isAdmin(adminUserId)).toBe(true);
+      });
+
+      it('should return false for non-admin user IDs', () => {
+        expect(adminService.isAdmin(regularUserId)).toBe(false);
+      });
+
+      it('should return false for undefined user ID', () => {
+        expect(adminService.isAdmin(undefined)).toBe(false);
+      });
+    });
+
+    describe('getModelForUser', () => {
+      it('should return admin model for admin users', () => {
+        const result = adminService.getModelForUser(adminUserId);
+
+        expect(result.modelName).toBe('gemini-3-pro-image-preview');
+        expect(result.model).toBe(adminService.adminModel);
+      });
+
+      it('should return default model for regular users', () => {
+        const result = adminService.getModelForUser(regularUserId);
+
+        expect(result.modelName).toBe('gemini-3-pro-image-preview');
+        expect(result.model).toBe(adminService.model);
+      });
+
+      it('should return default model when user ID is undefined', () => {
+        const result = adminService.getModelForUser(undefined);
+
+        expect(result.model).toBe(adminService.model);
+      });
+    });
   });
 
   describe('validatePrompt', () => {
