@@ -61,6 +61,7 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - **Safety Filters**: Relies on Gemini's built-in content safety
 - **Intelligent Retry**: AI analyzes failed prompts and suggests alternatives
 - **Interactive Approval**: React with 1️⃣ 2️⃣ 3️⃣ to retry with suggested prompts
+- **Reply to Regenerate**: Reply to a generated image with feedback to create an enhanced version
 
 ### Video Generation (Veo)
 
