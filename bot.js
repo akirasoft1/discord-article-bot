@@ -153,6 +153,9 @@ class DiscordBot {
           this.imagePromptAnalyzerService
         );
         logger.info('Image prompt analyzer and retry handler initialized');
+
+        // Inject imagenService into replyHandler for image regeneration support
+        this.replyHandler.imagenService = this.imagenService;
       } catch (error) {
         logger.warn(`Failed to initialize Imagen service: ${error.message}`);
       }

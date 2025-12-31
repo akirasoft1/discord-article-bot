@@ -1,5 +1,5 @@
 // handlers/ReplyHandler.js
-// Handles replies to bot messages for personality chats and summarization follow-ups
+// Handles replies to bot messages for personality chats, summarization follow-ups, and image regeneration
 
 const { AttachmentBuilder } = require('discord.js');
 const logger = require('../logger');
@@ -9,11 +9,12 @@ const { withRootSpan, withSpan, setSpanAttributes } = require('../tracing');
 const { DISCORD, REPLY, ERROR, CHAT, SUMMARIZATION } = require('../tracing-attributes');
 
 class ReplyHandler {
-  constructor(chatService, summarizationService, openaiClient, config) {
+  constructor(chatService, summarizationService, openaiClient, config, imagenService = null) {
     this.chatService = chatService;
     this.summarizationService = summarizationService;
     this.openaiClient = openaiClient;
     this.config = config;
+    this.imagenService = imagenService;
   }
 
   /**
@@ -62,6 +63,23 @@ class ReplyHandler {
         });
         await this.handleSummarizationReply(message, botContent);
         return true;
+      }
+
+      // Try to detect if this is an image generation message
+      const attachments = referencedMessage.attachments?.map?.(a => a) ||
+                          (referencedMessage.attachments?.size > 0 ?
+                            [referencedMessage.attachments.first()] : []);
+      if (this.isImageGenerationMessage(botContent, attachments)) {
+        const originalPrompt = this.extractOriginalPrompt(botContent);
+        if (originalPrompt && this.imagenService) {
+          logger.info(`Detected reply to image generation: "${originalPrompt.substring(0, 50)}..."`);
+          span.setAttributes({
+            [REPLY.TYPE]: 'image_regeneration',
+            'image.original_prompt': originalPrompt.substring(0, 100),
+          });
+          await this.handleImageReply(message, originalPrompt);
+          return true;
+        }
       }
 
       span.setAttribute(REPLY.TYPE, 'unhandled');
@@ -180,6 +198,169 @@ class ReplyHandler {
     }
 
     return summaryLines.join('\n').trim();
+  }
+
+  /**
+   * Check if a message is an image generation result
+   * Image generation messages have format: "**Prompt:** <prompt>" + image attachment
+   * @param {string} content - The bot message content
+   * @param {Array} attachments - Array of message attachments
+   * @returns {boolean} True if this is an image generation message
+   */
+  isImageGenerationMessage(content, attachments) {
+    // Must start with **Prompt:** (not nested in personality format)
+    if (!content.startsWith('**Prompt:**')) {
+      return false;
+    }
+
+    // Must have at least one image attachment
+    if (!attachments || attachments.length === 0) {
+      return false;
+    }
+
+    // Check if any attachment is an image
+    const validImageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
+    const hasImageAttachment = attachments.some(att =>
+      att.contentType && validImageTypes.includes(att.contentType)
+    );
+
+    return hasImageAttachment;
+  }
+
+  /**
+   * Extract the original prompt from an image generation message
+   * @param {string} content - The bot message content
+   * @returns {string|null} The original prompt or null if not found
+   */
+  extractOriginalPrompt(content) {
+    // Match "**Prompt:** <text>" format
+    const match = content.match(/^\*\*Prompt:\*\*\s*(.+?)(?:\n|$)/);
+    if (!match) {
+      return null;
+    }
+    return match[1].trim();
+  }
+
+  /**
+   * Handle a reply to an image generation message (regeneration with feedback)
+   * @param {Message} message - The user's reply message with feedback
+   * @param {string} originalPrompt - The original image prompt
+   */
+  async handleImageReply(message, originalPrompt) {
+    return withSpan('discord.reply.image_regeneration', {
+      [DISCORD.CHANNEL_ID]: message.channel.id,
+      'image.original_prompt': originalPrompt.substring(0, 100),
+    }, async (span) => {
+      const userFeedback = message.content;
+
+      // Show typing indicator
+      await message.channel.sendTyping();
+
+      try {
+        // Use AI to combine original prompt with user feedback
+        const enhancedPrompt = await this._enhancePromptWithFeedback(originalPrompt, userFeedback);
+        span.setAttribute('image.enhanced_prompt', enhancedPrompt.substring(0, 100));
+
+        logger.info(`Enhanced prompt: "${enhancedPrompt.substring(0, 100)}..."`);
+
+        // Generate new image with enhanced prompt
+        const result = await this.imagenService.generateImage(
+          enhancedPrompt,
+          {},
+          { id: message.author.id, tag: message.author.tag || message.author.username }
+        );
+
+        if (!result.success) {
+          span.setAttributes({
+            [ERROR.TYPE]: 'image_generation_failed',
+            [ERROR.MESSAGE]: result.error,
+          });
+          await message.reply({
+            content: `Failed to regenerate image: ${result.error}`,
+            allowedMentions: { repliedUser: false }
+          });
+          return;
+        }
+
+        // Get file extension from MIME type
+        const extension = this._getImageExtension(result.mimeType);
+        const filename = `regenerated_${Date.now()}.${extension}`;
+
+        // Create attachment
+        const attachment = new AttachmentBuilder(result.buffer, {
+          name: filename,
+          description: enhancedPrompt.substring(0, 100)
+        });
+
+        // Send regenerated image
+        await message.reply({
+          content: `**Prompt:** ${enhancedPrompt}`,
+          files: [attachment],
+          allowedMentions: { repliedUser: false }
+        });
+
+        logger.info(`Regenerated image for ${message.author.tag || message.author.username}`);
+
+      } catch (error) {
+        logger.error(`Error handling image reply: ${error.message}`);
+        span.setAttributes({
+          [ERROR.TYPE]: error.name || 'Error',
+          [ERROR.MESSAGE]: error.message,
+        });
+        await message.reply({
+          content: `Sorry, I encountered an error while processing your image request: ${error.message}`,
+          allowedMentions: { repliedUser: false }
+        });
+      }
+    });
+  }
+
+  /**
+   * Enhance an image prompt with user feedback using AI
+   * @param {string} originalPrompt - The original image prompt
+   * @param {string} userFeedback - User's feedback/modification request
+   * @returns {Promise<string>} Enhanced prompt
+   * @private
+   */
+  async _enhancePromptWithFeedback(originalPrompt, userFeedback) {
+    const systemPrompt = `You are an expert at crafting image generation prompts. Your task is to take an original image generation prompt and user feedback, then create an improved prompt that incorporates the requested changes.
+
+Rules:
+- Keep the enhanced prompt concise (under 200 words)
+- Preserve the core subject and style of the original prompt unless the user specifically asks to change it
+- Incorporate the user's feedback naturally
+- Output ONLY the new prompt text, nothing else - no explanations, no quotation marks, no prefixes
+- Maintain image generation best practices (clear descriptions, style cues, composition hints)`;
+
+    const userInput = `Original prompt: "${originalPrompt}"
+
+User feedback: "${userFeedback}"
+
+Create an enhanced prompt that incorporates this feedback:`;
+
+    const response = await this.openaiClient.responses.create({
+      model: this.config.openai.model || 'gpt-4.1-mini',
+      instructions: systemPrompt,
+      input: userInput,
+    });
+
+    return response.output_text.trim();
+  }
+
+  /**
+   * Get file extension from MIME type
+   * @param {string} mimeType - The MIME type
+   * @returns {string} File extension
+   * @private
+   */
+  _getImageExtension(mimeType) {
+    const extensions = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/gif': 'gif',
+      'image/webp': 'webp'
+    };
+    return extensions[mimeType] || 'png';
   }
 
   /**
