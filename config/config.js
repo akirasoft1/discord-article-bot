@@ -40,8 +40,7 @@ module.exports = {
     // Optional: Guild ID for development (instant command updates)
     testGuildId: process.env.DISCORD_TEST_GUILD_ID || '',
     intents: ['Guilds', 'GuildMessages', 'GuildMessageReactions', 'MessageContent'],
-    prefix: process.env.DISCORD_PREFIX || '!',
-    // Bot admin user IDs (comma-separated) - these users can run admin commands like !chatreset
+    // Bot admin user IDs (comma-separated) - these users can run admin commands
     adminUserIds: process.env.BOT_ADMIN_USER_IDS ? process.env.BOT_ADMIN_USER_IDS.split(',').map(id => id.trim()) : []
   },
   openai: {

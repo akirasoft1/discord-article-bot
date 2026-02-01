@@ -22,7 +22,7 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
   - 🕵️ **Jack Shadows** - Hardboiled 1940s detective with noir prose
   - 🤔 **Erik the Existentialist** - Philosophy grad student who spirals into existential questions
   - 💾 **x0r_kid** - 90s IRC gamer kid with leet speak and old-school internet vibes
-- **Default Personality**: Just use `!chat <message>` - defaults to friendly assistant
+- **Default Personality**: Just use `/chat <message>` - defaults to friendly assistant
 - **Image Vision**: Attach images to chat messages for the bot to analyze and discuss
 - **Web Search**: Bot can search the web for current information when needed
 - **Extensible**: Add new personalities by dropping a `.js` file in `personalities/`
@@ -146,32 +146,33 @@ discord-article-bot/
 ├── config/
 │   └── config.js                 # Configuration management
 ├── commands/
-│   ├── CommandHandler.js         # Command registry
 │   ├── base/
-│   │   └── BaseCommand.js        # Base command class
-│   ├── summarization/
-│   │   ├── SummarizeCommand.js   # !summarize
-│   │   └── ReSummarizeCommand.js # !resummarize
-│   ├── chat/
-│   │   ├── ChatCommand.js        # !chat (with image vision)
-│   │   ├── ChatListCommand.js    # !chatlist
-│   │   ├── PersonalitiesCommand.js # !personalities
-│   │   ├── ResetChatCommand.js   # !chatreset (admin)
-│   │   └── ResumeChatCommand.js  # !chatresume
-│   ├── image/
-│   │   └── ImagineCommand.js     # !imagine
-│   ├── video/
-│   │   └── VideogenCommand.js    # !videogen
-│   ├── irc/
-│   │   ├── RecallCommand.js      # !recall (semantic search)
-│   │   ├── HistoryCommand.js     # !history (user history)
-│   │   └── ThrowbackCommand.js   # !throwback (this day in history)
-│   ├── memory/
-│   │   ├── MemoriesCommand.js    # !memories
-│   │   ├── RememberCommand.js    # !remember
-│   │   └── ForgetCommand.js      # !forget
-│   └── utility/
-│       └── HelpCommand.js        # !help
+│   │   └── BaseSlashCommand.js   # Base slash command class
+│   └── slash/                    # All slash command implementations
+│       ├── index.js              # Command exports
+│       ├── ChatCommand.js        # /chat
+│       ├── ChatThreadCommand.js  # /chatthread
+│       ├── PersonalitiesCommand.js # /personalities
+│       ├── ChatResetCommand.js   # /chatreset (admin)
+│       ├── ChatResumeCommand.js  # /chatresume
+│       ├── ChatListCommand.js    # /chatlist
+│       ├── SummarizeCommand.js   # /summarize
+│       ├── ResummarizeCommand.js # /resummarize
+│       ├── ImagineCommand.js     # /imagine
+│       ├── VideogenCommand.js    # /videogen
+│       ├── MemoriesCommand.js    # /memories
+│       ├── RememberCommand.js    # /remember
+│       ├── ForgetCommand.js      # /forget
+│       ├── RecallCommand.js      # /recall
+│       ├── HistoryCommand.js     # /history
+│       ├── ThrowbackCommand.js   # /throwback
+│       ├── HelpCommand.js        # /help
+│       ├── ContextCommand.js     # /context
+│       └── ChannelTrackCommand.js # /channeltrack
+├── handlers/
+│   ├── SlashCommandHandler.js    # Slash command registry & executor
+│   ├── ReactionHandler.js        # Discord reactions
+│   └── ReplyHandler.js           # Reply handling for chats and summaries
 ├── personalities/                # Personality definitions
 │   ├── index.js                  # Personality manager
 │   ├── friendly-assistant.js     # Default friendly personality
@@ -193,9 +194,6 @@ discord-article-bot/
 │   ├── TokenService.js           # Token counting
 │   ├── CostService.js            # Cost tracking
 │   └── ...
-├── handlers/
-│   ├── ReactionHandler.js        # Discord reactions
-│   └── ReplyHandler.js           # Reply handling for chats and summaries
 └── utils/
     ├── urlUtils.js
     ├── textUtils.js
@@ -217,7 +215,8 @@ discord-article-bot/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DISCORD_PREFIX` | `!` | Command prefix |
+| `DISCORD_CLIENT_ID` | `` | Discord application client ID (for slash commands) |
+| `DISCORD_TEST_GUILD_ID` | `` | Guild ID for instant command updates during development |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API endpoint |
 | `OPENAI_MODEL` | `gpt-5.1` | Model for summarization |
 | `BOT_ADMIN_USER_IDS` | `` | Comma-separated Discord user IDs for bot admins |
@@ -258,102 +257,74 @@ discord-article-bot/
 
 ## Commands
 
+All commands use Discord's native slash command system. Type `/` to see available commands with autocomplete.
+
 ### Summarization
-| Command | Aliases | Description |
-|---------|---------|-------------|
-| `!summarize <url>` | `!sum` | Summarize an article |
-| `!resummarize <url>` | `!resum` | Force re-summarization |
+| Command | Description |
+|---------|-------------|
+| `/summarize url:<url>` | Summarize an article |
+| `/resummarize url:<url>` | Force re-summarization (bypass cache) |
 
 ### Personality Chat
-| Command | Aliases | Description |
-|---------|---------|-------------|
-| `!chat [personality] <message>` | `!c`, `!talk` | Chat with a personality (defaults to friendly) |
-| `!chat <message> [image]` | | Chat about an attached image |
-| `!personalities` | `!chars` | List available personalities |
-| `!chatlist` | `!chats`, `!listchats` | List your resumable conversations |
-| `!chatresume <personality> <message>` | `!resumechat` | Resume an expired conversation |
-| `!chatreset <personality>` | `!resetchat`, `!cr` | Reset a conversation (admin only) |
+| Command | Description |
+|---------|-------------|
+| `/chat message:<text>` | Chat with a personality (defaults to friendly) |
+| `/chat message:<text> personality:<name>` | Chat with a specific personality |
+| `/chat message:<text> image:<file>` | Chat about an attached image |
+| `/chatthread message:<text>` | Start a dedicated chat thread |
+| `/personalities` | List available personalities |
+| `/chatlist` | List your resumable conversations |
+| `/chatresume personality:<name> message:<text>` | Resume an expired conversation |
+| `/chatreset personality:<name>` | Reset a conversation (admin only) |
 
 ### Image Generation
-| Command | Aliases | Description |
-|---------|---------|-------------|
-| `!imagine <prompt>` | `!img`, `!generate` | Generate an image from a prompt |
-| `!imagine <prompt> --ratio 16:9` | | Generate with custom aspect ratio |
-| `!imagine <image_url> <prompt>` | | Edit/transform a reference image |
-
-**Examples:**
-- `!imagine A sunset over mountains` - Generate from text
-- `!imagine A cyberpunk city --ratio 16:9` - With aspect ratio
-- `!imagine https://example.com/photo.jpg Make this a watercolor painting` - Edit image
-- `!img Turn this into anime style https://example.com/image.png -r 16:9` - Edit with ratio
+| Command | Description |
+|---------|-------------|
+| `/imagine prompt:<text>` | Generate an image from a prompt |
+| `/imagine prompt:<text> ratio:<ratio>` | Generate with custom aspect ratio |
+| `/imagine prompt:<text> reference:<image>` | Edit/transform a reference image |
 
 **Supported Aspect Ratios:** 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
 
 ### Video Generation
-| Command | Aliases | Description |
-|---------|---------|-------------|
-| `!videogen <prompt>` | `!vg`, `!veo`, `!video` | Generate a video from text description (text-to-video) |
-| `!videogen <image_url> <prompt>` | | Generate a video from a single image (image-to-video) |
-| `!videogen <first_url> <last_url> <prompt>` | | Generate a video from first and last frame images |
-| `!videogen ... --duration 6` | | Set video duration (4, 6, or 8 seconds) |
-| `!videogen ... --ratio 9:16` | | Set aspect ratio (16:9 or 9:16) |
-
-**Text-Only Mode** (text-to-video):
-- `!videogen A sunset over the ocean with waves crashing` - Generate from text description
-- `!vg A bird flying through clouds --duration 6` - With custom duration
-- `!video A spaceship launching into orbit -r 9:16` - With portrait aspect ratio
-
-**Single Image Mode** (image-to-video):
-- `!videogen https://example.com/photo.jpg A camera panning across the scene` - Animate a single image
-- `!vg <:emoji:123> The emoji spinning --duration 4` - Animate a Discord emoji
-
-**Two Image Mode** (first & last frame):
-- `!videogen https://example.com/morning.jpg https://example.com/night.jpg Day turning to night` - Transition between frames
-- `!vg https://example.com/start.png https://example.com/end.png A flower blooming -d 6` - With duration
-- `!video <:emoji1:123> <:emoji2:456> The emoji transforming -r 9:16` - Using Discord emojis
+| Command | Description |
+|---------|-------------|
+| `/videogen prompt:<text>` | Generate a video from text (text-to-video) |
+| `/videogen prompt:<text> first_frame:<image>` | Animate a single image |
+| `/videogen prompt:<text> first_frame:<image> last_frame:<image>` | First and last frame transition |
+| `/videogen prompt:<text> duration:<4\|6\|8>` | Set video duration |
+| `/videogen prompt:<text> aspect_ratio:<16:9\|9:16>` | Set aspect ratio |
 
 **Requirements:**
-- A text prompt describing the video (required for all modes)
-- Zero, one, or two PNG/JPEG images (optional)
 - Google Cloud service account with Vertex AI permissions
 - GCS bucket for video output storage
 
 ### Memory Management
-| Command | Aliases | Description |
-|---------|---------|-------------|
-| `!memories` | `!mems`, `!recall-memories` | View your stored memories |
-| `!remember <fact>` | `!mem`, `!store` | Manually store a memory about yourself |
-| `!forget [search]` | `!forgetme`, `!delete-memory` | Delete memories (all or matching search) |
-
-**Examples:**
-- `!memories` - View all your stored memories
-- `!remember I prefer dark mode` - Store a preference
-- `!forget` - Delete all your memories
-- `!forget dark mode` - Delete memories matching "dark mode"
+| Command | Description |
+|---------|-------------|
+| `/memories` | View your stored memories |
+| `/remember fact:<text>` | Manually store a memory about yourself |
+| `/forget` | Delete all your memories |
+| `/forget search:<text>` | Delete memories matching search |
 
 ### IRC History Search
-| Command | Aliases | Description |
-|---------|---------|-------------|
-| `!recall <query>` | `!irc`, `!ircsearch` | Semantic search through IRC history |
-| `!recall <query> --me` | | Filter to your own IRC conversations |
-| `!recall <query> --year 2015` | | Filter by specific year |
-| `!history [@user]` | `!irchistory`, `!myirc` | View IRC history for yourself or mentioned user |
-| `!throwback` | `!tbt`, `!onthisday`, `!otd` | Random conversation from this day in history |
+| Command | Description |
+|---------|-------------|
+| `/recall query:<text>` | Semantic search through IRC history |
+| `/recall query:<text> my_messages:true` | Filter to your own IRC conversations |
+| `/recall query:<text> year:<year>` | Filter by specific year |
+| `/history` | View your own IRC history |
+| `/history user:<@user>` | View a user's IRC history |
+| `/throwback` | Random conversation from this day in history |
 
-**Examples:**
-- `!recall funny story about gaming` - Search all IRC history
-- `!recall lan party --me` - Search only your conversations
-- `!irc that time we broke the server --year 2010` - Search specific year
-- `!history` - View your own IRC history
-- `!history @friend` - View a friend's IRC history
-- `!throwback` - See what was happening on this date years ago
-
-**Note:** IRC commands require Discord-to-IRC nick mapping in `config/nick_mappings.json`. Commands are hidden when Qdrant service is unavailable.
+**Note:** IRC commands require Discord-to-IRC nick mapping. Commands are hidden when Qdrant service is unavailable.
 
 ### Utility
-| Command | Aliases | Description |
-|---------|---------|-------------|
-| `!help [command]` | `!h` | Show help |
+| Command | Description |
+|---------|-------------|
+| `/help` | Show all commands and usage |
+| `/context` | View channel conversation context |
+| `/channeltrack` | Manage channel tracking (admin only) |
 
 ## Adding New Personalities
 
