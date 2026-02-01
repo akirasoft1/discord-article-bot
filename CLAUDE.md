@@ -123,6 +123,35 @@ For larger features, commit checkpoints along the way:
    kubectl rollout status deployment/discord-article-bot -n discord-article-bot
    ```
 
+### NetworkPolicy Configuration
+
+**IMPORTANT**: This namespace uses a restrictive NetworkPolicy that blocks egress to private IP ranges by default.
+
+When adding a new external service integration (especially services on local/home network IPs like `192.168.x.x`, `10.x.x.x`, `172.16.x.x`):
+
+1. **Update the NetworkPolicy** in `k8s/overlays/deployed/networkpolicy.yaml`
+2. Add an egress rule for the specific IP and port:
+   ```yaml
+   # Example: Allow Local LLM (Ollama) on home network
+   - to:
+       - ipBlock:
+           cidr: 192.168.1.164/32
+     ports:
+       - protocol: TCP
+         port: 11434
+   ```
+3. Apply the change: `kubectl apply -f k8s/overlays/deployed/networkpolicy.yaml -n discord-article-bot`
+4. Restart the pod to re-initialize the service
+
+**Debugging connectivity issues**:
+```bash
+# Check current NetworkPolicy
+kubectl get networkpolicies -n discord-article-bot -o yaml
+
+# Test connectivity from a fresh pod (no NetworkPolicy restrictions)
+kubectl run test-curl --rm -it --image=curlimages/curl -- curl http://<ip>:<port>/endpoint
+```
+
 ## Slash Command Development Guidelines
 
 When creating or modifying slash commands:
