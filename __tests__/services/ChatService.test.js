@@ -32,7 +32,19 @@ jest.mock('../../personalities', () => ({
   list: jest.fn(() => [
     { id: 'test-personality', name: 'Test Character', emoji: '🧪', description: 'A test personality' }
   ]),
-  exists: jest.fn((id) => id === 'test-personality')
+  exists: jest.fn((id) => id === 'test-personality'),
+  checkAvailability: jest.fn((id) => {
+    if (id === 'test-personality') {
+      return { exists: true, available: true, reason: null };
+    }
+    return { exists: false, available: false, reason: null };
+  }),
+  getSystemPrompt: jest.fn((id, useUncensored) => {
+    if (id === 'test-personality') {
+      return 'You are a test character.';
+    }
+    return null;
+  })
 }));
 
 describe('ChatService', () => {

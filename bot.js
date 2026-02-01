@@ -29,6 +29,7 @@ const ImagePromptAnalyzerService = require('./services/ImagePromptAnalyzerServic
 const ImageRetryHandler = require('./handlers/ImageRetryHandler');
 const TextUtils = require('./utils/textUtils');
 const localLlmService = require('./services/LocalLlmService');
+const personalityManager = require('./personalities');
 
 const { version } = require('./package.json');
 
@@ -193,11 +194,19 @@ class DiscordBot {
     }
 
     // Initialize Local LLM service for uncensored chat mode
+    // Wire up to personality manager so local-LLM-only personalities are filtered appropriately
+    personalityManager.setLocalLlmService(localLlmService);
+
     if (config.localLlm?.enabled) {
       localLlmService.initialize()
         .then(success => {
           if (success) {
             logger.info('Local LLM service ready for uncensored mode');
+            // Log available local-LLM personalities now that service is ready
+            const localLlmPersonalities = personalityManager.list().filter(p => p.useLocalLlm);
+            if (localLlmPersonalities.length > 0) {
+              logger.info(`Local LLM personalities available: ${localLlmPersonalities.map(p => p.id).join(', ')}`);
+            }
           } else {
             logger.warn('Local LLM service failed to initialize - uncensored mode unavailable');
           }

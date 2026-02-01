@@ -323,12 +323,23 @@ ${context}`;
     const personality = personalityManager.get(personalityId);
 
     if (!personality) {
+      // Check if personality exists but is unavailable (e.g., local LLM not running)
+      const availability = personalityManager.checkAvailability(personalityId);
+      if (availability.exists && !availability.available) {
+        return {
+          success: false,
+          error: availability.reason
+        };
+      }
       return {
         success: false,
         error: `Unknown personality: ${personalityId}`,
         availablePersonalities: personalityManager.list()
       };
     }
+
+    // Check if personality requires local LLM (or user explicitly requested uncensored)
+    const shouldUseLocalLlm = useUncensored || personality.useLocalLlm;
 
     // If no channelId provided, fall back to stateless mode (backwards compatibility)
     if (!channelId || !this.mongoService) {
@@ -408,9 +419,9 @@ ${context}`;
       let outputTokens = 0;
       let generatedImages = [];
 
-      if (useUncensored && localLlmService.isEnabled()) {
-        // Use local LLM for uncensored response
-        // Get uncensored system prompt if available
+      if (shouldUseLocalLlm && localLlmService.isAvailable()) {
+        // Use local LLM for uncensored response or local-LLM-only personality
+        // Get uncensored system prompt if available, otherwise use standard prompt
         const uncensoredSystemPrompt = personalityManager.getSystemPrompt(personalityId, true) || systemPrompt;
 
         // Build messages array for chat.completions API
@@ -420,7 +431,7 @@ ${context}`;
           { role: 'user', content: formattedUserMessage }
         ];
 
-        logger.info(`Using local LLM for uncensored response (personality: ${personalityId})`);
+        logger.info(`Using local LLM for response (personality: ${personalityId}, reason: ${personality.useLocalLlm ? 'personality requires local LLM' : 'user requested uncensored'})`);
         assistantMessage = await localLlmService.generateCompletion(messages);
 
         // Local LLM doesn't provide token counts, estimate them

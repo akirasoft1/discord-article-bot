@@ -8,7 +8,16 @@ const logger = require('../logger');
 class PersonalityManager {
   constructor() {
     this.personalities = new Map();
+    this.localLlmService = null;
     this.loadPersonalities();
+  }
+
+  /**
+   * Set the local LLM service reference for filtering personalities
+   * @param {Object} localLlmService - The LocalLlmService instance
+   */
+  setLocalLlmService(localLlmService) {
+    this.localLlmService = localLlmService;
   }
 
   /**
@@ -53,20 +62,73 @@ class PersonalityManager {
   }
 
   /**
-   * Get a personality by ID
+   * Get a personality by ID (only if available)
+   * @param {string} id - The personality ID
+   * @returns {Object|null} The personality or null if not found/unavailable
+   */
+  get(id) {
+    const personality = this.personalities.get(id);
+    if (!personality) return null;
+
+    // Check if personality is available
+    if (!this.isPersonalityAvailable(personality)) {
+      return null;
+    }
+
+    return personality;
+  }
+
+  /**
+   * Get a personality by ID regardless of availability (for error messages)
    * @param {string} id - The personality ID
    * @returns {Object|null} The personality or null if not found
    */
-  get(id) {
+  getRaw(id) {
     return this.personalities.get(id) || null;
   }
 
   /**
-   * Get all available personalities
+   * Check if a personality exists but is unavailable due to missing service
+   * @param {string} id - The personality ID
+   * @returns {{exists: boolean, available: boolean, reason: string|null}}
+   */
+  checkAvailability(id) {
+    const personality = this.personalities.get(id);
+    if (!personality) {
+      return { exists: false, available: false, reason: null };
+    }
+
+    if (personality.useLocalLlm && (!this.localLlmService || !this.localLlmService.isAvailable())) {
+      return {
+        exists: true,
+        available: false,
+        reason: 'This personality requires the local LLM service which is currently unavailable'
+      };
+    }
+
+    return { exists: true, available: true, reason: null };
+  }
+
+  /**
+   * Check if a personality requiring local LLM should be available
+   * @param {Object} personality - The personality to check
+   * @returns {boolean} True if the personality should be available
+   */
+  isPersonalityAvailable(personality) {
+    // If personality requires local LLM, check if service is available
+    if (personality.useLocalLlm) {
+      return this.localLlmService && this.localLlmService.isAvailable();
+    }
+    return true;
+  }
+
+  /**
+   * Get all available personalities (filtered by service availability)
    * @returns {Array} Array of personality objects
    */
   getAll() {
-    return Array.from(this.personalities.values());
+    return Array.from(this.personalities.values())
+      .filter(p => this.isPersonalityAvailable(p));
   }
 
   /**
@@ -78,7 +140,8 @@ class PersonalityManager {
       id: p.id,
       name: p.name,
       description: p.description,
-      emoji: p.emoji || '🎭'
+      emoji: p.emoji || '🎭',
+      useLocalLlm: p.useLocalLlm || false
     }));
   }
 
