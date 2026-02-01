@@ -28,7 +28,7 @@ class ChatSlashCommand extends BaseSlashCommand {
             .setMaxLength(2000))
         .addStringOption(option => {
           option.setName('personality')
-            .setDescription('Which personality to chat with (default: friendly)')
+            .setDescription('Which personality to chat with (default: uncensored if available, otherwise friendly)')
             .setRequired(false);
           // Add choices if we have them
           if (choices.length > 0) {
@@ -52,7 +52,9 @@ class ChatSlashCommand extends BaseSlashCommand {
   }
 
   async execute(interaction, context) {
-    const personalityId = interaction.options.getString('personality') || 'friendly';
+    // Default to uncensored if local LLM is available, otherwise friendly
+    const defaultPersonality = personalityManager.get('uncensored') ? 'uncensored' : 'friendly';
+    const personalityId = interaction.options.getString('personality') || defaultPersonality;
     const userMessage = interaction.options.getString('message');
     const attachment = interaction.options.getAttachment('image');
     const useUncensored = interaction.options.getBoolean('uncensored') || false;
@@ -121,8 +123,9 @@ class ChatSlashCommand extends BaseSlashCommand {
     }
 
     // Format response with personality header and wrap URLs
-    // Add unlock emoji if uncensored mode was used
-    const uncensoredIndicator = useUncensored ? ' \uD83D\uDD13' : '';
+    // Add unlock emoji if local LLM was used (either via uncensored option or uncensored personality)
+    const usedLocalLlm = useUncensored || personalityId === 'uncensored';
+    const uncensoredIndicator = usedLocalLlm ? ' \uD83D\uDD13' : '';
     const response = TextUtils.wrapUrls(
       `${result.personality.emoji} **${result.personality.name}**${uncensoredIndicator}\n\n${result.message}`
     );
