@@ -33,6 +33,14 @@
 - **Extensible System**: Add new personalities via `.js` files
 - **Per-user Token Tracking**: Usage recorded per personality
 
+### Uncensored Mode (Local LLM)
+- **Local LLM Support**: Route chat requests to a local Ollama instance for less restricted responses
+- **Opt-in Per Request**: Use `/chat message:... uncensored:true` to enable for that message
+- **Access Controls**: Configurable per-channel, per-user, and NSFW-only restrictions
+- **Personality Variants**: Personalities can define `uncensoredSystemPrompt` for enhanced local mode
+- **Visual Indicator**: Uncensored responses marked with 🔓 emoji
+- **Graceful Fallback**: Uses standard OpenAI if local LLM is unavailable
+
 ### Conversation Memory
 - **Channel-Scoped Memory**: All users in a channel share a conversation with each personality
 - **Multi-User Awareness**: Personalities know who said what (`[Username]: message` format)

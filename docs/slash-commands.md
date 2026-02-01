@@ -113,6 +113,18 @@ Jack: *continues naturally*
 | `message` | Yes | Your message to the personality |
 | `personality` | No | Which personality (default: friendly) |
 | `image` | No | Optional image attachment |
+| `uncensored` | No | Use local LLM for less restricted responses (if enabled) |
+
+**Uncensored Mode:**
+
+When `uncensored:true` is specified and a local LLM (Ollama) is configured, the bot routes the request to the local model instead of OpenAI. This allows for less restricted responses while keeping the same personality.
+
+Requirements:
+- Local LLM must be enabled via `LOCAL_LLM_ENABLED=true`
+- User must have access (configurable via allowed channels/users)
+- If `UNCENSORED_REQUIRE_NSFW=true`, only works in NSFW channels
+
+Visual indicator: Responses include a 🔓 emoji when uncensored mode is active.
 
 ### `/summarize`
 

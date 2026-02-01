@@ -30,6 +30,7 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - **Reply to Continue**: Reply directly to bot messages to continue conversations naturally
 - **Conversation Limits**: 100 messages, 150k tokens, or 30 min idle timeout
 - **Resume/Reset/List**: Continue expired conversations, reset them, or list your resumable chats
+- **Uncensored Mode**: Opt-in per-request routing to local LLM for less restricted responses
 
 ### AI Memory (Mem0)
 
@@ -183,6 +184,7 @@ discord-article-bot/
 ├── services/
 │   ├── SummarizationService.js   # Main summarization logic
 │   ├── ChatService.js            # Personality chat handling
+│   ├── LocalLlmService.js        # Local LLM (Ollama) for uncensored mode
 │   ├── Mem0Service.js            # AI memory management (Mem0 SDK)
 │   ├── QdrantService.js          # IRC history vector search
 │   ├── NickMappingService.js     # Discord-to-IRC nick mapping
@@ -254,6 +256,25 @@ discord-article-bot/
 | `QDRANT_IRC_COLLECTION` | `irc_history` | Collection name for IRC history |
 
 **Note:** IRC history requires a pre-populated Qdrant collection with vectorized IRC logs. See `scripts/irc-parser/` for ingestion tools.
+
+### Local LLM Configuration (Uncensored Mode)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOCAL_LLM_ENABLED` | `false` | Enable local LLM integration |
+| `LOCAL_LLM_BASE_URL` | `http://localhost:11434/v1` | Ollama OpenAI-compatible endpoint |
+| `LOCAL_LLM_MODEL` | `dolphin-llama3:8b-v2.9-fp16` | Model to use for uncensored chat |
+| `LOCAL_LLM_API_KEY` | `ollama` | API key (Ollama default is 'ollama') |
+| `LOCAL_LLM_TEMPERATURE` | `0.8` | Generation temperature |
+| `LOCAL_LLM_TOP_P` | `0.95` | Top-p sampling parameter |
+| `LOCAL_LLM_MAX_TOKENS` | `2048` | Maximum tokens per response |
+| `UNCENSORED_MODE_ENABLED` | `false` | Enable uncensored mode feature |
+| `UNCENSORED_ALLOWED_CHANNELS` | `` | Comma-separated channel IDs (empty = all) |
+| `UNCENSORED_BLOCKED_CHANNELS` | `` | Comma-separated blocked channel IDs |
+| `UNCENSORED_ALLOWED_USERS` | `` | Comma-separated user IDs (empty = all) |
+| `UNCENSORED_REQUIRE_NSFW` | `false` | Only allow in NSFW channels |
+
+**Note:** Uncensored mode requires a running Ollama instance with an uncensored model like `dolphin-llama3`. The feature routes chat requests to the local LLM when users specify `uncensored:true` in the `/chat` command.
 
 ## Commands
 

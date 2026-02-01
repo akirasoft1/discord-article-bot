@@ -6,6 +6,7 @@ const BaseSlashCommand = require('../base/BaseSlashCommand');
 const TextUtils = require('../../utils/textUtils');
 const logger = require('../../logger');
 const personalityManager = require('../../personalities');
+const localLlmService = require('../../services/LocalLlmService');
 
 class ChatSlashCommand extends BaseSlashCommand {
   constructor(chatService) {
@@ -38,6 +39,10 @@ class ChatSlashCommand extends BaseSlashCommand {
         .addAttachmentOption(option =>
           option.setName('image')
             .setDescription('Optional image to include in the conversation')
+            .setRequired(false))
+        .addBooleanOption(option =>
+          option.setName('uncensored')
+            .setDescription('Use local LLM for less restricted responses (if enabled)')
             .setRequired(false)),
       deferReply: true,
       cooldown: 0
@@ -50,10 +55,26 @@ class ChatSlashCommand extends BaseSlashCommand {
     const personalityId = interaction.options.getString('personality') || 'friendly';
     const userMessage = interaction.options.getString('message');
     const attachment = interaction.options.getAttachment('image');
+    const useUncensored = interaction.options.getBoolean('uncensored') || false;
     const channelId = interaction.channel.id;
     const guildId = interaction.guild?.id || null;
 
-    this.logExecution(interaction, `personality=${personalityId}`);
+    this.logExecution(interaction, `personality=${personalityId}${useUncensored ? ' uncensored=true' : ''}`);
+
+    // Check uncensored access if requested
+    if (useUncensored) {
+      const isNsfwChannel = interaction.channel.nsfw || false;
+      const accessCheck = localLlmService.checkUncensoredAccess(
+        channelId,
+        interaction.user.id,
+        isNsfwChannel
+      );
+
+      if (!accessCheck.allowed) {
+        await this.sendError(interaction, accessCheck.reason);
+        return;
+      }
+    }
 
     // Get image URL if attachment provided
     let imageUrl = null;
@@ -74,7 +95,8 @@ class ChatSlashCommand extends BaseSlashCommand {
       interaction.user,
       channelId,
       guildId,
-      imageUrl
+      imageUrl,
+      { useUncensored }
     );
 
     if (!result.success) {
@@ -99,8 +121,10 @@ class ChatSlashCommand extends BaseSlashCommand {
     }
 
     // Format response with personality header and wrap URLs
+    // Add unlock emoji if uncensored mode was used
+    const uncensoredIndicator = useUncensored ? ' \uD83D\uDD13' : '';
     const response = TextUtils.wrapUrls(
-      `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
+      `${result.personality.emoji} **${result.personality.name}**${uncensoredIndicator}\n\n${result.message}`
     );
 
     // Convert any generated images to Discord attachments

@@ -28,6 +28,7 @@ const ChannelContextService = require('./services/ChannelContextService');
 const ImagePromptAnalyzerService = require('./services/ImagePromptAnalyzerService');
 const ImageRetryHandler = require('./handlers/ImageRetryHandler');
 const TextUtils = require('./utils/textUtils');
+const localLlmService = require('./services/LocalLlmService');
 
 const { version } = require('./package.json');
 
@@ -191,6 +192,26 @@ class DiscordBot {
       logger.info('Channel context tracking is disabled');
     }
 
+    // Initialize Local LLM service for uncensored chat mode
+    if (config.localLlm?.enabled) {
+      localLlmService.initialize()
+        .then(success => {
+          if (success) {
+            logger.info('Local LLM service ready for uncensored mode');
+          } else {
+            logger.warn('Local LLM service failed to initialize - uncensored mode unavailable');
+          }
+        })
+        .catch(error => {
+          logger.warn(`Local LLM service initialization error: ${error.message}`);
+        });
+    } else {
+      logger.info('Local LLM (uncensored mode) is disabled');
+    }
+
+    // Initialize slash command handler
+    // this.commandHandler = new CommandHandler();
+    // this.registerCommands();
     // Initialize slash command handler
     this.slashCommandHandler = new SlashCommandHandler(config);
     this.registerSlashCommands();
