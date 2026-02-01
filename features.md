@@ -4,9 +4,9 @@
 
 ### Core Summarization
 - **Reaction-based Summarization**: React with 📰 to trigger summarization
-- **Command-based Summarization**: `!summarize <url>` and `!resummarize <url>`
+- **Command-based Summarization**: `/summarize <url>` and `/resummarize <url>`
 - **Duplicate Detection**: Notifies if article was previously shared
-- **Force Re-summarization**: Bypass duplicate check with `!resummarize`
+- **Force Re-summarization**: Bypass duplicate check with `/resummarize`
 
 ### Content Analysis
 - **Topic Detection**: Automatically tags articles with topics
@@ -27,7 +27,7 @@
   - Jack Shadows (noir detective)
   - Erik the Existentialist (philosopher)
   - x0r_kid (90s IRC gamer)
-- **Default Personality**: Just `!chat <message>` defaults to Friendly Assistant
+- **Default Personality**: Just `/chat <message>` defaults to Friendly Assistant
 - **Image Vision**: Attach images to chat messages for analysis and discussion
 - **Web Search**: Bot can search the web for current information when needed
 - **Extensible System**: Add new personalities via `.js` files
@@ -40,9 +40,9 @@
   - Maximum 100 messages per conversation
   - Maximum 150,000 tokens per conversation
   - 30-minute idle timeout
-- **Resume Capability**: `!chatresume` to continue expired conversations
-- **List Conversations**: `!chatlist` to see your resumable conversations
-- **Admin Reset**: `!chatreset` for "bot admin" role to clear conversations
+- **Resume Capability**: `/chatresume` to continue expired conversations
+- **List Conversations**: `/chatlist` to see your resumable conversations
+- **Admin Reset**: `/chatreset` for "bot admin" role to clear conversations
 
 ### AI Memory (Mem0)
 - **Long-Term Memory**: Bot remembers facts and preferences about users across conversations

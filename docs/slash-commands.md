@@ -137,17 +137,6 @@ Jack: *continues naturally*
 | `my_messages` | No | Only show your messages |
 | `year` | No | Filter by year (1999-2024) |
 
-## Migration from Prefix Commands
-
-If you were using prefix commands (`!chat`, `!summarize`, etc.), simply replace the `!` with `/` and Discord will guide you through the parameters.
-
-| Old Command | New Command |
-|-------------|-------------|
-| `!chat clair Hello` | `/chat message:Hello personality:clair` |
-| `!summarize https://...` | `/summarize url:https://...` |
-| `!imagine sunset` | `/imagine prompt:sunset` |
-| `!recall kubernetes` | `/recall query:kubernetes` |
-
 ## Troubleshooting
 
 ### Commands not appearing

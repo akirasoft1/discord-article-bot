@@ -17,59 +17,40 @@ Upon startup, the `bot.js` file serves as the main entry point. It performs the 
     - `AnalyticsService`: Provides methods for generating various analytics and insights, such as news trends and reading habits. It receives `MongoService`.
     - `LinkwardenService`: (If enabled) Handles API communication with the Linkwarden instance for fetching archived links.
     - `LinkwardenPollingService`: (If enabled) Polls Linkwarden at regular intervals to detect new archived articles.
-- **Command Handler Setup**: Initializes the `CommandHandler` and registers all available commands through the `registerCommands` method.
+- **Slash Command Handler Setup**: Initializes the `SlashCommandHandler` and registers all available slash commands through the `registerSlashCommands` method.
 - **Event Handlers Setup**: Registers listeners for Discord events like `ready`, `messageReactionAdd`, and `messageCreate`.
 - **System Prompt Loading**: Reads the `prompt.txt` file to load the system prompt, which guides the AI's summarization behavior, and sets it in the `SummarizationService`.
 - **RSS Feed Monitoring**: If enabled in `config.js`, initiates a periodic task to check configured RSS feeds for new articles.
 
 ## 2. Command Architecture
 
-### 2.1. Command Handler System
+### 2.1. Slash Command System
 
-The bot uses a modular command architecture that replaces the previous if-else chain:
+The bot uses Discord's native slash command system:
 
-- **BaseCommand Class** (`commands/base/BaseCommand.js`): Abstract base class that all commands extend. Provides:
-    - Argument validation
-    - Usage help generation
+- **BaseSlashCommand Class** (`commands/base/BaseSlashCommand.js`): Abstract base class that all commands extend. Provides:
+    - Argument validation via Discord's option system
     - Permission checking
     - Cooldown management
-    - Command metadata (name, aliases, description, category)
+    - Deferred reply handling for long operations
+    - Message splitting for responses over 2000 characters
 
-- **CommandHandler** (`commands/CommandHandler.js`): Central registry and executor for commands:
-    - Registers commands and their aliases
-    - Organizes commands by category
+- **SlashCommandHandler** (`handlers/SlashCommandHandler.js`): Central registry and executor for slash commands:
+    - Registers commands with Discord API
     - Handles command execution with error handling
     - Manages cooldowns and permissions
-    - Provides help system integration
+    - Handles autocomplete interactions
 
 ### 2.2. Command Categories
 
-Commands are organized into logical categories:
+Commands are organized into logical categories in `commands/slash/`:
 
-- **Subscription Commands** (`commands/subscription/`):
-    - `SubscribeCommand`: Subscribe to news topics
-    - `UnsubscribeCommand`: Unsubscribe from topics
-    - `MySubscriptionsCommand`: List current subscriptions
-
-- **Analytics Commands** (`commands/analytics/`):
-    - `NewsTrendsCommand`: Server-wide trending topics
-    - `MyReadingHabitsCommand`: Personal reading statistics
-    - `PopularSourcesCommand`: Most shared news sources
-    - `ControversyMeterCommand`: Most controversial articles
-
-- **Summarization Commands** (`commands/summarization/`):
-    - `SummarizeCommand`: Basic article summarization with styles
-    - `MoodSummarizeCommand`: Mood-based summaries
-    - `NarrateSummarizeCommand`: Celebrity narrator summaries
-    - `HistoricalSummarizeCommand`: Historical perspective summaries
-    - `PerspectiveSummarizeCommand`: Alternative viewpoint summaries
-    - `LearnLanguageCommand`: Multi-language summaries
-    - `CulturalSummarizeCommand`: Cultural context summaries
-
-- **Utility Commands** (`commands/utility/`):
-    - `PollCommand`: Generate polls from articles
-    - `DiscussionQuestionsCommand`: Generate discussion starters
-    - `HelpCommand`: Display available commands and usage
+- **Chat/Personality Commands**: `/chat`, `/chatthread`, `/personalities`, `/chatreset`, `/chatresume`, `/chatlist`
+- **Summarization Commands**: `/summarize`, `/resummarize`
+- **Media Generation**: `/imagine` (images), `/videogen` (videos)
+- **Memory Commands**: `/memories`, `/remember`, `/forget`
+- **IRC History Search**: `/recall`, `/history`, `/throwback`
+- **Utility Commands**: `/help`, `/context`, `/channeltrack`
 
 ## 3. Message and Reaction Handling
 
@@ -82,16 +63,17 @@ Commands are organized into logical categories:
     - For each detected URL, it calls `summarizationService.processUrl` to begin the summarization workflow.
     - After processing, it updates the reaction count for the article in `MongoService`.
 
-### 3.2. Command-Based Interactions
+### 3.2. Slash Command Interactions
 
-- The bot listens for `messageCreate` events.
-- If a message starts with the configured prefix (default `!`), it extracts the command name and arguments.
-- The `CommandHandler` looks up the command (checking both names and aliases).
-- If found, it validates permissions and arguments, then executes the command's `execute` method.
-- Commands receive:
-    - The Discord message object
-    - Parsed arguments array
-    - Context object containing bot instance and configuration
+- The bot listens for `interactionCreate` events.
+- For slash commands (`interaction.isChatInputCommand()`):
+    - The `SlashCommandHandler` looks up the command by name.
+    - It validates permissions and cooldowns.
+    - If the command has `deferReply: true`, it defers the reply for long operations.
+    - Commands receive:
+        - The Discord interaction object
+        - Context object containing bot instance and configuration
+    - Options are accessed via `interaction.options.getString()`, etc.
 
 ## 4. Summarization Workflow (`SummarizationService.js`)
 

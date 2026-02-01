@@ -16,7 +16,6 @@ const ReplyHandler = require('./handlers/ReplyHandler');
 const RssService = require('./services/RssService');
 const FollowUpService = require('./services/FollowUpService');
 const MessageService = require('./services/MessageService');
-// const CommandHandler = require('./commands/CommandHandler'); // Disabled - using slash commands
 const LinkwardenService = require('./services/LinkwardenService');
 const LinkwardenPollingService = require('./services/LinkwardenPollingService');
 const ChatService = require('./services/ChatService');
@@ -30,25 +29,6 @@ const ImagePromptAnalyzerService = require('./services/ImagePromptAnalyzerServic
 const ImageRetryHandler = require('./handlers/ImageRetryHandler');
 const TextUtils = require('./utils/textUtils');
 
-// Prefix command imports disabled - using slash commands
-// const SummarizeCommand = require('./commands/summarization/SummarizeCommand');
-// const ReSummarizeCommand = require('./commands/summarization/ReSummarizeCommand');
-// const HelpCommand = require('./commands/utility/HelpCommand');
-// const ChatCommand = require('./commands/chat/ChatCommand');
-// const PersonalitiesCommand = require('./commands/chat/PersonalitiesCommand');
-// const ResetChatCommand = require('./commands/chat/ResetChatCommand');
-// const ResumeChatCommand = require('./commands/chat/ResumeChatCommand');
-// const ChatListCommand = require('./commands/chat/ChatListCommand');
-// const ImagineCommand = require('./commands/image/ImagineCommand');
-// const VideogenCommand = require('./commands/video/VideogenCommand');
-// const MemoriesCommand = require('./commands/memory/MemoriesCommand');
-// const RememberCommand = require('./commands/memory/RememberCommand');
-// const ForgetCommand = require('./commands/memory/ForgetCommand');
-// const RecallCommand = require('./commands/irc/RecallCommand');
-// const HistoryCommand = require('./commands/irc/HistoryCommand');
-// const ThrowbackCommand = require('./commands/irc/ThrowbackCommand');
-// const ChannelTrackCommand = require('./commands/admin/ChannelTrackCommand');
-// const ChannelContextCommand = require('./commands/utility/ChannelContextCommand');
 const { version } = require('./package.json');
 
 // Import slash command infrastructure
@@ -211,9 +191,7 @@ class DiscordBot {
       logger.info('Channel context tracking is disabled');
     }
 
-    // Initialize slash command handler (prefix commands disabled - migration complete)
-    // this.commandHandler = new CommandHandler();
-    // this.registerCommands();
+    // Initialize slash command handler
     this.slashCommandHandler = new SlashCommandHandler(config);
     this.registerSlashCommands();
 
@@ -288,36 +266,6 @@ class DiscordBot {
       logger.error(`Health server error: ${error.message}`);
     });
   }
-
-  // registerCommands() - Disabled, using slash commands
-  // registerCommands() {
-  //   this.commandHandler.register(new SummarizeCommand(this.summarizationService));
-  //   this.commandHandler.register(new ReSummarizeCommand(this.summarizationService));
-  //   this.commandHandler.register(new ChatCommand(this.chatService));
-  //   this.commandHandler.register(new PersonalitiesCommand(this.chatService));
-  //   this.commandHandler.register(new ResetChatCommand(this.chatService));
-  //   this.commandHandler.register(new ResumeChatCommand(this.chatService));
-  //   this.commandHandler.register(new ChatListCommand(this.chatService));
-  //   this.commandHandler.register(new HelpCommand(this.commandHandler));
-  //   if (this.mem0Service) {
-  //     this.commandHandler.register(new MemoriesCommand());
-  //     this.commandHandler.register(new RememberCommand());
-  //     this.commandHandler.register(new ForgetCommand());
-  //   }
-  //   if (this.imagenService) {
-  //     this.commandHandler.register(new ImagineCommand(this.imagenService));
-  //   }
-  //   if (this.veoService) {
-  //     this.commandHandler.register(new VideogenCommand(this.veoService));
-  //   }
-  //   if (this.qdrantService) {
-  //     this.commandHandler.register(new RecallCommand());
-  //     this.commandHandler.register(new HistoryCommand());
-  //     this.commandHandler.register(new ThrowbackCommand());
-  //   }
-  //   this.commandHandler.register(new ChannelTrackCommand());
-  //   this.commandHandler.register(new ChannelContextCommand());
-  // }
 
   registerSlashCommands() {
     // Register chat/personality slash commands
@@ -503,21 +451,6 @@ class DiscordBot {
         await this._handleMentionChat(message);
         return;
       }
-
-      // Prefix commands disabled - migration to slash commands complete
-      // if (!message.content.startsWith(config.discord.prefix)) return;
-      // const args = message.content.slice(config.discord.prefix.length).trim().split(/ +/);
-      // const commandName = args.shift().toLowerCase();
-      // const context = { bot: this, config: config };
-      // await withRootSpan('discord.command', {
-      //   'discord.command.name': commandName,
-      //   'discord.channel.id': message.channel.id,
-      //   'discord.user.id': message.author.id,
-      //   'discord.user.tag': message.author.tag,
-      //   'discord.message.id': message.id,
-      // }, async () => {
-      //   await this.commandHandler.execute(message, commandName, args, context);
-      // });
     });
 
     this.client.on('interactionCreate', async interaction => {
