@@ -137,16 +137,21 @@ describe('LocalLlmService', () => {
       const result = await localLlmService.healthCheck();
 
       expect(result).toBe(true);
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:11434/api/tags');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:11434/api/tags',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
     });
 
     it('should throw when Ollama returns non-200 status', async () => {
       global.fetch.mockResolvedValueOnce({
         ok: false,
-        status: 500
+        status: 500,
+        statusText: 'Internal Server Error',
+        text: () => Promise.resolve('Server error details')
       });
 
-      await expect(localLlmService.healthCheck()).rejects.toThrow('health check failed');
+      await expect(localLlmService.healthCheck()).rejects.toThrow('HTTP 500');
     });
   });
 

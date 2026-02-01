@@ -26,6 +26,12 @@ class LocalLlmService {
       return false;
     }
 
+    logger.info('Initializing Local LLM service...', {
+      baseUrl: config.localLlm.baseUrl,
+      model: config.localLlm.model,
+      uncensoredEnabled: config.localLlm.uncensored?.enabled,
+    });
+
     try {
       this.client = new OpenAI({
         baseURL: config.localLlm.baseUrl,
@@ -35,10 +41,10 @@ class LocalLlmService {
       // Test connection with a health check
       await this.healthCheck();
       this.initialized = true;
-      logger.info(`Local LLM service initialized with model: ${config.localLlm.model}`);
+      logger.info(`Local LLM service initialized successfully with model: ${config.localLlm.model}`);
       return true;
     } catch (error) {
-      logger.error('Failed to initialize Local LLM service:', error);
+      this._logDetailedError('Failed to initialize Local LLM service', error);
       this.initialized = false;
       return false;
     }
@@ -49,27 +55,97 @@ class LocalLlmService {
    * @returns {Promise<boolean>} True if healthy
    */
   async healthCheck() {
+    // Ollama's API endpoint (remove /v1 suffix for native API)
+    const ollamaBaseUrl = config.localLlm.baseUrl.replace('/v1', '');
+    const healthUrl = `${ollamaBaseUrl}/api/tags`;
+
+    logger.debug(`Local LLM health check - connecting to: ${healthUrl}`);
+
     try {
-      // Ollama's API endpoint (remove /v1 suffix for native API)
-      const ollamaBaseUrl = config.localLlm.baseUrl.replace('/v1', '');
-      const response = await fetch(`${ollamaBaseUrl}/api/tags`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      const response = await fetch(healthUrl, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`Ollama health check failed: ${response.status}`);
+        const errorBody = await response.text().catch(() => 'Unable to read response body');
+        throw new Error(`Ollama API returned HTTP ${response.status}: ${response.statusText}. Body: ${errorBody}`);
       }
 
       const data = await response.json();
       const modelName = config.localLlm.model.split(':')[0];
-      const modelExists = data.models?.some(m => m.name.includes(modelName));
+      const availableModels = data.models?.map(m => m.name) || [];
+      const modelExists = availableModels.some(m => m.includes(modelName));
+
+      logger.debug(`Ollama available models: ${availableModels.join(', ') || 'none'}`);
 
       if (!modelExists) {
-        logger.warn(`Configured model ${config.localLlm.model} may not be available in Ollama. Available models: ${data.models?.map(m => m.name).join(', ') || 'none'}`);
+        logger.warn(`Configured model "${config.localLlm.model}" may not be available in Ollama. Available models: ${availableModels.join(', ') || 'none'}`);
+      } else {
+        logger.debug(`Model "${config.localLlm.model}" found in Ollama`);
       }
 
       return true;
     } catch (error) {
-      logger.error('Local LLM health check failed:', error.message);
+      this._logDetailedError(`Local LLM health check failed for URL: ${healthUrl}`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Log detailed error information for debugging network/connection issues
+   * @param {string} context - Description of what operation failed
+   * @param {Error} error - The error object
+   */
+  _logDetailedError(context, error) {
+    const errorDetails = {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      errno: error.errno,
+      syscall: error.syscall,
+      hostname: error.hostname,
+      address: error.address,
+      port: error.port,
+    };
+
+    // Check for fetch-specific errors
+    if (error.cause) {
+      errorDetails.cause = {
+        message: error.cause.message,
+        code: error.cause.code,
+        errno: error.cause.errno,
+        syscall: error.cause.syscall,
+        hostname: error.cause.hostname,
+        address: error.cause.address,
+        port: error.cause.port,
+      };
+    }
+
+    // Remove undefined values for cleaner logging
+    Object.keys(errorDetails).forEach(key => {
+      if (errorDetails[key] === undefined) delete errorDetails[key];
+      if (typeof errorDetails[key] === 'object' && errorDetails[key] !== null) {
+        Object.keys(errorDetails[key]).forEach(subKey => {
+          if (errorDetails[key][subKey] === undefined) delete errorDetails[key][subKey];
+        });
+      }
+    });
+
+    logger.error(`${context}:`, errorDetails);
+
+    // Provide helpful troubleshooting hints based on error type
+    if (error.cause?.code === 'ECONNREFUSED') {
+      logger.error(`Troubleshooting: Connection refused to ${error.cause.address}:${error.cause.port}. Verify Ollama is running and listening on this address.`);
+    } else if (error.cause?.code === 'ENOTFOUND') {
+      logger.error(`Troubleshooting: DNS lookup failed for "${error.cause.hostname}". Verify the hostname is correct and resolvable from within the container.`);
+    } else if (error.cause?.code === 'ETIMEDOUT' || error.cause?.code === 'ENETUNREACH' || error.name === 'AbortError') {
+      logger.error(`Troubleshooting: Network timeout or unreachable. The configured URL may not be accessible from this Kubernetes pod. Local network IPs (192.168.x.x, 10.x.x.x) are often not routable from within a cluster.`);
+    } else if (error.cause?.code === 'EHOSTUNREACH') {
+      logger.error(`Troubleshooting: Host unreachable. The target host "${error.cause.address}" cannot be reached from this network. Check network policies and routing.`);
     }
   }
 
@@ -177,7 +253,7 @@ class LocalLlmService {
         logger.debug(`Local LLM response received - Length: ${response.length} chars`);
         return response;
       } catch (error) {
-        logger.error('Local LLM generation error:', error.message);
+        this._logDetailedError('Local LLM generation error', error);
         throw error;
       }
     });
