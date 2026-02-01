@@ -5,6 +5,7 @@ const logger = require('../logger');
 const personalityManager = require('../personalities');
 const { countTokens, wouldExceedLimit } = require('../utils/tokenCounter');
 const { withSpan } = require('../tracing');
+const localLlmService = require('./LocalLlmService');
 
 // Conversation limits
 const LIMITS = {
@@ -313,9 +314,12 @@ ${context}`;
    * @param {string} channelId - Discord channel ID
    * @param {string} guildId - Discord guild ID
    * @param {string|null} imageUrl - Optional image URL for vision
+   * @param {Object} options - Additional options
+   * @param {boolean} options.useUncensored - Use local LLM for uncensored response
    * @returns {Object} Response with message and token usage
    */
-  async chat(personalityId, userMessage, user, channelId = null, guildId = null, imageUrl = null) {
+  async chat(personalityId, userMessage, user, channelId = null, guildId = null, imageUrl = null, options = {}) {
+    const { useUncensored = false } = options;
     const personality = personalityManager.get(personalityId);
 
     if (!personality) {
@@ -398,55 +402,83 @@ ${context}`;
         };
       }
 
-      // Call OpenAI Responses API
-      const apiInput = this._buildApiInput(inputText, imageUrl);
-      if (imageUrl) {
-        logger.info(`Including image in chat request: ${imageUrl.substring(0, 50)}...`);
+      // Generate response - route to local LLM if uncensored, otherwise cloud
+      let assistantMessage;
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let generatedImages = [];
+
+      if (useUncensored && localLlmService.isEnabled()) {
+        // Use local LLM for uncensored response
+        // Get uncensored system prompt if available
+        const uncensoredSystemPrompt = personalityManager.getSystemPrompt(personalityId, true) || systemPrompt;
+
+        // Build messages array for chat.completions API
+        const messages = [
+          { role: 'system', content: uncensoredSystemPrompt },
+          ...historyMessages,
+          { role: 'user', content: formattedUserMessage }
+        ];
+
+        logger.info(`Using local LLM for uncensored response (personality: ${personalityId})`);
+        assistantMessage = await localLlmService.generateCompletion(messages);
+
+        // Local LLM doesn't provide token counts, estimate them
+        inputTokens = countTokens(uncensoredSystemPrompt) + countTokens(inputText);
+        outputTokens = countTokens(assistantMessage);
+
+      } else {
+        // Call OpenAI Responses API (cloud provider)
+        const apiInput = this._buildApiInput(inputText, imageUrl);
+        if (imageUrl) {
+          logger.info(`Including image in chat request: ${imageUrl.substring(0, 50)}...`);
+        }
+
+        const model = this.config.openai.model || 'gpt-5.1';
+        const response = await withSpan('openai.responses.create', {
+          // GenAI semantic conventions
+          'gen_ai.system': 'openai',
+          'gen_ai.operation.name': 'chat',
+          'gen_ai.request.model': model,
+          // Chat context
+          'chat.personality.id': personalityId,
+          'chat.personality.name': personality.name,
+          'chat.mode': 'stateful',
+          'chat.has_image': !!imageUrl,
+          'chat.tools_enabled': 'web_search',
+          'chat.conversation.message_count': conversation.messageCount || 0,
+          // Discord context
+          'discord.channel.id': channelId,
+          'discord.guild.id': guildId || '',
+          'discord.user.id': user.id,
+        }, async (span) => {
+          const result = await this.openaiClient.responses.create({
+            model: model,
+            instructions: systemPrompt,
+            input: apiInput,
+            tools: [{ type: 'web_search' }]
+          });
+
+          // Add response attributes
+          span.setAttributes({
+            'gen_ai.response.id': result.id || '',
+            'gen_ai.response.model': result.model || model,
+            'gen_ai.usage.input_tokens': result.usage?.input_tokens || 0,
+            'gen_ai.usage.output_tokens': result.usage?.output_tokens || 0,
+          });
+
+          return result;
+        });
+
+        assistantMessage = response.output_text;
+        inputTokens = response.usage?.input_tokens || 0;
+        outputTokens = response.usage?.output_tokens || 0;
+
+        // Extract any generated images from the response
+        generatedImages = this._extractGeneratedImages(response);
       }
 
-      const model = this.config.openai.model || 'gpt-5.1';
-      const response = await withSpan('openai.responses.create', {
-        // GenAI semantic conventions
-        'gen_ai.system': 'openai',
-        'gen_ai.operation.name': 'chat',
-        'gen_ai.request.model': model,
-        // Chat context
-        'chat.personality.id': personalityId,
-        'chat.personality.name': personality.name,
-        'chat.mode': 'stateful',
-        'chat.has_image': !!imageUrl,
-        'chat.tools_enabled': 'web_search',
-        'chat.conversation.message_count': conversation.messageCount || 0,
-        // Discord context
-        'discord.channel.id': channelId,
-        'discord.guild.id': guildId || '',
-        'discord.user.id': user.id,
-      }, async (span) => {
-        const result = await this.openaiClient.responses.create({
-          model: model,
-          instructions: systemPrompt,
-          input: apiInput,
-          tools: [{ type: 'web_search' }]
-        });
-
-        // Add response attributes
-        span.setAttributes({
-          'gen_ai.response.id': result.id || '',
-          'gen_ai.response.model': result.model || model,
-          'gen_ai.usage.input_tokens': result.usage?.input_tokens || 0,
-          'gen_ai.usage.output_tokens': result.usage?.output_tokens || 0,
-        });
-
-        return result;
-      });
-
-      const assistantMessage = response.output_text;
-      const inputTokens = response.usage?.input_tokens || 0;
-      const outputTokens = response.usage?.output_tokens || 0;
       const totalTokens = inputTokens + outputTokens;
-
-      // Extract any generated images from the response
-      const generatedImages = this._extractGeneratedImages(response);
 
       // Store user message in conversation (with original content, not formatted)
       await this.mongoService.addMessageToConversation(

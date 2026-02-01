@@ -92,6 +92,24 @@ class PersonalityManager {
   }
 
   /**
+   * Get the system prompt for a personality
+   * @param {string} id - The personality ID
+   * @param {boolean} useUncensored - Whether to return the uncensored variant if available
+   * @returns {string|null} The system prompt or null if personality not found
+   */
+  getSystemPrompt(id, useUncensored = false) {
+    const personality = this.get(id);
+    if (!personality) return null;
+
+    // Return uncensored prompt if requested and available, otherwise regular prompt
+    if (useUncensored && personality.uncensoredSystemPrompt) {
+      return personality.uncensoredSystemPrompt;
+    }
+
+    return personality.systemPrompt;
+  }
+
+  /**
    * Reload all personalities (useful for hot-reloading)
    */
   reload() {

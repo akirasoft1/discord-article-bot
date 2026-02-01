@@ -262,6 +262,40 @@ module.exports = {
     // Interval for memory extraction (number of messages between extractions)
     memoryExtractionInterval: parseInt(process.env.CHANNEL_CONTEXT_MEMORY_INTERVAL || '50', 10)
   },
+  // Local LLM - Ollama integration for uncensored chat mode
+  localLlm: {
+    // Enable/disable local LLM service
+    enabled: process.env.LOCAL_LLM_ENABLED === 'true',
+    // Ollama API endpoint (OpenAI-compatible)
+    baseUrl: process.env.LOCAL_LLM_BASE_URL || 'http://localhost:11434/v1',
+    // Model to use for local inference
+    model: process.env.LOCAL_LLM_MODEL || 'dolphin-llama3:8b-v2.9-fp16',
+    // API key (Ollama doesn't require a real key, but OpenAI client needs one)
+    apiKey: process.env.LOCAL_LLM_API_KEY || 'ollama',
+    // Model parameters
+    temperature: parseFloat(process.env.LOCAL_LLM_TEMPERATURE || '0.8'),
+    topP: parseFloat(process.env.LOCAL_LLM_TOP_P || '0.95'),
+    maxTokens: parseInt(process.env.LOCAL_LLM_MAX_TOKENS || '2048', 10),
+    // Uncensored mode settings
+    uncensored: {
+      // Enable/disable uncensored mode globally
+      enabled: process.env.UNCENSORED_MODE_ENABLED === 'true',
+      // Allowed channel IDs (empty = all channels allowed)
+      allowedChannels: process.env.UNCENSORED_ALLOWED_CHANNELS
+        ? process.env.UNCENSORED_ALLOWED_CHANNELS.split(',').map(id => id.trim()).filter(Boolean)
+        : [],
+      // Blocked channel IDs (takes precedence over allowed)
+      blockedChannels: process.env.UNCENSORED_BLOCKED_CHANNELS
+        ? process.env.UNCENSORED_BLOCKED_CHANNELS.split(',').map(id => id.trim()).filter(Boolean)
+        : [],
+      // Allowed user IDs (empty = all users allowed)
+      allowedUsers: process.env.UNCENSORED_ALLOWED_USERS
+        ? process.env.UNCENSORED_ALLOWED_USERS.split(',').map(id => id.trim()).filter(Boolean)
+        : [],
+      // Require Discord NSFW channel flag
+      requireNsfw: process.env.UNCENSORED_REQUIRE_NSFW === 'true'
+    }
+  },
   // Health check server configuration for Kubernetes probes
   health: {
     // Enable/disable health check server
