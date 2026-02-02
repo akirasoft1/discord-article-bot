@@ -129,6 +129,35 @@ class LocalLlmService {
   }
 
   /**
+   * Truncate response at a sentence boundary to maintain coherence
+   * @param {string} response - Response text to truncate
+   * @param {number} maxLength - Maximum length in characters
+   * @returns {string} Truncated response
+   */
+  _truncateAtSentence(response, maxLength) {
+    if (response.length <= maxLength) return response;
+
+    // Try to find a sentence boundary (. ! ?) within the limit
+    const truncated = response.substring(0, maxLength);
+    const lastSentenceEnd = Math.max(
+      truncated.lastIndexOf('. '),
+      truncated.lastIndexOf('! '),
+      truncated.lastIndexOf('? '),
+      truncated.lastIndexOf('.\n'),
+      truncated.lastIndexOf('!\n'),
+      truncated.lastIndexOf('?\n')
+    );
+
+    // If we found a sentence boundary in the last 40% of the text, use it
+    if (lastSentenceEnd > maxLength * 0.6) {
+      return response.substring(0, lastSentenceEnd + 1).trim();
+    }
+
+    // Otherwise just truncate at the limit with ellipsis
+    return truncated.trim() + '...';
+  }
+
+  /**
    * Log detailed error information for debugging network/connection issues
    * @param {string} context - Description of what operation failed
    * @param {Error} error - The error object
@@ -284,7 +313,16 @@ class LocalLlmService {
         }
 
         // Strip thinking tokens from reasoning models like DeepSeek-R1
-        const response = this._stripThinkingTokens(rawResponse);
+        let response = this._stripThinkingTokens(rawResponse);
+
+        // Apply max response length limit if configured
+        const maxLength = options.maxResponseLength ?? config.localLlm.maxResponseLength;
+        if (maxLength > 0 && response.length > maxLength) {
+          // Truncate at a sentence boundary if possible
+          const truncated = this._truncateAtSentence(response, maxLength);
+          logger.debug(`Truncated response from ${response.length} to ${truncated.length} chars (limit: ${maxLength})`);
+          response = truncated;
+        }
 
         logger.debug(`Local LLM response received - Length: ${response.length} chars`);
         return response;

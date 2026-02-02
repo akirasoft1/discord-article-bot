@@ -23,6 +23,7 @@ jest.mock('../../config/config', () => ({
     temperature: 0.8,
     topP: 0.95,
     maxTokens: 2048,
+    maxResponseLength: 500,
     uncensored: {
       enabled: true,
       allowedChannels: [],
@@ -68,6 +69,7 @@ describe('LocalLlmService', () => {
         temperature: 0.8,
         topP: 0.95,
         maxTokens: 2048,
+        maxResponseLength: 500,
         uncensored: {
           enabled: true,
           allowedChannels: [],
@@ -452,6 +454,39 @@ describe('LocalLlmService', () => {
       const result = await localLlmService.generateCompletion([{ role: 'user', content: 'test' }]);
 
       expect(result).toBe('A normal response without thinking tokens.');
+    });
+
+    it('should truncate responses exceeding maxResponseLength', async () => {
+      // Create a long response that exceeds a custom limit
+      const longResponse = 'This is a sentence. '.repeat(50); // ~1000 chars
+      mockCreate.mockResolvedValueOnce({
+        choices: [{
+          message: { content: longResponse }
+        }]
+      });
+
+      const result = await localLlmService.generateCompletion(
+        [{ role: 'user', content: 'test' }],
+        { maxResponseLength: 100 }
+      );
+
+      expect(result.length).toBeLessThanOrEqual(100);
+    });
+
+    it('should truncate at sentence boundary when possible', async () => {
+      const longResponse = 'First sentence here. Second sentence follows. Third sentence is longer and contains more words to push us over the limit.';
+      mockCreate.mockResolvedValueOnce({
+        choices: [{
+          message: { content: longResponse }
+        }]
+      });
+
+      const result = await localLlmService.generateCompletion(
+        [{ role: 'user', content: 'test' }],
+        { maxResponseLength: 60 }
+      );
+
+      expect(result).toBe('First sentence here. Second sentence follows.');
     });
   });
 });

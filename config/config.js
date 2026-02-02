@@ -275,6 +275,8 @@ module.exports = {
     temperature: parseFloat(process.env.LOCAL_LLM_TEMPERATURE || '0.8'),
     topP: parseFloat(process.env.LOCAL_LLM_TOP_P || '0.95'),
     maxTokens: parseInt(process.env.LOCAL_LLM_MAX_TOKENS || '2048', 10),
+    // Max response length in characters (0 = no limit). Truncates overly verbose responses.
+    maxResponseLength: parseInt(process.env.LOCAL_LLM_MAX_RESPONSE_LENGTH || '500', 10),
     // Uncensored mode settings
     uncensored: {
       // Enable/disable uncensored mode globally
