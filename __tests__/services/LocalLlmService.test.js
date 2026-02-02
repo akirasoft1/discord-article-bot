@@ -414,5 +414,30 @@ describe('LocalLlmService', () => {
         max_tokens: 1000
       }));
     });
+
+    it('should strip thinking tokens from DeepSeek-R1 style responses', async () => {
+      mockCreate.mockResolvedValueOnce({
+        choices: [{
+          message: { content: '<think>\nLet me think about this...\nI should consider...\n</think>\n\nHere is my actual response.' }
+        }]
+      });
+
+      const result = await localLlmService.generateCompletion([{ role: 'user', content: 'test' }]);
+
+      expect(result).toBe('Here is my actual response.');
+      expect(result).not.toContain('<think>');
+    });
+
+    it('should return response unchanged if no thinking tokens present', async () => {
+      mockCreate.mockResolvedValueOnce({
+        choices: [{
+          message: { content: 'A normal response without thinking tokens.' }
+        }]
+      });
+
+      const result = await localLlmService.generateCompletion([{ role: 'user', content: 'test' }]);
+
+      expect(result).toBe('A normal response without thinking tokens.');
+    });
   });
 });

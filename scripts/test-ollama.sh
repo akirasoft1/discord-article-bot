@@ -3,7 +3,18 @@
 # Usage: ./scripts/test-ollama.sh "your message here"
 
 OLLAMA_URL="http://192.168.1.164:11434/api/chat"
-MODEL="dolphin-llama3:8b-v2.9-fp16"
+
+#MODEL="dolphin-llama3:8b-v2.9-fp16"
+
+
+
+# MODEL="OpenAI-20B-NEO-Uncensored2-Q5_1:latest"
+
+MODEL="deepseek-r1-32b"
+
+# MODEL="svjack/gpt-oss-20b-heretic:latest"
+# works but results questionable
+
 
 # Read system prompt from personality file
 SYSTEM_PROMPT=$(node -e "console.log(require('./personalities/uncensored.js').systemPrompt)")

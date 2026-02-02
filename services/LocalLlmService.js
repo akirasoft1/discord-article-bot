@@ -96,6 +96,30 @@ class LocalLlmService {
   }
 
   /**
+   * Strip thinking tokens from reasoning models like DeepSeek-R1
+   * These models output chain-of-thought in <think>...</think> blocks
+   * @param {string} response - Raw response from the model
+   * @returns {string} Response with thinking tokens removed
+   */
+  _stripThinkingTokens(response) {
+    if (!response) return response;
+
+    // Check if thinking tokens are present
+    if (!response.includes('<think>')) {
+      return response;
+    }
+
+    // Remove <think>...</think> blocks (handles multiline content)
+    const stripped = response.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
+    if (stripped !== response) {
+      logger.debug(`Stripped thinking tokens from response (${response.length} -> ${stripped.length} chars)`);
+    }
+
+    return stripped || response; // Fallback to original if stripping leaves nothing
+  }
+
+  /**
    * Log detailed error information for debugging network/connection issues
    * @param {string} context - Description of what operation failed
    * @param {Error} error - The error object
@@ -244,11 +268,14 @@ class LocalLlmService {
           max_tokens: maxTokens,
         });
 
-        const response = completion.choices[0]?.message?.content?.trim();
+        const rawResponse = completion.choices[0]?.message?.content?.trim();
 
-        if (!response) {
+        if (!rawResponse) {
           throw new Error('Empty response from local LLM');
         }
+
+        // Strip thinking tokens from reasoning models like DeepSeek-R1
+        const response = this._stripThinkingTokens(rawResponse);
 
         logger.debug(`Local LLM response received - Length: ${response.length} chars`);
         return response;
