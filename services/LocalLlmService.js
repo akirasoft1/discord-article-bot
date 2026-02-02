@@ -97,26 +97,35 @@ class LocalLlmService {
 
   /**
    * Strip thinking tokens from reasoning models like DeepSeek-R1
-   * These models output chain-of-thought in <think>...</think> blocks
+   * These models may output chain-of-thought in various formats:
+   * - <think>...</think> blocks
+   * - Content followed by </think> without opening tag (Ollama quirk)
    * @param {string} response - Raw response from the model
    * @returns {string} Response with thinking tokens removed
    */
   _stripThinkingTokens(response) {
     if (!response) return response;
 
-    // Check if thinking tokens are present
-    if (!response.includes('<think>')) {
-      return response;
+    let stripped = response;
+
+    // Case 1: Proper <think>...</think> blocks
+    if (response.includes('<think>')) {
+      stripped = response.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    }
+    // Case 2: Content followed by </think> without opening tag (DeepSeek-R1 via Ollama)
+    // The thinking content comes BEFORE </think>, actual response comes AFTER
+    else if (response.includes('</think>')) {
+      const parts = response.split('</think>');
+      // Take everything after the last </think> tag
+      stripped = parts[parts.length - 1].trim();
     }
 
-    // Remove <think>...</think> blocks (handles multiline content)
-    const stripped = response.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-
-    if (stripped !== response) {
+    if (stripped !== response && stripped.length > 0) {
       logger.debug(`Stripped thinking tokens from response (${response.length} -> ${stripped.length} chars)`);
+      return stripped;
     }
 
-    return stripped || response; // Fallback to original if stripping leaves nothing
+    return response; // Fallback to original if stripping leaves nothing
   }
 
   /**

@@ -428,6 +428,20 @@ describe('LocalLlmService', () => {
       expect(result).not.toContain('<think>');
     });
 
+    it('should strip thinking tokens when only closing tag is present (Ollama quirk)', async () => {
+      mockCreate.mockResolvedValueOnce({
+        choices: [{
+          message: { content: ' Let me think about this question...\nI should consider various factors.\n</think>\n\nThe actual answer is 42.' }
+        }]
+      });
+
+      const result = await localLlmService.generateCompletion([{ role: 'user', content: 'test' }]);
+
+      expect(result).toBe('The actual answer is 42.');
+      expect(result).not.toContain('</think>');
+      expect(result).not.toContain('Let me think');
+    });
+
     it('should return response unchanged if no thinking tokens present', async () => {
       mockCreate.mockResolvedValueOnce({
         choices: [{
