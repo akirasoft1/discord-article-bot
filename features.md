@@ -21,12 +21,13 @@
 - **Multiple Formats**: Supports readable, monolith, and PDF archives
 
 ### Personality Chat
-- **5 Built-in Personalities**:
+- **6 Built-in Personalities**:
   - Friendly Assistant (helpful, informal - **default**)
   - Professor Grimsworth (grumpy historian)
   - Jack Shadows (noir detective)
   - Erik the Existentialist (philosopher)
   - x0r_kid (90s IRC gamer)
+  - Uncensored (enhanced local LLM personality)
 - **Default Personality**: Just `/chat <message>` defaults to Friendly Assistant
 - **Image Vision**: Attach images to chat messages for analysis and discussion
 - **Web Search**: Bot can search the web for current information when needed
@@ -36,10 +37,13 @@
 ### Uncensored Mode (Local LLM)
 - **Local LLM Support**: Route chat requests to a local Ollama instance for less restricted responses
 - **Opt-in Per Request**: Use `/chat message:... uncensored:true` to enable for that message
+- **Dedicated Personality**: `uncensored` personality defaults to local LLM automatically
 - **Access Controls**: Configurable per-channel, per-user, and NSFW-only restrictions
 - **Personality Variants**: Personalities can define `uncensoredSystemPrompt` for enhanced local mode
 - **Visual Indicator**: Uncensored responses marked with 🔓 emoji
 - **Graceful Fallback**: Uses standard OpenAI if local LLM is unavailable
+- **DeepSeek-R1 Support**: Strips thinking tokens (`<think>...</think>`) from reasoning model responses
+- **Response Length Control**: Configurable `maxResponseLength` truncates overly verbose local LLM responses at sentence boundaries
 
 ### Conversation Memory
 - **Channel-Scoped Memory**: All users in a channel share a conversation with each personality
@@ -93,6 +97,14 @@
 - **Discord Emoji Support**: Use Discord emojis as source images
 - **Progress Updates**: Real-time status updates during generation
 - **Usage Tracking**: All generations tracked in MongoDB
+
+### Channel Context Tracking
+- **Passive Recording**: Opt-in per-channel message tracking (non-blocking)
+- **3-Tier Architecture**: Hot (recent messages in memory), warm (batch-indexed to Qdrant), cold (Mem0 memory extraction)
+- **Semantic Search**: Vector-based search through channel conversation history
+- **Context Injection**: Channel context automatically injected into personality chat system prompts
+- **Admin Controls**: `/channeltrack` command for enabling/disabling per channel
+- **Configurable Retention**: Adjustable retention period and batch indexing interval
 
 ### Monitoring & Observability
 - **OpenTelemetry Tracing**: Distributed tracing for Dynatrace

@@ -16,12 +16,13 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 ### Personality Chat
 
 - **Character Conversations**: Chat with unique AI personalities
-- **5 Built-in Personalities**:
+- **6 Built-in Personalities**:
   - 😊 **Friendly Assistant** - Helpful, informal assistant for casual chat and questions (default)
   - 📚 **Professor Grimsworth** - Grumpy historian who relates everything to obscure historical events
   - 🕵️ **Jack Shadows** - Hardboiled 1940s detective with noir prose
   - 🤔 **Erik the Existentialist** - Philosophy grad student who spirals into existential questions
   - 💾 **x0r_kid** - 90s IRC gamer kid with leet speak and old-school internet vibes
+  - 🔓 **Uncensored** - Enhanced personality that defaults to local LLM for less restricted responses
 - **Default Personality**: Just use `/chat <message>` - defaults to friendly assistant
 - **Image Vision**: Attach images to chat messages for the bot to analyze and discuss
 - **Web Search**: Bot can search the web for current information when needed
@@ -180,7 +181,8 @@ discord-article-bot/
 │   ├── grumpy-historian.js
 │   ├── noir-detective.js
 │   ├── existential-philosopher.js
-│   └── irc-gamer.js
+│   ├── irc-gamer.js
+│   └── uncensored.js             # Local LLM uncensored personality
 ├── services/
 │   ├── SummarizationService.js   # Main summarization logic
 │   ├── ChatService.js            # Personality chat handling
@@ -188,14 +190,17 @@ discord-article-bot/
 │   ├── Mem0Service.js            # AI memory management (Mem0 SDK)
 │   ├── QdrantService.js          # IRC history vector search
 │   ├── NickMappingService.js     # Discord-to-IRC nick mapping
+│   ├── ChannelContextService.js  # Passive channel conversation tracking
 │   ├── ImagenService.js          # Gemini image generation
+│   ├── ImagePromptAnalyzerService.js # Failed image prompt analysis
 │   ├── VeoService.js             # Vertex AI video generation
 │   ├── LinkwardenService.js      # Linkwarden API
 │   ├── LinkwardenPollingService.js
+│   ├── MessageService.js         # OpenAI message handling wrapper
 │   ├── MongoService.js           # Database operations
 │   ├── TokenService.js           # Token counting
 │   ├── CostService.js            # Cost tracking
-│   └── ...
+│   └── SourceCredibilityService.js # Source rating
 └── utils/
     ├── urlUtils.js
     ├── textUtils.js
@@ -268,6 +273,7 @@ discord-article-bot/
 | `LOCAL_LLM_TEMPERATURE` | `0.8` | Generation temperature |
 | `LOCAL_LLM_TOP_P` | `0.95` | Top-p sampling parameter |
 | `LOCAL_LLM_MAX_TOKENS` | `2048` | Maximum tokens per response |
+| `LOCAL_LLM_MAX_RESPONSE_LENGTH` | `500` | Max response length in characters (0 = no limit) |
 | `UNCENSORED_MODE_ENABLED` | `false` | Enable uncensored mode feature |
 | `UNCENSORED_ALLOWED_CHANNELS` | `` | Comma-separated channel IDs (empty = all) |
 | `UNCENSORED_BLOCKED_CHANNELS` | `` | Comma-separated blocked channel IDs |
@@ -275,6 +281,42 @@ discord-article-bot/
 | `UNCENSORED_REQUIRE_NSFW` | `false` | Only allow in NSFW channels |
 
 **Note:** Uncensored mode requires a running Ollama instance with an uncensored model like `dolphin-llama3`. The feature routes chat requests to the local LLM when users specify `uncensored:true` in the `/chat` command.
+
+### Imagen (Image Generation) Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMAGEN_ENABLED` | `false` | Enable image generation |
+| `GEMINI_API_KEY` | `` | Gemini API key for image generation |
+| `IMAGEN_MODEL` | `gemini-2.5-flash-image` | Model for image generation |
+| `IMAGEN_DEFAULT_ASPECT_RATIO` | `1:1` | Default aspect ratio |
+| `IMAGEN_MAX_PROMPT_LENGTH` | `1000` | Maximum prompt length in characters |
+| `IMAGEN_COOLDOWN_SECONDS` | `30` | Cooldown between generations per user |
+
+### Veo (Video Generation) Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VEO_ENABLED` | `false` | Enable video generation |
+| `GOOGLE_CLOUD_PROJECT` | `` | Google Cloud project ID for Vertex AI |
+| `GOOGLE_CLOUD_LOCATION` | `us-central1` | Google Cloud location |
+| `VEO_MODEL` | `veo-3.1-fast-generate-001` | Model for video generation |
+| `VEO_GCS_BUCKET` | `` | GCS bucket for storing generated videos |
+| `VEO_DEFAULT_DURATION` | `8` | Default video duration in seconds (4, 6, or 8) |
+| `VEO_DEFAULT_ASPECT_RATIO` | `16:9` | Default aspect ratio (16:9 or 9:16) |
+| `VEO_COOLDOWN_SECONDS` | `60` | Cooldown between generations per user |
+
+### Channel Context Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHANNEL_CONTEXT_ENABLED` | `false` | Enable channel context tracking |
+| `CHANNEL_CONTEXT_CHANNELS` | `` | Pre-configured channel IDs (comma-separated) |
+| `CHANNEL_CONTEXT_RECENT_COUNT` | `20` | Recent messages to keep in memory per channel |
+| `CHANNEL_CONTEXT_BATCH_INTERVAL` | `60` | Batch indexing interval in minutes |
+| `CHANNEL_CONTEXT_RETENTION_DAYS` | `30` | Retention period for indexed messages |
+| `CHANNEL_CONTEXT_SEARCH_THRESHOLD` | `0.4` | Score threshold for semantic search |
+| `CHANNEL_CONTEXT_EXTRACT_MEMORIES` | `false` | Enable Mem0 memory extraction from channel messages |
 
 ## Commands
 

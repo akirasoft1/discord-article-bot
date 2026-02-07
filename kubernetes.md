@@ -22,7 +22,7 @@ This guide provides instructions for deploying the Discord Article Bot to a Kube
 ### 1. Create Namespace
 
 ```bash
-kubectl create namespace discord-bot
+kubectl create namespace discord-article-bot
 ```
 
 ### 2. Create Secrets
@@ -34,7 +34,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: discord-bot-secrets
-  namespace: discord-bot
+  namespace: discord-article-bot
 type: Opaque
 stringData:
   DISCORD_TOKEN: "your-discord-bot-token"
@@ -57,7 +57,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: discord-bot-config
-  namespace: discord-bot
+  namespace: discord-article-bot
 data:
   # Core Settings
   DISCORD_PREFIX: "!"
@@ -130,7 +130,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: mongodb-pvc
-  namespace: discord-bot
+  namespace: discord-article-bot
 spec:
   accessModes:
     - ReadWriteOnce
@@ -142,7 +142,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mongodb
-  namespace: discord-bot
+  namespace: discord-article-bot
 spec:
   replicas: 1
   selector:
@@ -180,7 +180,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mongodb
-  namespace: discord-bot
+  namespace: discord-article-bot
 spec:
   selector:
     app: mongodb
@@ -204,7 +204,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: discord-article-bot
-  namespace: discord-bot
+  namespace: discord-article-bot
   labels:
     app: discord-article-bot
 spec:
@@ -218,7 +218,7 @@ spec:
         app: discord-article-bot
     spec:
       containers:
-      - name: discord-bot
+      - name: bot
         image: your-registry/discord-article-bot:latest  # Replace with your image
         imagePullPolicy: Always
         env:
@@ -263,15 +263,19 @@ spec:
           mountPath: /usr/src/app/prompt.txt
           subPath: prompt.txt
         
-        # Health checks
+        # Health checks (HTTP probes - more efficient than exec probes)
         livenessProbe:
-          exec:
-            command:
-            - node
-            - -e
-            - "process.exit(0)"
-          initialDelaySeconds: 30
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 15
           periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
         
       volumes:
       - name: prompt-volume
@@ -348,7 +352,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: discord-bot-hpa
-  namespace: discord-bot
+  namespace: discord-article-bot
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -378,7 +382,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: discord-bot-network-policy
-  namespace: discord-bot
+  namespace: discord-article-bot
 spec:
   podSelector:
     matchLabels:
@@ -407,7 +411,32 @@ spec:
     ports:
     - protocol: TCP
       port: 443
-  ingress: []  # No ingress needed
+  # Allow Qdrant (for Mem0 and IRC history)
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: qdrant
+    ports:
+    - protocol: TCP
+      port: 6333
+  # Allow Local LLM (Ollama) on home network (adjust IP as needed)
+  # - to:
+  #     - ipBlock:
+  #         cidr: 192.168.1.164/32
+  #   ports:
+  #     - protocol: TCP
+  #       port: 11434
+  # Allow OpenTelemetry collector / Dynatrace endpoint
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 4318
+  ingress:
+  # Allow health check probes
+  - ports:
+    - protocol: TCP
+      port: 8080
 ```
 
 ## Monitoring
@@ -415,20 +444,20 @@ spec:
 ### View Logs
 
 ```bash
-kubectl logs -f deployment/discord-article-bot -n discord-bot
+kubectl logs -f deployment/discord-article-bot -n discord-article-bot
 ```
 
 ### Check Pod Status
 
 ```bash
-kubectl get pods -n discord-bot
-kubectl describe pod -n discord-bot <pod-name>
+kubectl get pods -n discord-article-bot
+kubectl describe pod -n discord-article-bot <pod-name>
 ```
 
 ### Resource Usage
 
 ```bash
-kubectl top pods -n discord-bot
+kubectl top pods -n discord-article-bot
 ```
 
 ## Troubleshooting
@@ -437,29 +466,29 @@ kubectl top pods -n discord-bot
 
 1. Check logs:
    ```bash
-   kubectl logs deployment/discord-article-bot -n discord-bot --previous
+   kubectl logs deployment/discord-article-bot -n discord-article-bot --previous
    ```
 
 2. Check events:
    ```bash
-   kubectl get events -n discord-bot --sort-by='.lastTimestamp'
+   kubectl get events -n discord-article-bot --sort-by='.lastTimestamp'
    ```
 
 3. Verify secrets:
    ```bash
-   kubectl get secrets -n discord-bot
+   kubectl get secrets -n discord-article-bot
    ```
 
 ### Connection Issues
 
 1. Test MongoDB connection:
    ```bash
-   kubectl run -it --rm debug --image=mongo:6.0 --restart=Never -n discord-bot -- mongosh mongodb://admin:password@mongodb:27017/discord-bot?authSource=admin
+   kubectl run -it --rm debug --image=mongo:6.0 --restart=Never -n discord-article-bot -- mongosh mongodb://admin:password@mongodb:27017/discord-bot?authSource=admin
    ```
 
 2. Check network policies:
    ```bash
-   kubectl get networkpolicies -n discord-bot
+   kubectl get networkpolicies -n discord-article-bot
    ```
 
 ### Resource Constraints
@@ -468,7 +497,7 @@ If the bot is being killed due to memory limits:
 
 1. Check resource usage:
    ```bash
-   kubectl top pod -n discord-bot
+   kubectl top pod -n discord-article-bot
    ```
 
 2. Increase limits in deployment:
@@ -490,7 +519,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: mongodb-backup
-  namespace: discord-bot
+  namespace: discord-article-bot
 spec:
   schedule: "0 2 * * *"  # Daily at 2 AM
   jobTemplate:
@@ -580,7 +609,7 @@ k8s/
 2. **Deploy to development:**
    ```bash
    # Create namespace first
-   kubectl create namespace discord-bot-dev
+   kubectl create namespace discord-article-bot-dev
 
    # Apply the kustomization
    kubectl apply -k k8s/overlays/dev
@@ -589,7 +618,7 @@ k8s/
 3. **Deploy to production:**
    ```bash
    # Create namespace first
-   kubectl create namespace discord-bot
+   kubectl create namespace discord-article-bot
 
    # Apply the kustomization
    kubectl apply -k k8s/overlays/prod
@@ -612,7 +641,7 @@ k8s/
      --from-literal=DISCORD_TOKEN=your-token \
      --from-literal=OPENAI_API_KEY=your-key \
      --from-literal=MONGO_PASSWORD=your-password \
-     -n discord-bot
+     -n discord-article-bot
    ```
 
 3. **Adjust resource limits** by patching in your overlay's `kustomization.yaml`
@@ -676,7 +705,7 @@ The base configuration implements these Kubernetes best practices:
 To remove all resources:
 
 ```bash
-kubectl delete namespace discord-bot
+kubectl delete namespace discord-article-bot
 ```
 
 This will delete all resources in the namespace including:
