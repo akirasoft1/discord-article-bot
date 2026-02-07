@@ -92,6 +92,7 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 - **RSS Feed Monitoring**: Auto-post articles from configured feeds
 - **Follow-up Tracker**: Mark stories for updates
 - **OpenTelemetry Tracing**: Distributed tracing for Dynatrace integration
+- **OpenLLMetry (GenAI Instrumentation)**: Captures full LLM prompts, completions, and token usage in trace spans
 
 ## Prerequisites
 
@@ -429,6 +430,12 @@ The bot includes OpenTelemetry tracing for Dynatrace integration:
 - Traces for Linkwarden polling and article processing
 - Spans for OpenAI API calls with token counts
 - Auto-instrumentation for HTTP and MongoDB
+- **OpenLLMetry GenAI instrumentation**: Captures full request/response content for LLM calls
+  - `gen_ai.prompt.N.content` - Full prompt messages sent to the LLM
+  - `gen_ai.completion.N.content` - Full completion responses
+  - `gen_ai.usage.prompt_tokens` / `gen_ai.usage.completion_tokens` - Token usage
+  - `gen_ai.request.model` / `gen_ai.response.model` - Model information
+  - Set `TRACELOOP_TRACE_CONTENT=false` to disable content capture for privacy
 
 ### Health Check Endpoints
 

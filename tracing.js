@@ -9,6 +9,7 @@ const { Resource } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { trace, SpanStatusCode, SpanKind, context, ROOT_CONTEXT } = require('@opentelemetry/api');
+const { OpenAIInstrumentation } = require('@traceloop/instrumentation-openai');
 const { version } = require('./package.json');
 
 // Service identification
@@ -61,6 +62,10 @@ const sdk = new NodeSDK({
         enabled: false,
       },
     }),
+    // OpenLLMetry: captures gen_ai.* attributes for LLM calls (prompts, completions, token usage)
+    // Content capture (request/response bodies) is enabled by default
+    // Set TRACELOOP_TRACE_CONTENT=false to disable for privacy
+    new OpenAIInstrumentation(),
   ],
 });
 

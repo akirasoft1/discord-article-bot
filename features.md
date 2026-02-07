@@ -108,6 +108,7 @@
 
 ### Monitoring & Observability
 - **OpenTelemetry Tracing**: Distributed tracing for Dynatrace
+- **OpenLLMetry Integration**: Captures full LLM request/response content in traces via `gen_ai.*` attributes
 - **Token Usage Tracking**: Per-user consumption in MongoDB
 - **Cost Tracking**: Real-time token and cost breakdown
 
