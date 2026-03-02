@@ -603,8 +603,11 @@ class DiscordBot {
       }
 
       // Format response with personality header and wrap URLs
+      const fallbackNotice = result.fallback?.occurred
+        ? `\n> *\u26A0\uFE0F Local LLM unavailable \u2014 responded using ${result.personality.emoji} ${result.personality.name} instead*\n`
+        : '';
       const response = TextUtils.wrapUrls(
-        `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
+        `${result.personality.emoji} **${result.personality.name}**${fallbackNotice}\n\n${result.message}`
       );
 
       // Convert any generated images to Discord attachments

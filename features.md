@@ -41,7 +41,8 @@
 - **Access Controls**: Configurable per-channel, per-user, and NSFW-only restrictions
 - **Personality Variants**: Personalities can define `uncensoredSystemPrompt` for enhanced local mode
 - **Visual Indicator**: Uncensored responses marked with 🔓 emoji
-- **Graceful Fallback**: Uses standard OpenAI if local LLM is unavailable
+- **Automatic Fallback**: When local LLM goes down mid-runtime, automatically falls back to cloud provider with the `friendly` personality and notifies the user
+- **Circuit Breaker**: After a connection failure, the local LLM is temporarily marked unavailable (60s cooldown) to avoid repeated timeout delays on subsequent requests
 - **DeepSeek-R1 Support**: Strips thinking tokens (`<think>...</think>`) from reasoning model responses
 - **Response Length Control**: Configurable `maxResponseLength` truncates overly verbose local LLM responses at sentence boundaries
 

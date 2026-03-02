@@ -326,6 +326,24 @@ ${context}`;
       // Check if personality exists but is unavailable (e.g., local LLM not running)
       const availability = personalityManager.checkAvailability(personalityId);
       if (availability.exists && !availability.available) {
+        // Path A: Check if personality has a fallback we can redirect to
+        const rawPersonality = personalityManager.getRaw(personalityId);
+        if (rawPersonality?.useLocalLlm && rawPersonality?.fallbackPersonality) {
+          const fallbackId = rawPersonality.fallbackPersonality;
+          const fallbackPersonality = personalityManager.get(fallbackId);
+          if (fallbackPersonality) {
+            logger.warn(`Personality ${personalityId} unavailable (circuit open), falling back to ${fallbackId}`);
+            const result = await this.chat(fallbackId, userMessage, user, channelId, guildId, imageUrl, options);
+            if (result.success) {
+              result.fallback = {
+                occurred: true,
+                originalPersonality: personalityId,
+                reason: 'Local LLM unavailable'
+              };
+            }
+            return result;
+          }
+        }
         return {
           success: false,
           error: availability.reason
@@ -418,6 +436,8 @@ ${context}`;
       let inputTokens = 0;
       let outputTokens = 0;
       let generatedImages = [];
+      let usedFallback = false;
+      let fallbackPersonalityInfo = null;
 
       if (shouldUseLocalLlm && localLlmService.isAvailable()) {
         // Use local LLM for uncensored response or local-LLM-only personality
@@ -432,11 +452,82 @@ ${context}`;
         ];
 
         logger.info(`Using local LLM for response (personality: ${personalityId}, reason: ${personality.useLocalLlm ? 'personality requires local LLM' : 'user requested uncensored'})`);
-        assistantMessage = await localLlmService.generateCompletion(messages);
 
-        // Local LLM doesn't provide token counts, estimate them
-        inputTokens = countTokens(uncensoredSystemPrompt) + countTokens(inputText);
-        outputTokens = countTokens(assistantMessage);
+        try {
+          assistantMessage = await localLlmService.generateCompletion(messages);
+
+          // Local LLM doesn't provide token counts, estimate them
+          inputTokens = countTokens(uncensoredSystemPrompt) + countTokens(inputText);
+          outputTokens = countTokens(assistantMessage);
+
+          // Successful — ensure the service is marked available
+          localLlmService.markAvailable();
+        } catch (localLlmError) {
+          // Path B: Check if this is a connection error that warrants fallback
+          if (localLlmService.isConnectionError(localLlmError)) {
+            logger.warn(`Local LLM connection failed, falling back to cloud provider: ${localLlmError.message}`);
+            localLlmService.markUnavailable();
+
+            // Determine fallback personality
+            const fallbackId = personality.fallbackPersonality || 'friendly';
+            const fallbackPers = personalityManager.get(fallbackId) || personalityManager.get('friendly');
+
+            if (!fallbackPers) {
+              throw localLlmError; // No fallback available
+            }
+
+            // Use fallback personality's system prompt with cloud provider
+            const fallbackSystemPrompt = this._buildGroupSystemPrompt(fallbackPers, memoryContext, channelContext, sharedContext);
+            const apiInput = this._buildApiInput(inputText, imageUrl);
+
+            const model = this.config.openai.model || 'gpt-5.1';
+            const response = await withSpan('openai.responses.create', {
+              'gen_ai.system': 'openai',
+              'gen_ai.operation.name': 'chat',
+              'gen_ai.request.model': model,
+              'chat.personality.id': fallbackId,
+              'chat.personality.name': fallbackPers.name,
+              'chat.mode': 'stateful',
+              'chat.fallback': true,
+              'chat.fallback.reason': localLlmError.message,
+              'chat.original_personality.id': personalityId,
+              'discord.channel.id': channelId,
+              'discord.guild.id': guildId || '',
+              'discord.user.id': user.id,
+            }, async (span) => {
+              const result = await this.openaiClient.responses.create({
+                model: model,
+                instructions: fallbackSystemPrompt,
+                input: apiInput,
+                tools: [{ type: 'web_search' }]
+              });
+
+              span.setAttributes({
+                'gen_ai.response.id': result.id || '',
+                'gen_ai.response.model': result.model || model,
+                'gen_ai.usage.input_tokens': result.usage?.input_tokens || 0,
+                'gen_ai.usage.output_tokens': result.usage?.output_tokens || 0,
+              });
+
+              return result;
+            });
+
+            assistantMessage = response.output_text;
+            inputTokens = response.usage?.input_tokens || 0;
+            outputTokens = response.usage?.output_tokens || 0;
+            generatedImages = this._extractGeneratedImages(response);
+
+            usedFallback = true;
+            fallbackPersonalityInfo = {
+              id: fallbackPers.id,
+              name: fallbackPers.name,
+              emoji: fallbackPers.emoji
+            };
+          } else {
+            // Not a connection error — re-throw to be caught by outer catch
+            throw localLlmError;
+          }
+        }
 
       } else {
         // Call OpenAI Responses API (cloud provider)
@@ -532,10 +623,10 @@ ${context}`;
 
       logger.info(`Chat response generated: ${inputTokens} in, ${outputTokens} out (conversation: ${conversation.messageCount + 2} messages)`);
 
-      return {
+      const result = {
         success: true,
         message: assistantMessage,
-        personality: {
+        personality: fallbackPersonalityInfo || {
           id: personality.id,
           name: personality.name,
           emoji: personality.emoji
@@ -551,6 +642,16 @@ ${context}`;
         },
         images: generatedImages // Base64 images generated by the model
       };
+
+      if (usedFallback) {
+        result.fallback = {
+          occurred: true,
+          originalPersonality: personalityId,
+          reason: 'Local LLM unavailable'
+        };
+      }
+
+      return result;
 
     } catch (error) {
       logger.error(`Chat error with personality ${personalityId}: ${error.message}`);
