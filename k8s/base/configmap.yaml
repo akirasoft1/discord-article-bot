@@ -12,6 +12,8 @@ data:
   DISCORD_CLIENT_ID: ""
   # Optional: Guild ID for development testing (instant command updates)
   DISCORD_TEST_GUILD_ID: ""
+  # Comma-separated Discord user IDs for bot admin privileges
+  BOT_ADMIN_USER_IDS: ""
   OPENAI_BASE_URL: "https://api.openai.com/v1"
   OPENAI_METHOD: "response"
   OPENAI_MODEL: "gpt-4.1-mini"
@@ -69,6 +71,8 @@ data:
   # Image Generation via Gemini
   IMAGEGEN_ENABLED: "true"
   IMAGEGEN_MODEL: "gemini-3-pro-image-preview"
+  # Premium model for admin users (BOT_ADMIN_USER_IDS) - optional
+  IMAGEGEN_ADMIN_MODEL: ""
   IMAGEGEN_DEFAULT_ASPECT_RATIO: "1:1"
   IMAGEGEN_MAX_PROMPT_LENGTH: "1000"
   IMAGEGEN_COOLDOWN_SECONDS: "30"

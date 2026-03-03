@@ -290,6 +290,7 @@ discord-article-bot/
 | `IMAGEGEN_ENABLED` | `false` | Enable image generation |
 | `GEMINI_API_KEY` | `` | Gemini API key for image generation |
 | `IMAGEGEN_MODEL` | `gemini-2.5-flash-image` | Model for image generation |
+| `IMAGEGEN_ADMIN_MODEL` | `` | Premium model for admin users (falls back to standard if empty) |
 | `IMAGEGEN_DEFAULT_ASPECT_RATIO` | `1:1` | Default aspect ratio |
 | `IMAGEGEN_MAX_PROMPT_LENGTH` | `1000` | Maximum prompt length in characters |
 | `IMAGEGEN_COOLDOWN_SECONDS` | `30` | Cooldown between generations per user |
