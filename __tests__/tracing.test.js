@@ -66,11 +66,23 @@ jest.mock('../package.json', () => ({ version: '1.0.0-test' }));
 let mockNodeSDKConfig;
 
 describe('tracing', () => {
+  let savedJestWorkerId;
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockNodeSDKConfig = null;
     // Clear module cache so tracing.js re-executes
     jest.resetModules();
+    // Temporarily unset JEST_WORKER_ID so tracing.js uses production config
+    savedJestWorkerId = process.env.JEST_WORKER_ID;
+    delete process.env.JEST_WORKER_ID;
+  });
+
+  afterEach(() => {
+    // Restore JEST_WORKER_ID
+    if (savedJestWorkerId !== undefined) {
+      process.env.JEST_WORKER_ID = savedJestWorkerId;
+    }
   });
 
   test('should include OpenAIInstrumentation in the SDK instrumentations', () => {
