@@ -283,16 +283,16 @@ discord-article-bot/
 
 **Note:** Uncensored mode requires a running Ollama instance with an uncensored model like `dolphin-llama3`. The feature routes chat requests to the local LLM when users specify `uncensored:true` in the `/chat` command.
 
-### Imagen (Image Generation) Configuration
+### Image Generation Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMAGEN_ENABLED` | `false` | Enable image generation |
+| `IMAGEGEN_ENABLED` | `false` | Enable image generation |
 | `GEMINI_API_KEY` | `` | Gemini API key for image generation |
-| `IMAGEN_MODEL` | `gemini-2.5-flash-image` | Model for image generation |
-| `IMAGEN_DEFAULT_ASPECT_RATIO` | `1:1` | Default aspect ratio |
-| `IMAGEN_MAX_PROMPT_LENGTH` | `1000` | Maximum prompt length in characters |
-| `IMAGEN_COOLDOWN_SECONDS` | `30` | Cooldown between generations per user |
+| `IMAGEGEN_MODEL` | `gemini-2.5-flash-image` | Model for image generation |
+| `IMAGEGEN_DEFAULT_ASPECT_RATIO` | `1:1` | Default aspect ratio |
+| `IMAGEGEN_MAX_PROMPT_LENGTH` | `1000` | Maximum prompt length in characters |
+| `IMAGEGEN_COOLDOWN_SECONDS` | `30` | Cooldown between generations per user |
 
 ### Veo (Video Generation) Configuration
 

@@ -66,12 +66,12 @@ data:
   VERTEXAI_PROJECT: ""
   VERTEXAI_LOCATION: "us-central1"
 
-  # Imagen (Image Generation via Gemini)
-  IMAGEN_ENABLED: "true"
-  IMAGEN_MODEL: "gemini-3-pro-image-preview"
-  IMAGEN_DEFAULT_ASPECT_RATIO: "1:1"
-  IMAGEN_MAX_PROMPT_LENGTH: "1000"
-  IMAGEN_COOLDOWN_SECONDS: "30"
+  # Image Generation via Gemini
+  IMAGEGEN_ENABLED: "true"
+  IMAGEGEN_MODEL: "gemini-3-pro-image-preview"
+  IMAGEGEN_DEFAULT_ASPECT_RATIO: "1:1"
+  IMAGEGEN_MAX_PROMPT_LENGTH: "1000"
+  IMAGEGEN_COOLDOWN_SECONDS: "30"
 
   # Veo (Video Generation via Vertex AI)
   VEO_ENABLED: "false"
