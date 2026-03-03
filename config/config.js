@@ -168,19 +168,19 @@ module.exports = {
   // Imagen (Nano Banana) - Google Gemini image generation
   imagen: {
     // Enable/disable image generation
-    enabled: process.env.IMAGEN_ENABLED === 'true',
+    enabled: process.env.IMAGEGEN_ENABLED === 'true',
     // Gemini API key for image generation
     apiKey: process.env.GEMINI_API_KEY || '',
     // Model to use for image generation
     // Options: 'gemini-3-pro-image-preview' (preferred), 'gemini-2.5-flash-image' (fallback)
-    model: process.env.IMAGEN_MODEL || 'gemini-2.5-flash-image',
+    model: process.env.IMAGEGEN_MODEL || 'gemini-2.5-flash-image',
     // Default aspect ratio for generated images
     // Options: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
-    defaultAspectRatio: process.env.IMAGEN_DEFAULT_ASPECT_RATIO || '1:1',
+    defaultAspectRatio: process.env.IMAGEGEN_DEFAULT_ASPECT_RATIO || '1:1',
     // Maximum prompt length in characters
-    maxPromptLength: parseInt(process.env.IMAGEN_MAX_PROMPT_LENGTH || '1000', 10),
+    maxPromptLength: parseInt(process.env.IMAGEGEN_MAX_PROMPT_LENGTH || '1000', 10),
     // Cooldown between image generations per user (in seconds)
-    cooldownSeconds: parseInt(process.env.IMAGEN_COOLDOWN_SECONDS || '30', 10)
+    cooldownSeconds: parseInt(process.env.IMAGEGEN_COOLDOWN_SECONDS || '30', 10)
   },
   // Veo - Google Vertex AI video generation (first & last frame)
   veo: {
