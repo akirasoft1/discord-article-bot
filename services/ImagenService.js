@@ -53,10 +53,36 @@ class ImagenService {
       }
     });
 
+    // Initialize admin model if configured (premium model for admin users)
+    this.adminModel = null;
+    this.adminModelName = null;
+    if (config.imagen.adminModel) {
+      this.adminModel = this.genAI.getGenerativeModel({
+        model: config.imagen.adminModel,
+        generationConfig: {
+          responseModalities: ['TEXT', 'IMAGE']
+        }
+      });
+      this.adminModelName = config.imagen.adminModel;
+      logger.info(`ImagenService admin model initialized: ${config.imagen.adminModel}`);
+    }
+
     // Cooldown tracking: Map of userId -> timestamp when cooldown expires
     this.cooldowns = new Map();
 
     logger.info(`ImagenService initialized with model: ${config.imagen.model}`);
+  }
+
+  /**
+   * Get the appropriate model for a request based on admin status
+   * @param {boolean} isAdmin - Whether the requesting user is an admin
+   * @returns {{model: Object, modelName: string}}
+   */
+  getModelForRequest(isAdmin) {
+    if (isAdmin && this.adminModel) {
+      return { model: this.adminModel, modelName: this.adminModelName };
+    }
+    return { model: this.model, modelName: this.config.imagen.model };
   }
 
   /**
@@ -306,6 +332,14 @@ class ImagenService {
       logger.info(`Using reference image from: ${options.referenceImageUrl}`);
     }
 
+    // Select model based on admin status
+    const isAdmin = options.isAdmin || false;
+    const { model: selectedModel, modelName } = this.getModelForRequest(isAdmin);
+
+    if (isAdmin && this.adminModel) {
+      logger.info(`Using admin model for user ${user?.id}: ${modelName}`);
+    }
+
     try {
       logger.info(`Generating image for prompt: "${trimmedPrompt.substring(0, 50)}..." with aspect ratio: ${aspectRatio}`);
 
@@ -325,20 +359,20 @@ class ImagenService {
         });
       }
 
-      const model = this.config.imagen.model;
       const result = await withSpan('gemini.generateContent', {
         // GenAI semantic conventions
         'gen_ai.system': 'google',
         'gen_ai.operation.name': 'image_generation',
-        'gen_ai.request.model': model,
+        'gen_ai.request.model': modelName,
         // Image generation context
         'image_gen.aspect_ratio': aspectRatio,
         'image_gen.has_reference_image': !!referenceImage,
         'image_gen.prompt_length': trimmedPrompt.length,
+        'image_gen.is_admin': isAdmin,
         // Discord context
         'discord.user.id': user?.id || '',
       }, async (span) => {
-        const genResult = await this.model.generateContent({
+        const genResult = await selectedModel.generateContent({
           contents: [{
             role: 'user',
             parts
@@ -500,7 +534,7 @@ class ImagenService {
           user.tag || user.username,
           trimmedPrompt,
           aspectRatio,
-          this.config.imagen.model,
+          modelName,
           true,
           null,
           buffer.length
@@ -538,7 +572,7 @@ class ImagenService {
           user.tag || user.username,
           trimmedPrompt,
           aspectRatio,
-          this.config.imagen.model,
+          modelName,
           false,
           errorMessage,
           0
