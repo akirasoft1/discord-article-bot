@@ -489,4 +489,121 @@ describe('LocalLlmService', () => {
       expect(result).toBe('First sentence here. Second sentence follows.');
     });
   });
+
+  describe('isConnectionError', () => {
+    it('should return true for ECONNREFUSED via error.cause', () => {
+      const err = new Error('connect ECONNREFUSED 192.168.1.164:11434');
+      err.cause = { code: 'ECONNREFUSED' };
+
+      expect(localLlmService.isConnectionError(err)).toBe(true);
+    });
+
+    it('should return true for ECONNREFUSED via error.code', () => {
+      const err = new Error('connect ECONNREFUSED');
+      err.code = 'ECONNREFUSED';
+
+      expect(localLlmService.isConnectionError(err)).toBe(true);
+    });
+
+    it('should return true for ETIMEDOUT', () => {
+      const err = new Error('connect ETIMEDOUT');
+      err.cause = { code: 'ETIMEDOUT' };
+
+      expect(localLlmService.isConnectionError(err)).toBe(true);
+    });
+
+    it('should return true for ENOTFOUND', () => {
+      const err = new Error('getaddrinfo ENOTFOUND');
+      err.cause = { code: 'ENOTFOUND' };
+
+      expect(localLlmService.isConnectionError(err)).toBe(true);
+    });
+
+    it('should return true for EHOSTUNREACH', () => {
+      const err = new Error('host unreachable');
+      err.cause = { code: 'EHOSTUNREACH' };
+
+      expect(localLlmService.isConnectionError(err)).toBe(true);
+    });
+
+    it('should return true for ENETUNREACH', () => {
+      const err = new Error('network unreachable');
+      err.cause = { code: 'ENETUNREACH' };
+
+      expect(localLlmService.isConnectionError(err)).toBe(true);
+    });
+
+    it('should return true for ECONNRESET', () => {
+      const err = new Error('connection reset');
+      err.cause = { code: 'ECONNRESET' };
+
+      expect(localLlmService.isConnectionError(err)).toBe(true);
+    });
+
+    it('should return true for AbortError', () => {
+      const err = new Error('The operation was aborted');
+      err.name = 'AbortError';
+
+      expect(localLlmService.isConnectionError(err)).toBe(true);
+    });
+
+    it('should return false for empty response error', () => {
+      const err = new Error('Empty response from local LLM');
+
+      expect(localLlmService.isConnectionError(err)).toBe(false);
+    });
+
+    it('should return false for generic errors', () => {
+      const err = new Error('Something went wrong');
+
+      expect(localLlmService.isConnectionError(err)).toBe(false);
+    });
+  });
+
+  describe('circuit breaker - markUnavailable / markAvailable', () => {
+    beforeEach(async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ models: [] })
+      });
+      await localLlmService.initialize();
+    });
+
+    it('should return false from isAvailable() after markUnavailable()', () => {
+      expect(localLlmService.isAvailable()).toBe(true);
+
+      localLlmService.markUnavailable();
+
+      expect(localLlmService.isAvailable()).toBe(false);
+    });
+
+    it('should return true from isAvailable() after markAvailable()', () => {
+      localLlmService.markUnavailable();
+      expect(localLlmService.isAvailable()).toBe(false);
+
+      localLlmService.markAvailable();
+      expect(localLlmService.isAvailable()).toBe(true);
+    });
+
+    it('should return true from isAvailable() after recovery cooldown elapses', () => {
+      localLlmService.markUnavailable();
+      expect(localLlmService.isAvailable()).toBe(false);
+
+      // Advance the unavailableSince timestamp past the cooldown
+      localLlmService._unavailableSince = Date.now() - 61000; // 61 seconds ago
+
+      expect(localLlmService.isAvailable()).toBe(true);
+      // Should have cleared the flag
+      expect(localLlmService._temporarilyUnavailable).toBe(false);
+    });
+
+    it('should remain unavailable during cooldown period', () => {
+      localLlmService.markUnavailable();
+
+      // Only 10 seconds ago - well within the 60s cooldown
+      localLlmService._unavailableSince = Date.now() - 10000;
+
+      expect(localLlmService.isAvailable()).toBe(false);
+    });
+  });
 });

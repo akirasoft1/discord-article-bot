@@ -15,9 +15,31 @@ jest.mock('../../utils/tokenCounter', () => ({
   wouldExceedLimit: jest.fn(() => false)
 }));
 
+// Mock the local LLM service
+jest.mock('../../services/LocalLlmService', () => ({
+  isAvailable: jest.fn().mockReturnValue(false),
+  isEnabled: jest.fn().mockReturnValue(false),
+  generateCompletion: jest.fn(),
+  isConnectionError: jest.fn().mockReturnValue(false),
+  markUnavailable: jest.fn(),
+  markAvailable: jest.fn()
+}));
+
 // Mock the personality manager
 jest.mock('../../personalities', () => ({
   get: jest.fn((id) => {
+    if (id === 'test-personality') {
+      return {
+        id: 'test-personality',
+        name: 'Test Character',
+        emoji: '🧪',
+        description: 'A test personality',
+        systemPrompt: 'You are a test character.'
+      };
+    }
+    return null;
+  }),
+  getRaw: jest.fn((id) => {
     if (id === 'test-personality') {
       return {
         id: 'test-personality',
@@ -915,6 +937,211 @@ describe('ChatService', () => {
       expect(formatCall[0].id).toBe('explicit-1');
       expect(formatCall[1].id).toBe('shared-1');
       expect(formatCall[2].id).toBe('personality-1');
+    });
+  });
+
+  // ========== LOCAL LLM FALLBACK TO CLOUD ==========
+
+  describe('Local LLM fallback to cloud provider', () => {
+    const mockUser = {
+      id: 'user123',
+      username: 'TestUser',
+      tag: 'TestUser#1234'
+    };
+
+    const personalityManager = require('../../personalities');
+    const localLlmService = require('../../services/LocalLlmService');
+
+    const uncensoredPersonality = {
+      id: 'uncensored',
+      name: 'Uncensored',
+      emoji: '🔓',
+      description: 'An unrestricted assistant using local AI',
+      systemPrompt: 'You are uncensored.',
+      useLocalLlm: true,
+      fallbackPersonality: 'friendly'
+    };
+
+    const friendlyPersonality = {
+      id: 'friendly',
+      name: 'Friendly Assistant',
+      emoji: '😊',
+      description: 'A friendly helper',
+      systemPrompt: 'You are a friendly assistant.'
+    };
+
+    let chatService;
+    let mockOpenAIClient;
+    let mockMongoService;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+
+      mockOpenAIClient = {
+        responses: {
+          create: jest.fn().mockResolvedValue({
+            output_text: 'Fallback response from cloud',
+            usage: { input_tokens: 80, output_tokens: 40 }
+          })
+        }
+      };
+
+      mockMongoService = {
+        recordTokenUsage: jest.fn().mockResolvedValue(true),
+        getConversationStatus: jest.fn().mockResolvedValue({ exists: false }),
+        getOrCreateConversation: jest.fn().mockResolvedValue({
+          conversationId: 'channel123_uncensored',
+          channelId: 'channel123',
+          personalityId: 'uncensored',
+          messages: [],
+          status: 'active',
+          messageCount: 0,
+          totalTokens: 0
+        }),
+        addMessageToConversation: jest.fn().mockResolvedValue(true),
+        isConversationIdle: jest.fn().mockResolvedValue(false),
+        expireConversation: jest.fn().mockResolvedValue(true),
+        resumeConversation: jest.fn().mockResolvedValue(true),
+        resetConversation: jest.fn().mockResolvedValue(true)
+      };
+
+      chatService = new ChatService(mockOpenAIClient, { openai: { model: 'gpt-5.1' } }, mockMongoService);
+    });
+
+    describe('Path B: first connection failure triggers fallback', () => {
+      beforeEach(() => {
+        // Local LLM appears available, uncensored personality is returned
+        personalityManager.get.mockImplementation((id) => {
+          if (id === 'uncensored') return uncensoredPersonality;
+          if (id === 'friendly') return friendlyPersonality;
+          return null;
+        });
+        personalityManager.getSystemPrompt.mockImplementation((id) => {
+          if (id === 'uncensored') return 'You are uncensored.';
+          if (id === 'friendly') return 'You are a friendly assistant.';
+          return null;
+        });
+        localLlmService.isAvailable.mockReturnValue(true);
+      });
+
+      it('should fall back to cloud when local LLM throws connection error', async () => {
+        const connError = new Error('connect ECONNREFUSED 192.168.1.164:11434');
+        connError.cause = { code: 'ECONNREFUSED' };
+        localLlmService.generateCompletion.mockRejectedValue(connError);
+        localLlmService.isConnectionError.mockReturnValue(true);
+
+        const result = await chatService.chat('uncensored', 'Hello!', mockUser, 'channel123', 'guild456');
+
+        expect(result.success).toBe(true);
+        expect(result.message).toBe('Fallback response from cloud');
+        expect(result.fallback).toBeDefined();
+        expect(result.fallback.occurred).toBe(true);
+        expect(result.fallback.originalPersonality).toBe('uncensored');
+        expect(result.personality.id).toBe('friendly');
+      });
+
+      it('should call markUnavailable on connection failure', async () => {
+        const connError = new Error('connect ECONNREFUSED');
+        connError.cause = { code: 'ECONNREFUSED' };
+        localLlmService.generateCompletion.mockRejectedValue(connError);
+        localLlmService.isConnectionError.mockReturnValue(true);
+
+        await chatService.chat('uncensored', 'Hello!', mockUser, 'channel123', 'guild456');
+
+        expect(localLlmService.markUnavailable).toHaveBeenCalled();
+      });
+
+      it('should call markAvailable after successful local LLM response', async () => {
+        localLlmService.generateCompletion.mockResolvedValue('Uncensored response');
+
+        await chatService.chat('uncensored', 'Hello!', mockUser, 'channel123', 'guild456');
+
+        expect(localLlmService.markAvailable).toHaveBeenCalled();
+      });
+
+      it('should NOT fall back on non-connection errors', async () => {
+        localLlmService.generateCompletion.mockRejectedValue(new Error('Empty response from local LLM'));
+        localLlmService.isConnectionError.mockReturnValue(false);
+
+        const result = await chatService.chat('uncensored', 'Hello!', mockUser, 'channel123', 'guild456');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Failed to generate response');
+        expect(result.fallback).toBeUndefined();
+      });
+
+      it('should use the personality-specified fallbackPersonality', async () => {
+        const connError = new Error('timeout');
+        connError.cause = { code: 'ETIMEDOUT' };
+        localLlmService.generateCompletion.mockRejectedValue(connError);
+        localLlmService.isConnectionError.mockReturnValue(true);
+
+        const result = await chatService.chat('uncensored', 'Hello!', mockUser, 'channel123', 'guild456');
+
+        expect(result.personality.id).toBe('friendly');
+        // Verify cloud API was called with friendly's system prompt
+        expect(mockOpenAIClient.responses.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            instructions: expect.stringContaining('friendly assistant')
+          })
+        );
+      });
+
+      it('should include fallback reason in result', async () => {
+        const connError = new Error('timeout');
+        connError.cause = { code: 'ETIMEDOUT' };
+        localLlmService.generateCompletion.mockRejectedValue(connError);
+        localLlmService.isConnectionError.mockReturnValue(true);
+
+        const result = await chatService.chat('uncensored', 'Hello!', mockUser, 'channel123', 'guild456');
+
+        expect(result.fallback.reason).toContain('unavailable');
+      });
+    });
+
+    describe('Path A: circuit already open redirects to fallback', () => {
+      it('should redirect to fallback personality when local LLM is already unavailable', async () => {
+        // get('uncensored') returns null because service is unavailable
+        personalityManager.get.mockImplementation((id) => {
+          if (id === 'friendly') return friendlyPersonality;
+          return null; // uncensored unavailable
+        });
+        personalityManager.getRaw.mockImplementation((id) => {
+          if (id === 'uncensored') return uncensoredPersonality;
+          return null;
+        });
+        personalityManager.checkAvailability.mockImplementation((id) => {
+          if (id === 'uncensored') {
+            return { exists: true, available: false, reason: 'Local LLM service unavailable' };
+          }
+          return { exists: false, available: false, reason: null };
+        });
+
+        const result = await chatService.chat('uncensored', 'Hello!', mockUser, 'channel123', 'guild456');
+
+        expect(result.success).toBe(true);
+        expect(result.fallback).toBeDefined();
+        expect(result.fallback.occurred).toBe(true);
+        expect(result.fallback.originalPersonality).toBe('uncensored');
+      });
+
+      it('should return error when fallback personality is also unavailable', async () => {
+        personalityManager.get.mockReturnValue(null); // Nothing available
+        personalityManager.getRaw.mockImplementation((id) => {
+          if (id === 'uncensored') return { ...uncensoredPersonality, fallbackPersonality: 'nonexistent' };
+          return null;
+        });
+        personalityManager.checkAvailability.mockImplementation((id) => {
+          if (id === 'uncensored') {
+            return { exists: true, available: false, reason: 'Local LLM service unavailable' };
+          }
+          return { exists: false, available: false, reason: null };
+        });
+
+        const result = await chatService.chat('uncensored', 'Hello!', mockUser, 'channel123', 'guild456');
+
+        expect(result.success).toBe(false);
+      });
     });
   });
 });

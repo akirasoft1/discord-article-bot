@@ -124,10 +124,16 @@ class ChatSlashCommand extends BaseSlashCommand {
 
     // Format response with personality header and wrap URLs
     // Add unlock emoji if local LLM was used (either via uncensored option or uncensored personality)
-    const usedLocalLlm = useUncensored || personalityId === 'uncensored';
+    const usedLocalLlm = (useUncensored || personalityId === 'uncensored') && !result.fallback?.occurred;
     const uncensoredIndicator = usedLocalLlm ? ' \uD83D\uDD13' : '';
+
+    // Add fallback notice if the local LLM was unavailable
+    const fallbackNotice = result.fallback?.occurred
+      ? `\n> *\u26A0\uFE0F Local LLM unavailable \u2014 responded using ${result.personality.emoji} ${result.personality.name} instead*\n`
+      : '';
+
     const response = TextUtils.wrapUrls(
-      `${result.personality.emoji} **${result.personality.name}**${uncensoredIndicator}\n\n${result.message}`
+      `${result.personality.emoji} **${result.personality.name}**${uncensoredIndicator}${fallbackNotice}\n\n${result.message}`
     );
 
     // Convert any generated images to Discord attachments

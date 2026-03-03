@@ -209,6 +209,16 @@ Multiple instances with the same token will ALL receive Discord events and ALL r
 
 **Root cause example (Dec 2025)**: A forgotten deployment in `default` namespace ran alongside the production deployment in `discord-article-bot` namespace for 10 days, causing duplicate replies to every message.
 
+### Local LLM Fallback Behavior
+
+When the local Ollama instance becomes unavailable mid-runtime, the bot automatically falls back to the cloud provider:
+
+- **Circuit breaker**: After a connection error (ECONNREFUSED, ETIMEDOUT, etc.), `LocalLlmService` is marked temporarily unavailable for 60 seconds
+- **Fallback personality**: The `uncensored` personality defines `fallbackPersonality: 'friendly'` — when local LLM fails, the request is retried with the `friendly` personality via OpenAI
+- **User notification**: A visual notice (warning emoji) is shown to the user when fallback occurs
+- **Recovery**: After the 60-second cooldown, the next request optimistically tries the local LLM again
+- **Custom fallbacks**: Any `useLocalLlm: true` personality can define its own `fallbackPersonality` field
+
 ## File Locations
 
 - Slash commands: `commands/slash/`

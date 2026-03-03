@@ -14,6 +14,9 @@ class LocalLlmService {
   constructor() {
     this.client = null;
     this.initialized = false;
+    this._temporarilyUnavailable = false;
+    this._unavailableSince = null;
+    this._recoveryCheckIntervalMs = 60000; // 1 minute before retrying
   }
 
   /**
@@ -212,11 +215,60 @@ class LocalLlmService {
   }
 
   /**
-   * Check if the service is available for use
+   * Check if an error is a connection/network error that warrants fallback
+   * @param {Error} error - The error to classify
+   * @returns {boolean} True if the error is a connection/network error
+   */
+  isConnectionError(error) {
+    const connectionCodes = ['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EHOSTUNREACH', 'ENETUNREACH', 'ECONNRESET'];
+    if (error.name === 'AbortError') return true;
+    if (error.code && connectionCodes.includes(error.code)) return true;
+    if (error.cause?.code && connectionCodes.includes(error.cause.code)) return true;
+    return false;
+  }
+
+  /**
+   * Mark the service as temporarily unavailable after a connection failure.
+   * Subsequent calls to isAvailable() will return false until the recovery cooldown elapses.
+   */
+  markUnavailable() {
+    this._temporarilyUnavailable = true;
+    this._unavailableSince = Date.now();
+    logger.warn('Local LLM marked as temporarily unavailable');
+  }
+
+  /**
+   * Mark the service as available again (e.g., after a successful request)
+   */
+  markAvailable() {
+    if (this._temporarilyUnavailable) {
+      this._temporarilyUnavailable = false;
+      this._unavailableSince = null;
+      logger.info('Local LLM marked as available again');
+    }
+  }
+
+  /**
+   * Check if the service is available for use.
+   * Returns false if not initialized, disabled, or temporarily unavailable due to connection failure.
+   * After the recovery cooldown elapses, optimistically allows retry.
    * @returns {boolean}
    */
   isAvailable() {
-    return this.initialized && config.localLlm.enabled;
+    if (!this.initialized || !config.localLlm.enabled) return false;
+
+    if (this._temporarilyUnavailable) {
+      const elapsed = Date.now() - this._unavailableSince;
+      if (elapsed < this._recoveryCheckIntervalMs) {
+        return false;
+      }
+      // Cooldown elapsed — optimistically clear and allow retry
+      logger.info('Local LLM recovery cooldown elapsed, allowing retry');
+      this._temporarilyUnavailable = false;
+      this._unavailableSince = null;
+    }
+
+    return true;
   }
 
   /**

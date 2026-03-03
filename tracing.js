@@ -21,13 +21,28 @@ const SERVICE_VERSION = version;
 // Otherwise, configure OTEL_EXPORTER_OTLP_ENDPOINT for direct ingest
 const OTLP_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
 
-// Create the OTLP exporter for traces
-const traceExporter = new OTLPTraceExporter({
-  url: `${OTLP_ENDPOINT}/v1/traces`,
-  headers: process.env.OTEL_EXPORTER_OTLP_HEADERS
-    ? JSON.parse(process.env.OTEL_EXPORTER_OTLP_HEADERS)
-    : {},
-});
+// In test environments, skip the OTLP exporter and BatchSpanProcessor
+// to prevent Jest from hanging due to the scheduled export timer.
+const isTestEnv = process.env.JEST_WORKER_ID !== undefined;
+
+// Create the OTLP exporter and span processor only outside test environments.
+// The BatchSpanProcessor runs a scheduled timer that prevents Jest from exiting.
+const spanProcessorConfig = isTestEnv ? {} : {
+  spanProcessor: new BatchSpanProcessor(
+    new OTLPTraceExporter({
+      url: `${OTLP_ENDPOINT}/v1/traces`,
+      headers: process.env.OTEL_EXPORTER_OTLP_HEADERS
+        ? JSON.parse(process.env.OTEL_EXPORTER_OTLP_HEADERS)
+        : {},
+    }),
+    {
+      // Export spans every 5 seconds or when batch reaches 512 spans
+      scheduledDelayMillis: 5000,
+      maxExportBatchSize: 512,
+      maxQueueSize: 2048,
+    }
+  ),
+};
 
 // Create the OpenTelemetry SDK
 const sdk = new NodeSDK({
@@ -37,13 +52,8 @@ const sdk = new NodeSDK({
     'service.namespace': 'discord-article-bot',
     'deployment.environment': process.env.NODE_ENV || 'development',
   }),
-  spanProcessor: new BatchSpanProcessor(traceExporter, {
-    // Export spans every 5 seconds or when batch reaches 512 spans
-    scheduledDelayMillis: 5000,
-    maxExportBatchSize: 512,
-    maxQueueSize: 2048,
-  }),
-  instrumentations: [
+  ...spanProcessorConfig,
+  instrumentations: isTestEnv ? [] : [
     getNodeAutoInstrumentations({
       // Enable HTTP instrumentation for Linkwarden and OpenAI calls
       '@opentelemetry/instrumentation-http': {
@@ -74,6 +84,13 @@ let isInitialized = false;
 
 function startTracing() {
   if (isInitialized) {
+    return;
+  }
+
+  // In test environments, skip SDK start to prevent BatchSpanProcessor
+  // timers and OTLP connections from causing Jest to hang.
+  if (isTestEnv) {
+    isInitialized = true;
     return;
   }
 
