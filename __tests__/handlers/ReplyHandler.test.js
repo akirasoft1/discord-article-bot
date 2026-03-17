@@ -633,6 +633,14 @@ describe('ReplyHandler', () => {
       expect(callArgs.input).toContain('Make it more colorful');
     });
 
+    it('should instruct AI not to include aspect ratio in enhanced prompt', async () => {
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      const callArgs = mockOpenAIClient.responses.create.mock.calls[0][0];
+      expect(callArgs.instructions.toLowerCase()).toMatch(/aspect ratio/i);
+      expect(callArgs.instructions.toLowerCase()).toMatch(/do not|don't|never|exclude|omit|avoid/i);
+    });
+
     it('should call ImagenService with enhanced prompt', async () => {
       mockOpenAIClient.responses.create.mockResolvedValue({
         output_text: 'A beautiful colorful sunset over mountains with birds flying',
@@ -680,6 +688,20 @@ describe('ReplyHandler', () => {
           content: expect.stringContaining('**Prompt:**')
         })
       );
+    });
+
+    it('should strip aspect ratio directives from AI-enhanced prompt before calling generateImage', async () => {
+      // Simulate the AI returning a prompt that includes aspect ratio info
+      mockOpenAIClient.responses.create.mockResolvedValue({
+        output_text: 'A beautiful sunset over mountains in 3:2 aspect ratio with dramatic clouds',
+        usage: { input_tokens: 50, output_tokens: 20 }
+      });
+
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      const generatedPrompt = mockImagenService.generateImage.mock.calls[0][0];
+      // Should not contain aspect ratio patterns like "3:2", "16:9", "aspect ratio"
+      expect(generatedPrompt).not.toMatch(/\b\d+:\d+\b.*aspect|aspect.*\b\d+:\d+\b/i);
     });
 
     it('should handle image generation failure gracefully', async () => {

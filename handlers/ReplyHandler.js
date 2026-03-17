@@ -258,7 +258,16 @@ class ReplyHandler {
 
       try {
         // Use AI to combine original prompt with user feedback
-        const enhancedPrompt = await this._enhancePromptWithFeedback(originalPrompt, userFeedback);
+        let enhancedPrompt = await this._enhancePromptWithFeedback(originalPrompt, userFeedback);
+
+        // Strip any aspect ratio directives the AI may have included despite instructions
+        // (e.g. "in 3:2 aspect ratio") to avoid conflicting with generateImage's own ratio handling
+        enhancedPrompt = enhancedPrompt
+          .replace(/\b(?:in|at|with)?\s*\d+:\d+\s*(?:aspect\s*ratio|format|dimensions?|ratio)?\b/gi, '')
+          .replace(/\b(?:aspect\s*ratio|dimensions?)\s*(?:of|:)?\s*\d+:\d+\b/gi, '')
+          .replace(/\s{2,}/g, ' ')
+          .trim();
+
         span.setAttribute('image.enhanced_prompt', enhancedPrompt.substring(0, 100));
 
         logger.info(`Enhanced prompt: "${enhancedPrompt.substring(0, 100)}..."`);
@@ -330,7 +339,8 @@ Rules:
 - Preserve the core subject and style of the original prompt unless the user specifically asks to change it
 - Incorporate the user's feedback naturally
 - Output ONLY the new prompt text, nothing else - no explanations, no quotation marks, no prefixes
-- Maintain image generation best practices (clear descriptions, style cues, composition hints)`;
+- Maintain image generation best practices (clear descriptions, style cues, composition hints)
+- Do NOT include any aspect ratio instructions or dimensions (e.g. "16:9", "3:2", "square") - aspect ratio is handled separately`;
 
     const userInput = `Original prompt: "${originalPrompt}"
 
