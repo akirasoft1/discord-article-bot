@@ -1144,4 +1144,146 @@ describe('ChatService', () => {
       });
     });
   });
+
+  describe('Voice Profile Integration', () => {
+    let mockVoiceProfileService;
+    let mockQdrantService;
+
+    beforeEach(() => {
+      mockVoiceProfileService = {
+        getProfile: jest.fn().mockResolvedValue({
+          voiceInstructions: 'Be casual and drop periods. Say nah instead of no.',
+          vocabulary: ['nah', 'word', 'lmao'],
+          avoid: ["I'd be happy to help!"]
+        })
+      };
+
+      mockQdrantService = {
+        search: jest.fn().mockResolvedValue([
+          { payload: { text: 'Nick1: yo whats good\nNick2: not much dude' }, score: 0.7 }
+        ])
+      };
+
+      chatService.setVoiceProfileService(mockVoiceProfileService);
+      chatService.setQdrantService(mockQdrantService);
+    });
+
+    describe('_buildGroupSystemPrompt with voice context', () => {
+      it('should replace {VOICE_INSTRUCTIONS} placeholder with profile data', () => {
+        const personality = {
+          systemPrompt: 'Base prompt.\n\n{VOICE_INSTRUCTIONS}\n\nMore instructions.',
+          useVoiceProfile: true
+        };
+        const voiceContext = {
+          voiceInstructions: 'Be casual and direct.',
+          fewShotBlock: ''
+        };
+
+        const result = chatService._buildGroupSystemPrompt(personality, '', '', '', voiceContext);
+
+        expect(result).toContain('Be casual and direct.');
+        expect(result).not.toContain('{VOICE_INSTRUCTIONS}');
+      });
+
+      it('should use fallback text when voice context is null', () => {
+        const personality = {
+          systemPrompt: 'Base.\n\n{VOICE_INSTRUCTIONS}',
+          useVoiceProfile: true
+        };
+
+        const result = chatService._buildGroupSystemPrompt(personality, '', '', '', null);
+
+        expect(result).not.toContain('{VOICE_INSTRUCTIONS}');
+        expect(result).toContain('casual');
+      });
+
+      it('should not replace placeholder for non-voice-profile personalities', () => {
+        const personality = {
+          systemPrompt: 'Normal personality prompt without placeholder.'
+        };
+
+        const result = chatService._buildGroupSystemPrompt(personality, '', '', '', null);
+
+        expect(result).toContain('Normal personality prompt');
+      });
+
+      it('should append few-shot block when provided', () => {
+        const personality = {
+          systemPrompt: 'Base.\n\n{VOICE_INSTRUCTIONS}',
+          useVoiceProfile: true
+        };
+        const voiceContext = {
+          voiceInstructions: 'Be casual.',
+          fewShotBlock: '\n\nReal examples:\n```\nNick1: yo\n```'
+        };
+
+        const result = chatService._buildGroupSystemPrompt(personality, '', '', '', voiceContext);
+
+        expect(result).toContain('Real examples:');
+        expect(result).toContain('Nick1: yo');
+      });
+    });
+
+    describe('_getVoiceContext', () => {
+      it('should return voice instructions and few-shot block', async () => {
+        const result = await chatService._getVoiceContext('channel123', 'test message');
+
+        expect(result).not.toBeNull();
+        expect(result.voiceInstructions).toContain('casual');
+        expect(mockQdrantService.search).toHaveBeenCalledWith(
+          'test message',
+          expect.objectContaining({ limit: 3 })
+        );
+      });
+
+      it('should return null when voiceProfileService is not set', async () => {
+        chatService.voiceProfileService = null;
+
+        const result = await chatService._getVoiceContext('channel123', 'test');
+
+        expect(result).toBeNull();
+      });
+
+      it('should return null when profile is empty', async () => {
+        mockVoiceProfileService.getProfile.mockResolvedValue(null);
+
+        const result = await chatService._getVoiceContext('channel123', 'test');
+
+        expect(result).toBeNull();
+      });
+
+      it('should include few-shot examples from IRC history', async () => {
+        const result = await chatService._getVoiceContext('channel123', 'test message');
+
+        expect(result.fewShotBlock).toContain('Nick1: yo whats good');
+      });
+
+      it('should handle qdrantService errors gracefully', async () => {
+        mockQdrantService.search.mockRejectedValue(new Error('Qdrant down'));
+
+        const result = await chatService._getVoiceContext('channel123', 'test');
+
+        // Should still return profile without few-shot examples
+        expect(result).not.toBeNull();
+        expect(result.voiceInstructions).toContain('casual');
+        expect(result.fewShotBlock).toBe('');
+      });
+    });
+
+    describe('setVoiceProfileService', () => {
+      it('should store the service reference', () => {
+        const svc = { getProfile: jest.fn() };
+        chatService.setVoiceProfileService(svc);
+        expect(chatService.voiceProfileService).toBe(svc);
+      });
+    });
+
+    describe('setQdrantService', () => {
+      it('should store the service reference', () => {
+        const svc = { search: jest.fn() };
+        chatService.setQdrantService(svc);
+        expect(chatService.qdrantService).toBe(svc);
+      });
+    });
+  });
 });

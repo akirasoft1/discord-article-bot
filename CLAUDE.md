@@ -152,6 +152,19 @@ kubectl get networkpolicies -n discord-article-bot -o yaml
 kubectl run test-curl --rm -it --image=curlimages/curl -- curl http://<ip>:<port>/endpoint
 ```
 
+## Voice Profile (Channel Voice Personality)
+
+The `channel-voice` personality dynamically learns the group's communication style from IRC history and Discord messages. It requires:
+- `VOICE_PROFILE_ENABLED=true`
+- Qdrant service enabled (for IRC history sampling + few-shot retrieval)
+- Channel Context service enabled (for Discord message sampling)
+
+**Config env vars**: `VOICE_PROFILE_REGEN_HOURS`, `VOICE_PROFILE_SAMPLES_PER_DECADE`, `VOICE_PROFILE_DISCORD_SAMPLES`, `VOICE_PROFILE_ANALYSIS_MODEL`, `VOICE_PROFILE_AB_LOGGING`
+
+**A/B logging**: Set `VOICE_PROFILE_AB_LOGGING=true` to log styled vs. unstyled response comparisons to the `ab_comparisons` MongoDB collection.
+
+**Profile storage**: MongoDB `voice_profiles` collection. Versioned with `previousVersion` for history.
+
 ## Embedding Data Quality Validation
 
 Run the validation script to check health of all Qdrant collections:

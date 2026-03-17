@@ -193,6 +193,28 @@ class DiscordBot {
       logger.info('Channel context tracking is disabled');
     }
 
+    // Initialize Voice Profile service for dynamic style learning
+    this.voiceProfileService = null;
+    if (config.voiceProfile?.enabled && this.qdrantService && this.channelContextService) {
+      try {
+        const VoiceProfileService = require('./services/VoiceProfileService');
+        this.voiceProfileService = new VoiceProfileService(
+          this.openaiClient,
+          config,
+          this.summarizationService.mongoService,
+          this.qdrantService,
+          this.channelContextService
+        );
+        this.chatService.setVoiceProfileService(this.voiceProfileService);
+        this.chatService.setQdrantService(this.qdrantService);
+        logger.info('Voice profile service initialized');
+      } catch (error) {
+        logger.warn(`Failed to initialize Voice profile service: ${error.message}`);
+      }
+    } else if (config.voiceProfile?.enabled) {
+      logger.warn('Voice profile requires both Qdrant and Channel Context services enabled');
+    }
+
     // Initialize Local LLM service for uncensored chat mode
     // Wire up to personality manager so local-LLM-only personalities are filtered appropriately
     personalityManager.setLocalLlmService(localLlmService);
@@ -387,6 +409,12 @@ class DiscordBot {
         logger.info('Starting Channel Context service...');
         await this.channelContextService.start();
       }
+
+      // Start Voice Profile service if enabled
+      if (this.voiceProfileService) {
+        logger.info('Starting Voice Profile service...');
+        await this.voiceProfileService.start();
+      }
     });
 
     this.client.on('messageReactionAdd', async (reaction, user) => {
@@ -551,7 +579,8 @@ class DiscordBot {
    * @param {Message} message - The Discord message mentioning the bot
    */
   async _handleMentionChat(message) {
-    const DEFAULT_PERSONALITY = 'friendly';
+    const DEFAULT_PERSONALITY = personalityManager.get('channel-voice')
+      ? 'channel-voice' : 'friendly';
 
     // Strip the mention from the message content to get the actual message
     const mentionPattern = new RegExp(`<@!?${this.client.user.id}>`, 'g');
@@ -753,6 +782,11 @@ if (require.main === module) {
       if (bot.channelContextService) {
         await bot.channelContextService.stop();
         logger.info('Channel context service stopped');
+      }
+      // Stop Voice Profile service
+      if (bot.voiceProfileService) {
+        bot.voiceProfileService.stop();
+        logger.info('Voice profile service stopped');
       }
       // Stop Linkwarden polling if active
       if (bot.linkwardenPollingService) {

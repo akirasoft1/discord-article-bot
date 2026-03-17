@@ -53,7 +53,9 @@ class ChatSlashCommand extends BaseSlashCommand {
 
   async execute(interaction, context) {
     // Default to uncensored if local LLM is available, otherwise friendly
-    const defaultPersonality = personalityManager.get('uncensored') ? 'uncensored' : 'friendly';
+    const defaultPersonality = personalityManager.get('channel-voice')
+      ? 'channel-voice'
+      : personalityManager.get('uncensored') ? 'uncensored' : 'friendly';
     const personalityId = interaction.options.getString('personality') || defaultPersonality;
     const userMessage = interaction.options.getString('message');
     const attachment = interaction.options.getAttachment('image');

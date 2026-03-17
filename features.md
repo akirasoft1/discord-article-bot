@@ -21,14 +21,15 @@
 - **Multiple Formats**: Supports readable, monolith, and PDF archives
 
 ### Personality Chat
-- **6 Built-in Personalities**:
-  - Friendly Assistant (helpful, informal - **default**)
+- **7 Built-in Personalities**:
+  - Channel Voice (learned group communication style - **default**)
+  - Friendly Assistant (helpful, informal)
   - Professor Grimsworth (grumpy historian)
   - Jack Shadows (noir detective)
   - Erik the Existentialist (philosopher)
   - x0r_kid (90s IRC gamer)
   - Uncensored (enhanced local LLM personality)
-- **Default Personality**: Just `/chat <message>` defaults to Friendly Assistant
+- **Default Personality**: Just `/chat <message>` defaults to Channel Voice (falls back to Friendly Assistant if voice profile not enabled)
 - **Image Vision**: Attach images to chat messages for analysis and discussion
 - **Web Search**: Bot can search the web for current information when needed
 - **Extensible System**: Add new personalities via `.js` files
@@ -107,6 +108,15 @@
 - **Admin Controls**: `/channeltrack` command for enabling/disabling per channel
 - **Configurable Retention**: Adjustable retention period and batch indexing interval
 - **Startup Cleanup**: Expired messages purged from Qdrant on bot startup (prevents accumulation across pod restarts)
+
+### Voice Profile (Channel Voice Personality)
+- **Dynamic Style Learning**: Analyzes IRC history (378k+ conversations) and Discord messages to build a communication style profile
+- **Stratified Sampling**: Samples across decades to capture style evolution
+- **Two-Phase LLM Analysis**: Batch analysis of conversation chunks, then synthesis into unified voice profile
+- **Few-Shot Examples**: Injects topically relevant real conversation snippets into prompts for style grounding
+- **Periodic Regeneration**: Profile regenerated every 24h (configurable)
+- **A/B Logging**: Optional side-by-side comparison logging of styled vs. unstyled responses
+- **Default Personality**: Channel Voice becomes the default when enabled, cascading to Uncensored then Friendly
 
 ### Monitoring & Observability
 - **OpenTelemetry Tracing**: Distributed tracing for Dynatrace
