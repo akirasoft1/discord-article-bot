@@ -152,6 +152,18 @@ kubectl get networkpolicies -n discord-article-bot -o yaml
 kubectl run test-curl --rm -it --image=curlimages/curl -- curl http://<ip>:<port>/endpoint
 ```
 
+## Embedding Data Quality Validation
+
+Run the validation script to check health of all Qdrant collections:
+
+```bash
+kubectl port-forward svc/qdrant 6333:6333 -n discord-article-bot &
+node scripts/validate-embeddings.js        # Read-only check
+node scripts/validate-embeddings.js --fix  # Delete expired points
+```
+
+Checks: expired point accumulation, required payload fields, content quality, indexing status, duplicate detection.
+
 ## Slash Command Development Guidelines
 
 When creating or modifying slash commands:

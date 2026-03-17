@@ -106,6 +106,7 @@
 - **Context Injection**: Channel context automatically injected into personality chat system prompts
 - **Admin Controls**: `/channeltrack` command for enabling/disabling per channel
 - **Configurable Retention**: Adjustable retention period and batch indexing interval
+- **Startup Cleanup**: Expired messages purged from Qdrant on bot startup (prevents accumulation across pod restarts)
 
 ### Monitoring & Observability
 - **OpenTelemetry Tracing**: Distributed tracing for Dynatrace

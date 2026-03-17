@@ -98,13 +98,17 @@ class ChannelContextService {
       const intervalMs = this.config.batchIndexIntervalMinutes * 60 * 1000;
       this.batchInterval = setInterval(() => this._processBatchIndex(), intervalMs);
 
-      // Start daily cleanup job
+      // Start daily cleanup interval
       this.cleanupInterval = setInterval(
         () => this._cleanupExpiredMessages(),
         24 * 60 * 60 * 1000
       );
 
       this._enabled = true;
+
+      // Run cleanup immediately on startup to clear any expired messages
+      // that accumulated while the pod was down (must be after _enabled = true)
+      await this._cleanupExpiredMessages();
       logger.info(`ChannelContextService started - tracking ${this.trackedChannels.size} channels`);
       logger.info(`Batch indexing interval: ${this.config.batchIndexIntervalMinutes} minutes`);
     } catch (error) {
