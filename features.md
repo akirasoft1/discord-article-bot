@@ -78,10 +78,11 @@
 
 ### Image Generation (Nano Banana)
 - **AI Image Generation**: Generate images from text prompts using Google's Gemini API
+- **Admin Premium Model**: Bot admins (`BOT_ADMIN_USER_IDS`) automatically use a premium model (`IMAGEGEN_ADMIN_MODEL`) for higher quality generation
 - **Reference Image Support**: Use existing images or Discord emojis as reference
 - **Aspect Ratio Support**: 10 supported ratios (1:1, 16:9, 9:16, etc.)
 - **Per-User Cooldowns**: Configurable cooldown to prevent abuse
-- **Usage Tracking**: All generations tracked in MongoDB
+- **Usage Tracking**: All generations tracked in MongoDB (including which model was used)
 - **Safety Filters**: Relies on Gemini's built-in content safety
 - **Intelligent Retry**: When generation fails, AI analyzes the prompt and suggests alternatives
 - **Interactive Approval**: React with 1️⃣ 2️⃣ 3️⃣ to retry with suggested prompts, ❌ to dismiss

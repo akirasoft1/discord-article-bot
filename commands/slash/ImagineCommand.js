@@ -60,11 +60,15 @@ class ImagineSlashCommand extends BaseSlashCommand {
       }
     }
 
+    // Check if user is an admin (for premium model access)
+    const isAdmin = context?.config ? this.isAdmin(interaction.user.id, context.config) : false;
+
     const result = await this.imagenService.generateImage(
       prompt,
       {
         aspectRatio: ratio,
-        referenceImageUrl: referenceUrl
+        referenceImageUrl: referenceUrl,
+        isAdmin
       },
       { id: interaction.user.id, tag: interaction.user.tag }
     );
