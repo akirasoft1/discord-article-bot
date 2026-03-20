@@ -457,7 +457,8 @@ class ImagenService {
         const textPart = content.parts.find(part => part.text);
         const partTypes = content.parts.map(p => Object.keys(p).join(',')).join('; ');
         if (textPart) {
-          logger.warn(`Image generation returned text instead of image - prompt: "${trimmedPrompt.substring(0, 100)}", textResponse: "${textPart.text.substring(0, 200)}", partsCount: ${content.parts.length}, partTypes: [${partTypes}]`);
+          logger.warn(`Image generation returned text instead of image - prompt: "${trimmedPrompt.substring(0, 100)}", partsCount: ${content.parts.length}, partTypes: [${partTypes}]`);
+          logger.warn(`Full text response from model:\n${textPart.text}`);
           return {
             success: false,
             error: 'No image was generated. Please try a different prompt.',
