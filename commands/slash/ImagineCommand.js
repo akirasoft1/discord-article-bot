@@ -70,19 +70,26 @@ class ImagineSlashCommand extends BaseSlashCommand {
     );
 
     if (!result.success) {
-      // If we have a retry handler and failure context, offer intelligent retry options instead of error
+      // Delete the public deferred reply so the error is only visible to the user
+      try {
+        await interaction.deleteReply();
+      } catch (e) {
+        logger.debug(`Could not delete deferred reply: ${e.message}`);
+      }
+
+      // If we have a retry handler and failure context, offer intelligent retry options
       if (this.imageRetryHandler && result.failureContext) {
         try {
-          // Create a mock message object for the retry handler to use
           const mockMessage = {
             channel: interaction.channel,
             guild: interaction.guild,
             id: interaction.id
           };
 
-          // Edit the deferred reply to acknowledge the failure briefly
-          await interaction.editReply({
-            content: `⚠️ Image generation didn't produce an image. Analyzing your prompt for suggestions...`
+          // Send ephemeral acknowledgment to the user
+          await interaction.followUp({
+            content: `⚠️ Image generation didn't produce an image. Analyzing your prompt for suggestions...`,
+            ephemeral: true
           });
 
           await this.imageRetryHandler.handleFailedGeneration(
@@ -93,14 +100,25 @@ class ImagineSlashCommand extends BaseSlashCommand {
           );
         } catch (retryError) {
           logger.error(`Failed to offer retry options: ${retryError.message}`);
-          // Fallback to error message if retry handler fails
-          await interaction.editReply({
-            content: `Failed to generate image: ${result.error || 'Unknown error'}`
-          });
+          try {
+            await interaction.followUp({
+              content: `Failed to generate image: ${result.error || 'Unknown error'}`,
+              ephemeral: true
+            });
+          } catch (e) {
+            logger.debug(`Could not send ephemeral follow-up: ${e.message}`);
+          }
         }
       } else {
-        // No retry handler available, show error message
-        await this.sendError(interaction, result.error || 'Failed to generate image.');
+        // No retry handler — send ephemeral error
+        try {
+          await interaction.followUp({
+            content: `Error: ${result.error || 'Failed to generate image.'}`,
+            ephemeral: true
+          });
+        } catch (e) {
+          logger.debug(`Could not send ephemeral follow-up: ${e.message}`);
+        }
       }
       return;
     }
