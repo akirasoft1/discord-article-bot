@@ -24,6 +24,8 @@ const SYNTHESIS_PROMPT = `You are creating a unified "voice profile" from multip
 The profile should be written as INSTRUCTIONS TO AN AI, not a description. Use imperative mood.
 Example: "Use 'nah' instead of 'no'. Drop sentence-ending periods. Respond with single-word acknowledgments like 'word' or 'yep'."
 
+IMPORTANT: Be realistic about FREQUENCY. If the group uses "lol" in 30% of messages, say "use lol occasionally" not "pepper every response with lol". Avoid instructions that would make EVERY response sound identical. Vary the style naturally -- not every message needs slang, interjections, or profanity.
+
 Output a JSON object with these fields:
 - voice_instructions: A paragraph of direct style instructions (max 500 words)
 - vocabulary: Array of distinctive words/phrases to use
