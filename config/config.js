@@ -174,6 +174,8 @@ module.exports = {
     // Model to use for image generation
     // Options: 'gemini-3-pro-image-preview' (preferred), 'gemini-2.5-flash-image' (fallback)
     model: process.env.IMAGEGEN_MODEL || 'gemini-2.5-flash-image',
+    // Premium model for admin users (BOT_ADMIN_USER_IDS) - falls back to standard model if not set
+    adminModel: process.env.IMAGEGEN_ADMIN_MODEL || '',
     // Default aspect ratio for generated images
     // Options: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
     defaultAspectRatio: process.env.IMAGEGEN_DEFAULT_ASPECT_RATIO || '1:1',

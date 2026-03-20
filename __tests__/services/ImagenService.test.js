@@ -13,9 +13,9 @@ jest.mock('../../logger', () => ({
 jest.mock('@google/generative-ai', () => {
   return {
     GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
-      getGenerativeModel: jest.fn().mockReturnValue({
+      getGenerativeModel: jest.fn().mockImplementation(() => ({
         generateContent: jest.fn()
-      })
+      }))
     }))
   };
 });
@@ -51,9 +51,10 @@ describe('ImagenService', () => {
 
     imagenService = new ImagenService(mockConfig, mockMongoService);
 
-    // Get reference to the mocked model
+    // Get reference to the mocked model (first call to getGenerativeModel)
     const { GoogleGenerativeAI } = require('@google/generative-ai');
-    mockGeminiModel = GoogleGenerativeAI.mock.results[0].value.getGenerativeModel();
+    const genAIInstance = GoogleGenerativeAI.mock.results[0].value;
+    mockGeminiModel = genAIInstance.getGenerativeModel.mock.results[0].value;
   });
 
   describe('constructor', () => {
@@ -76,6 +77,44 @@ describe('ImagenService', () => {
       };
 
       expect(() => new ImagenService(noKeyConfig)).toThrow('GEMINI_API_KEY is required');
+    });
+
+    it('should initialize admin model when adminModel is configured', () => {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      GoogleGenerativeAI.mockClear();
+
+      const adminConfig = {
+        imagen: {
+          ...mockConfig.imagen,
+          adminModel: 'gemini-3-pro-image-preview'
+        }
+      };
+
+      const service = new ImagenService(adminConfig, mockMongoService);
+      const genAIInstance = GoogleGenerativeAI.mock.results[0].value;
+
+      // Should call getGenerativeModel twice: once for standard, once for admin
+      expect(genAIInstance.getGenerativeModel).toHaveBeenCalledTimes(2);
+      expect(service.adminModel).not.toBeNull();
+      expect(service.adminModelName).toBe('gemini-3-pro-image-preview');
+    });
+
+    it('should not initialize admin model when adminModel is empty', () => {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      GoogleGenerativeAI.mockClear();
+
+      const noAdminConfig = {
+        imagen: {
+          ...mockConfig.imagen,
+          adminModel: ''
+        }
+      };
+
+      const service = new ImagenService(noAdminConfig, mockMongoService);
+      const genAIInstance = GoogleGenerativeAI.mock.results[0].value;
+
+      expect(genAIInstance.getGenerativeModel).toHaveBeenCalledTimes(1);
+      expect(service.adminModel).toBeNull();
     });
   });
 
@@ -139,6 +178,42 @@ describe('ImagenService', () => {
 
       expect(result.valid).toBe(false);
       expect(result.error).toContain('Invalid aspect ratio');
+    });
+  });
+
+  describe('getModelForRequest', () => {
+    it('should return admin model when isAdmin is true and admin model is configured', () => {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      GoogleGenerativeAI.mockClear();
+
+      const adminConfig = {
+        imagen: { ...mockConfig.imagen, adminModel: 'premium-model' }
+      };
+      const service = new ImagenService(adminConfig, mockMongoService);
+
+      const result = service.getModelForRequest(true);
+      expect(result.modelName).toBe('premium-model');
+      expect(result.model).toBe(service.adminModel);
+    });
+
+    it('should return standard model when isAdmin is false', () => {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      GoogleGenerativeAI.mockClear();
+
+      const adminConfig = {
+        imagen: { ...mockConfig.imagen, adminModel: 'premium-model' }
+      };
+      const service = new ImagenService(adminConfig, mockMongoService);
+
+      const result = service.getModelForRequest(false);
+      expect(result.modelName).toBe(mockConfig.imagen.model);
+      expect(result.model).toBe(service.model);
+    });
+
+    it('should return standard model when isAdmin is true but no admin model configured', () => {
+      const result = imagenService.getModelForRequest(true);
+      expect(result.modelName).toBe(mockConfig.imagen.model);
+      expect(result.model).toBe(imagenService.model);
     });
   });
 
@@ -354,6 +429,94 @@ describe('ImagenService', () => {
         null,
         expect.any(Number)
       );
+    });
+
+    it('should use admin model when isAdmin option is true', async () => {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      GoogleGenerativeAI.mockClear();
+
+      const adminConfig = {
+        imagen: { ...mockConfig.imagen, adminModel: 'premium-model' }
+      };
+      const service = new ImagenService(adminConfig, mockMongoService);
+
+      // Get references to both models
+      const genAIInstance = GoogleGenerativeAI.mock.results[0].value;
+      const standardModel = genAIInstance.getGenerativeModel.mock.results[0].value;
+      const adminModel = genAIInstance.getGenerativeModel.mock.results[1].value;
+
+      const mockImageData = Buffer.from('fake-image-data').toString('base64');
+      adminModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{ inlineData: { mimeType: 'image/png', data: mockImageData } }]
+            }
+          }]
+        }
+      });
+
+      const result = await service.generateImage('A sunset', { isAdmin: true }, mockUser);
+
+      expect(result.success).toBe(true);
+      expect(adminModel.generateContent).toHaveBeenCalled();
+      expect(standardModel.generateContent).not.toHaveBeenCalled();
+    });
+
+    it('should record admin model name in MongoDB when admin generates image', async () => {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      GoogleGenerativeAI.mockClear();
+
+      const adminConfig = {
+        imagen: { ...mockConfig.imagen, adminModel: 'premium-model' }
+      };
+      const service = new ImagenService(adminConfig, mockMongoService);
+
+      const genAIInstance = GoogleGenerativeAI.mock.results[0].value;
+      const adminModel = genAIInstance.getGenerativeModel.mock.results[1].value;
+
+      const mockImageData = Buffer.from('fake-image-data').toString('base64');
+      adminModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{ inlineData: { mimeType: 'image/png', data: mockImageData } }]
+            }
+          }]
+        }
+      });
+
+      await service.generateImage('A sunset', { isAdmin: true }, mockUser);
+
+      expect(mockMongoService.recordImageGeneration).toHaveBeenCalledWith(
+        'user123',
+        'TestUser#1234',
+        'A sunset',
+        '1:1',
+        'premium-model',
+        true,
+        null,
+        expect.any(Number)
+      );
+    });
+
+    it('should fall back to standard model when isAdmin is true but no admin model configured', async () => {
+      const mockImageData = Buffer.from('fake-image-data').toString('base64');
+
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{ inlineData: { mimeType: 'image/png', data: mockImageData } }]
+            }
+          }]
+        }
+      });
+
+      const result = await imagenService.generateImage('A sunset', { isAdmin: true }, mockUser);
+
+      expect(result.success).toBe(true);
+      expect(mockGeminiModel.generateContent).toHaveBeenCalled();
     });
 
     it('should record failed generation in MongoDB', async () => {
