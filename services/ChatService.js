@@ -21,6 +21,8 @@ class ChatService {
     this.mongoService = mongoService;
     this.mem0Service = mem0Service;
     this.channelContextService = null;
+    this.voiceProfileService = null;
+    this.qdrantService = null;
   }
 
   /**
@@ -32,19 +34,50 @@ class ChatService {
   }
 
   /**
+   * Set the voice profile service for dynamic style injection
+   * @param {Object} voiceProfileService - VoiceProfileService instance
+   */
+  setVoiceProfileService(voiceProfileService) {
+    this.voiceProfileService = voiceProfileService;
+  }
+
+  /**
+   * Set the Qdrant service for IRC history few-shot retrieval
+   * @param {Object} qdrantService - QdrantService instance
+   */
+  setQdrantService(qdrantService) {
+    this.qdrantService = qdrantService;
+  }
+
+  /**
    * Build enhanced system prompt for group conversations
    * @param {Object} personality - Personality object
    * @param {string} memoryContext - Optional personal memory context to include
    * @param {string} channelContext - Optional channel conversation context
    * @param {string} sharedContext - Optional shared channel memory context
+   * @param {Object|null} voiceContext - Optional voice profile context {voiceInstructions, fewShotBlock}
    * @returns {string} Enhanced system prompt
    */
-  _buildGroupSystemPrompt(personality, memoryContext = '', channelContext = '', sharedContext = '') {
-    return `${personality.systemPrompt}
+  _buildGroupSystemPrompt(personality, memoryContext = '', channelContext = '', sharedContext = '', voiceContext = null) {
+    let systemPrompt = personality.systemPrompt;
+
+    // If personality uses voice profile, inject dynamic voice instructions
+    if (personality.useVoiceProfile) {
+      if (voiceContext?.voiceInstructions) {
+        systemPrompt = systemPrompt.replace('{VOICE_INSTRUCTIONS}', voiceContext.voiceInstructions);
+      } else {
+        systemPrompt = systemPrompt.replace('{VOICE_INSTRUCTIONS}',
+          'Be casual, direct, and conversational. Match the energy of the group.');
+      }
+    }
+
+    const fewShotBlock = voiceContext?.fewShotBlock || '';
+
+    return `${systemPrompt}
 
 You are in a group conversation with multiple users in a Discord channel.
 Their names appear before their messages like "[Username]: message".
-Address users by name when relevant. Do not announce when new users join the conversation.${memoryContext}${sharedContext}${channelContext}`;
+Address users by name when relevant. Do not announce when new users join the conversation.${memoryContext}${sharedContext}${channelContext}${fewShotBlock}`;
   }
 
   /**
@@ -69,6 +102,54 @@ ${context}`;
     } catch (error) {
       logger.debug(`Error getting channel context: ${error.message}`);
       return '';
+    }
+  }
+
+  /**
+   * Get voice profile context for dynamic style injection
+   * @param {string} channelId - Discord channel ID
+   * @param {string} userMessage - Current user message for few-shot retrieval
+   * @returns {Promise<Object|null>} {voiceInstructions, fewShotBlock} or null
+   * @private
+   */
+  async _getVoiceContext(channelId, userMessage) {
+    if (!this.voiceProfileService) return null;
+
+    try {
+      const profile = await this.voiceProfileService.getProfile();
+      if (!profile) return null;
+
+      // Fetch topically relevant IRC conversation chunks as few-shot style examples
+      let fewShotBlock = '';
+      if (this.qdrantService) {
+        try {
+          const examples = await this.qdrantService.search(userMessage, {
+            limit: 3,
+            scoreThreshold: 0.25
+          });
+
+          if (examples.length > 0) {
+            const exampleTexts = examples.map(e => {
+              const lines = (e.payload.text || '').split('\n').slice(0, 3).join('\n');
+              return lines;
+            }).filter(Boolean);
+
+            if (exampleTexts.length > 0) {
+              fewShotBlock = `\n\nSTYLE REFERENCE ONLY (do NOT reference the topics, people, or events in these examples — only mimic the sentence structure, slang, tone, and formatting):\n${exampleTexts.map(t => `\`\`\`\n${t}\n\`\`\``).join('\n')}`;
+            }
+          }
+        } catch (err) {
+          logger.debug(`Few-shot retrieval failed: ${err.message}`);
+        }
+      }
+
+      return {
+        voiceInstructions: profile.voiceInstructions,
+        fewShotBlock
+      };
+    } catch (error) {
+      logger.debug(`Error getting voice context: ${error.message}`);
+      return null;
     }
   }
 
@@ -398,13 +479,14 @@ ${context}`;
       // Retrieve relevant memories for this user (if Mem0 is enabled)
       // 3-way search: personality memories + explicit memories + shared channel memories
       // Also retrieve channel context for conversation awareness (if enabled)
-      const [{ context: memoryContext, sharedContext }, channelContext] = await Promise.all([
+      const [{ context: memoryContext, sharedContext }, channelContext, voiceContext] = await Promise.all([
         this._getRelevantMemories(userMessage, user.id, personalityId, channelId),
-        this._getChannelContext(channelId, userMessage)
+        this._getChannelContext(channelId, userMessage),
+        personality.useVoiceProfile ? this._getVoiceContext(channelId, userMessage) : Promise.resolve(null)
       ]);
 
       // Build system prompt and format history
-      const systemPrompt = this._buildGroupSystemPrompt(personality, memoryContext, channelContext, sharedContext);
+      const systemPrompt = this._buildGroupSystemPrompt(personality, memoryContext, channelContext, sharedContext, voiceContext);
       const historyMessages = this._formatMessagesForAPI(conversation.messages || []);
 
       // Format current user message

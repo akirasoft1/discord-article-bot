@@ -1,10 +1,6 @@
 {
   "name": "discord-article-archiver-bot",
-<<<<<<< feat/imagegen-admin-model
-  "version": "2.7.0",
-=======
-  "version": "2.6.2",
->>>>>>> main
+  "version": "2.7.4",
   "license": "MIT",
   "description": "A Discord bot that integrates with Linkwarden for self-hosted article archiving and uses OpenAI-compatible APIs to automatically generate summaries of archived articles with support for authenticated/paywalled content.",
   "main": "bot.js",

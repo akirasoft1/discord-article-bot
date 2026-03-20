@@ -139,6 +139,24 @@ describe('ChannelContextService', () => {
 
       expect(mockQdrantClient.createCollection).not.toHaveBeenCalled();
     });
+
+    it('should run expired message cleanup on startup', async () => {
+      mockQdrantClient.delete.mockResolvedValue({});
+
+      await service.start();
+
+      expect(mockQdrantClient.delete).toHaveBeenCalledWith(
+        'channel_conversations',
+        expect.objectContaining({
+          filter: {
+            must: [{
+              key: 'expiresAt',
+              range: { lt: expect.any(String) }
+            }]
+          }
+        })
+      );
+    });
   });
 
   describe('stop', () => {

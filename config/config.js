@@ -263,6 +263,15 @@ module.exports = {
     // Interval for memory extraction (number of messages between extractions)
     memoryExtractionInterval: parseInt(process.env.CHANNEL_CONTEXT_MEMORY_INTERVAL || '50', 10)
   },
+  // Voice Profile - dynamic style learning from channel history
+  voiceProfile: {
+    enabled: process.env.VOICE_PROFILE_ENABLED === 'true',
+    regenIntervalHours: parseInt(process.env.VOICE_PROFILE_REGEN_HOURS || '24', 10),
+    samplesPerDecade: parseInt(process.env.VOICE_PROFILE_SAMPLES_PER_DECADE || '50', 10),
+    discordSampleSize: parseInt(process.env.VOICE_PROFILE_DISCORD_SAMPLES || '100', 10),
+    analysisModel: process.env.VOICE_PROFILE_ANALYSIS_MODEL || 'gpt-4.1-mini',
+    abLogging: process.env.VOICE_PROFILE_AB_LOGGING === 'true',
+  },
   // Local LLM - Ollama integration for uncensored chat mode
   localLlm: {
     // Enable/disable local LLM service
