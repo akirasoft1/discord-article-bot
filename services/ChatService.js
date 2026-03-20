@@ -135,7 +135,7 @@ ${context}`;
             }).filter(Boolean);
 
             if (exampleTexts.length > 0) {
-              fewShotBlock = `\n\nReal conversation examples showing the group's style (use as tone/style reference, not content):\n${exampleTexts.map(t => `\`\`\`\n${t}\n\`\`\``).join('\n')}`;
+              fewShotBlock = `\n\nSTYLE REFERENCE ONLY (do NOT reference the topics, people, or events in these examples — only mimic the sentence structure, slang, tone, and formatting):\n${exampleTexts.map(t => `\`\`\`\n${t}\n\`\`\``).join('\n')}`;
             }
           }
         } catch (err) {
