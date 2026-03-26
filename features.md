@@ -83,7 +83,7 @@
 - **Aspect Ratio Support**: 10 supported ratios (1:1, 16:9, 9:16, etc.)
 - **Per-User Cooldowns**: Configurable cooldown to prevent abuse
 - **Usage Tracking**: All generations tracked in MongoDB (including which model was used)
-- **Safety Filters**: Relies on Gemini's built-in content safety
+- **Safety Filters**: Relies on Gemini's built-in content safety with detailed logging of FinishReason (SAFETY, IMAGE_SAFETY, IMAGE_PROHIBITED_CONTENT), BlockedReason, blockReasonMessage, and safety ratings
 - **Intelligent Retry**: When generation fails, AI analyzes the prompt and suggests alternatives
 - **Interactive Approval**: React with 1️⃣ 2️⃣ 3️⃣ to retry with suggested prompts, ❌ to dismiss
 - **Failure Analysis**: Detailed analysis of why prompts fail (safety, rate limits, etc.)
