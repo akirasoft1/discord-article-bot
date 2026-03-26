@@ -1054,6 +1054,62 @@ describe('ImagenService', () => {
       );
     });
 
+    it('should log finishReason and safetyRatings on text_response path', async () => {
+      const logger = require('../../logger');
+
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{ text: 'I cannot generate that.' }]
+            },
+            finishReason: 'STOP',
+            safetyRatings: [
+              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', probability: 'NEGLIGIBLE', blocked: false }
+            ]
+          }]
+        }
+      });
+
+      await imagenService.generateImage('Some prompt', {}, mockUser);
+
+      // Should log finishReason in the text_response warn
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('finishReason: STOP')
+      );
+      // Should log safetyRatings in the text_response warn
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('HARM_CATEGORY_DANGEROUS_CONTENT')
+      );
+      // Should debug log full candidate structure
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('Full candidate structure on text response')
+      );
+    });
+
+    it('should not truncate prompts in log messages', async () => {
+      const logger = require('../../logger');
+      const longPrompt = 'A '.repeat(200) + 'beautiful sunset over the mountains';
+
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{ text: 'Cannot generate this image.' }]
+            },
+            finishReason: 'STOP'
+          }]
+        }
+      });
+
+      await imagenService.generateImage(longPrompt, {}, mockUser);
+
+      // Verify the full prompt appears in warn logs (not truncated)
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('beautiful sunset over the mountains')
+      );
+    });
+
     it('should include promptFeedback blockReasonMessage in failureContext details', async () => {
       mockGeminiModel.generateContent.mockResolvedValue({
         response: {
