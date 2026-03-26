@@ -931,5 +931,144 @@ describe('ImagenService', () => {
 
       expect(result.failureContext.originalPrompt).toBe('My unique prompt');
     });
+
+    it('should handle IMAGE_SAFETY finishReason as safety rejection', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            finishReason: 'IMAGE_SAFETY',
+            safetyRatings: [{ category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', probability: 'HIGH', blocked: true }]
+          }]
+        }
+      });
+
+      const result = await imagenService.generateImage('Some prompt', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('safety');
+      expect(result.failureContext.type).toBe('safety');
+      expect(result.failureContext.details.finishReason).toBe('IMAGE_SAFETY');
+      expect(result.failureContext.details.safetyRatings).toBeDefined();
+    });
+
+    it('should handle IMAGE_PROHIBITED_CONTENT finishReason as safety rejection', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            finishReason: 'IMAGE_PROHIBITED_CONTENT',
+            safetyRatings: [{ category: 'HARM_CATEGORY_DANGEROUS_CONTENT', probability: 'HIGH', blocked: true }]
+          }]
+        }
+      });
+
+      const result = await imagenService.generateImage('Some prompt', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('prohibited content');
+      expect(result.failureContext.type).toBe('safety');
+      expect(result.failureContext.details.finishReason).toBe('IMAGE_PROHIBITED_CONTENT');
+    });
+
+    it('should include finishReason in text_response failureContext details', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{ text: 'I cannot generate that image due to policy.' }]
+            },
+            finishReason: 'STOP'
+          }]
+        }
+      });
+
+      const result = await imagenService.generateImage('A photo of something', {}, mockUser);
+
+      expect(result.failureContext.type).toBe('text_response');
+      expect(result.failureContext.details.finishReason).toBe('STOP');
+    });
+
+    it('should log blockReasonMessage from promptFeedback when present', async () => {
+      const logger = require('../../logger');
+
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [],
+          promptFeedback: {
+            blockReason: 'SAFETY',
+            blockReasonMessage: 'The prompt was blocked because it contained unsafe content.',
+            safetyRatings: [{ category: 'HARM_CATEGORY_DANGEROUS_CONTENT', probability: 'HIGH', blocked: true }]
+          }
+        }
+      });
+
+      const result = await imagenService.generateImage('Blocked content', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      // Verify blockReasonMessage was logged
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('blockReasonMessage')
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('The prompt was blocked because it contained unsafe content.')
+      );
+    });
+
+    it('should include finishReason in failureContext when candidate has no content parts', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            finishReason: 'IMAGE_SAFETY',
+            content: null
+          }]
+        }
+      });
+
+      const result = await imagenService.generateImage('Some prompt', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.failureContext.type).toBe('safety');
+      expect(result.failureContext.details.finishReason).toBe('IMAGE_SAFETY');
+    });
+
+    it('should debug log full candidate structure on safety rejection', async () => {
+      const logger = require('../../logger');
+
+      const candidate = {
+        finishReason: 'IMAGE_SAFETY',
+        safetyRatings: [
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', probability: 'HIGH', blocked: true },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', probability: 'NEGLIGIBLE', blocked: false }
+        ]
+      };
+
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [candidate]
+        }
+      });
+
+      await imagenService.generateImage('Some prompt', {}, mockUser);
+
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('IMAGE_SAFETY')
+      );
+    });
+
+    it('should include promptFeedback blockReasonMessage in failureContext details', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [],
+          promptFeedback: {
+            blockReason: 'PROHIBITED_CONTENT',
+            blockReasonMessage: 'Content violates usage policies.',
+            safetyRatings: []
+          }
+        }
+      });
+
+      const result = await imagenService.generateImage('Some prompt', {}, mockUser);
+
+      expect(result.failureContext.details.blockReasonMessage).toBe('Content violates usage policies.');
+    });
   });
 });

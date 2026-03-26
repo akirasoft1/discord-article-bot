@@ -404,6 +404,11 @@ class ImagenService {
           ).join(', ') || 'none';
           logger.warn(`Prompt feedback from Gemini - blockReason: ${feedback.blockReason || 'none'}, safetyRatings: [${safetyInfo}]`);
 
+          // Log blockReasonMessage if present (Gemini may include a human-readable explanation)
+          if (feedback.blockReasonMessage) {
+            logger.warn(`Prompt feedback blockReasonMessage: ${feedback.blockReasonMessage}`);
+          }
+
           // Provide more specific error message based on block reason
           if (feedback.blockReason) {
             const blockReasonMessages = {
@@ -422,7 +427,11 @@ class ImagenService {
                 type: 'safety',
                 originalPrompt: trimmedPrompt,
                 promptFeedback: feedback,
-                details: { blockReason: feedback.blockReason, safetyRatings: feedback.safetyRatings }
+                details: {
+                  blockReason: feedback.blockReason,
+                  blockReasonMessage: feedback.blockReasonMessage || null,
+                  safetyRatings: feedback.safetyRatings
+                }
               }
             };
           }
@@ -447,15 +456,25 @@ class ImagenService {
 
       const candidate = response.candidates[0];
 
+      // Safety-related finishReasons: SAFETY, IMAGE_SAFETY, IMAGE_PROHIBITED_CONTENT
+      const SAFETY_FINISH_REASONS = ['SAFETY', 'IMAGE_SAFETY', 'IMAGE_PROHIBITED_CONTENT'];
+
       // Check for safety filter rejection
-      if (candidate.finishReason === 'SAFETY') {
+      if (SAFETY_FINISH_REASONS.includes(candidate.finishReason)) {
         const safetyInfo = candidate.safetyRatings?.map(r =>
           `${r.category}: ${r.probability}${r.blocked ? ' (BLOCKED)' : ''}`
         ).join(', ') || 'none';
         logger.warn(`Image generation blocked by safety filter - prompt: "${trimmedPrompt.substring(0, 100)}", finishReason: ${candidate.finishReason}, safetyRatings: [${safetyInfo}]`);
+        logger.debug(`Full candidate structure on safety rejection: ${JSON.stringify({ finishReason: candidate.finishReason, safetyRatings: candidate.safetyRatings, contentKeys: candidate.content ? Object.keys(candidate.content) : null })}`);
+
+        // Use specific error message for prohibited content
+        const errorMsg = candidate.finishReason === 'IMAGE_PROHIBITED_CONTENT'
+          ? 'Your prompt contains prohibited content. Please try a different prompt.'
+          : 'Your prompt was blocked by safety filters. Please try a different prompt.';
+
         return {
           success: false,
-          error: 'Your prompt was blocked by safety filters. Please try a different prompt.',
+          error: errorMsg,
           failureContext: {
             type: 'safety',
             originalPrompt: trimmedPrompt,
@@ -473,6 +492,20 @@ class ImagenService {
       const content = candidate.content;
       if (!content || !content.parts) {
         logger.warn(`No content parts in image generation response - prompt: "${trimmedPrompt.substring(0, 100)}", hasContent: ${!!content}, finishReason: ${candidate.finishReason}`);
+
+        // If finishReason indicates safety, treat as safety rejection even without content
+        if (SAFETY_FINISH_REASONS.includes(candidate.finishReason)) {
+          return {
+            success: false,
+            error: 'Your prompt was blocked by safety filters. Please try a different prompt.',
+            failureContext: {
+              type: 'safety',
+              originalPrompt: trimmedPrompt,
+              details: { hasContent: !!content, finishReason: candidate.finishReason }
+            }
+          };
+        }
+
         return {
           success: false,
           error: 'No image was generated. Please try a different prompt.',
@@ -500,7 +533,7 @@ class ImagenService {
               type: 'text_response',
               originalPrompt: trimmedPrompt,
               textResponse: textPart.text,
-              details: { partTypes, partsCount: content.parts.length }
+              details: { partTypes, partsCount: content.parts.length, finishReason: candidate.finishReason || null }
             }
           };
         } else {
