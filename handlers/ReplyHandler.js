@@ -72,10 +72,10 @@ class ReplyHandler {
       if (this.isImageGenerationMessage(botContent, attachments)) {
         const originalPrompt = this.extractOriginalPrompt(botContent);
         if (originalPrompt && this.imagenService) {
-          logger.info(`Detected reply to image generation: "${originalPrompt.substring(0, 50)}..."`);
+          logger.info(`Detected reply to image generation: "${originalPrompt}"`);
           span.setAttributes({
             [REPLY.TYPE]: 'image_regeneration',
-            'image.original_prompt': originalPrompt.substring(0, 100),
+            'image.original_prompt': originalPrompt,
           });
           await this.handleImageReply(message, originalPrompt);
           return true;
@@ -249,7 +249,7 @@ class ReplyHandler {
   async handleImageReply(message, originalPrompt) {
     return withSpan('discord.reply.image_regeneration', {
       [DISCORD.CHANNEL_ID]: message.channel.id,
-      'image.original_prompt': originalPrompt.substring(0, 100),
+      'image.original_prompt': originalPrompt,
     }, async (span) => {
       const userFeedback = message.content;
 
@@ -268,9 +268,9 @@ class ReplyHandler {
           .replace(/\s{2,}/g, ' ')
           .trim();
 
-        span.setAttribute('image.enhanced_prompt', enhancedPrompt.substring(0, 100));
+        span.setAttribute('image.enhanced_prompt', enhancedPrompt);
 
-        logger.info(`Enhanced prompt: "${enhancedPrompt.substring(0, 100)}..."`);
+        logger.info(`Enhanced prompt: "${enhancedPrompt}"`);
 
         // Generate new image with enhanced prompt
         const result = await this.imagenService.generateImage(

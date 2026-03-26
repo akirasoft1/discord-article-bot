@@ -176,7 +176,7 @@ class ImageRetryHandler {
     }
 
     const selectedPrompt = pendingData.suggestedPrompts[promptIndex];
-    logger.info(`User ${user.username} retrying with suggestion ${promptIndex + 1}: "${selectedPrompt.substring(0, 50)}..."`);
+    logger.info(`User ${user.username} retrying with suggestion ${promptIndex + 1}: "${selectedPrompt}"`);
 
     try {
       // Show typing indicator
