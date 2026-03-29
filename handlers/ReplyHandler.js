@@ -272,10 +272,13 @@ class ReplyHandler {
 
         logger.info(`Enhanced prompt: "${enhancedPrompt}"`);
 
+        // Check if user is an admin (for premium model access)
+        const isAdmin = this.config.discord?.adminUserIds?.includes(message.author.id) || false;
+
         // Generate new image with enhanced prompt
         const result = await this.imagenService.generateImage(
           enhancedPrompt,
-          {},
+          { isAdmin },
           { id: message.author.id, tag: message.author.tag || message.author.username }
         );
 
