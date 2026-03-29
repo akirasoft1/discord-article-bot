@@ -615,7 +615,7 @@ ${context}`;
         // Call OpenAI Responses API (cloud provider)
         const apiInput = this._buildApiInput(inputText, imageUrl);
         if (imageUrl) {
-          logger.info(`Including image in chat request: ${imageUrl.substring(0, 50)}...`);
+          logger.info(`Including image in chat request: ${imageUrl}`);
         }
 
         const model = this.config.openai.model || 'gpt-5.1';
@@ -758,7 +758,7 @@ ${context}`;
 
       const apiInput = this._buildApiInput(userMessage, imageUrl);
       if (imageUrl) {
-        logger.info(`Including image in stateless chat request: ${imageUrl.substring(0, 50)}...`);
+        logger.info(`Including image in stateless chat request: ${imageUrl}`);
       }
 
       const model = this.config.openai.model || 'gpt-5.1';

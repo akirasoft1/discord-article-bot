@@ -74,7 +74,9 @@ describe('ImageRetryHandler', () => {
       tag: 'TestUser#1234'
     };
 
-    handler = new ImageRetryHandler(mockImagenService, mockImagePromptAnalyzerService);
+    handler = new ImageRetryHandler(mockImagenService, mockImagePromptAnalyzerService, {
+      discord: { adminUserIds: ['admin-user-1'] }
+    });
   });
 
   describe('constructor', () => {
@@ -261,7 +263,7 @@ describe('ImageRetryHandler', () => {
 
       expect(mockImagenService.generateImage).toHaveBeenCalledWith(
         'Suggestion A',
-        {},
+        expect.objectContaining({ isAdmin: false }),
         mockUser
       );
     });
@@ -272,8 +274,22 @@ describe('ImageRetryHandler', () => {
 
       expect(mockImagenService.generateImage).toHaveBeenCalledWith(
         'Suggestion B',
-        {},
+        expect.objectContaining({ isAdmin: false }),
         mockUser
+      );
+    });
+
+    it('should pass isAdmin true for admin users when retrying', async () => {
+      const adminUser = { id: 'admin-user-1', username: 'AdminUser', tag: 'AdminUser#0001' };
+      pendingData.userId = 'admin-user-1';
+      handler.pendingRetries.set('embed-123', pendingData);
+
+      await handler.handleRetryReaction(mockReaction, adminUser);
+
+      expect(mockImagenService.generateImage).toHaveBeenCalledWith(
+        'Suggestion A',
+        expect.objectContaining({ isAdmin: true }),
+        adminUser
       );
     });
 

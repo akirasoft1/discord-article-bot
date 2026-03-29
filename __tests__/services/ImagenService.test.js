@@ -63,6 +63,19 @@ describe('ImagenService', () => {
       expect(imagenService.config).toBe(mockConfig);
     });
 
+    it('should configure responseModalities as IMAGE only', () => {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      const genAIInstance = GoogleGenerativeAI.mock.results[0].value;
+
+      expect(genAIInstance.getGenerativeModel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          generationConfig: expect.objectContaining({
+            responseModalities: ['IMAGE']
+          })
+        })
+      );
+    });
+
     it('should throw error if imagen is disabled', () => {
       const disabledConfig = {
         imagen: { ...mockConfig.imagen, enabled: false }
@@ -248,6 +261,32 @@ describe('ImagenService', () => {
       expect(result.buffer).toBeDefined();
       expect(result.mimeType).toBe('image/png');
       expect(Buffer.isBuffer(result.buffer)).toBe(true);
+    });
+
+    it('should prefix prompt with image generation instruction', async () => {
+      const mockImageData = Buffer.from('fake-image-data').toString('base64');
+
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: mockImageData
+                }
+              }]
+            }
+          }]
+        }
+      });
+
+      await imagenService.generateImage('A beautiful sunset', {}, mockUser);
+
+      const callArgs = mockGeminiModel.generateContent.mock.calls[0][0];
+      const promptText = callArgs.contents[0].parts[0].text;
+      expect(promptText).toMatch(/^Generate an image/i);
+      expect(promptText).toContain('A beautiful sunset');
     });
 
     it('should return error for invalid prompt', async () => {
@@ -1051,6 +1090,97 @@ describe('ImagenService', () => {
 
       expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining('IMAGE_SAFETY')
+      );
+    });
+
+    it('should handle NO_IMAGE finishReason as a distinct failure type', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            finishReason: 'NO_IMAGE',
+            content: { parts: [] }
+          }]
+        }
+      });
+
+      const result = await imagenService.generateImage('A complex prompt', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('unable to generate an image');
+      expect(result.failureContext).toBeDefined();
+      expect(result.failureContext.type).toBe('no_image');
+      expect(result.failureContext.details.finishReason).toBe('NO_IMAGE');
+    });
+
+    it('should handle NO_IMAGE finishReason with null content', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            finishReason: 'NO_IMAGE',
+            content: null
+          }]
+        }
+      });
+
+      const result = await imagenService.generateImage('A complex prompt', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.failureContext.type).toBe('no_image');
+    });
+
+    it('should log finishReason and safetyRatings on text_response path', async () => {
+      const logger = require('../../logger');
+
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{ text: 'I cannot generate that.' }]
+            },
+            finishReason: 'STOP',
+            safetyRatings: [
+              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', probability: 'NEGLIGIBLE', blocked: false }
+            ]
+          }]
+        }
+      });
+
+      await imagenService.generateImage('Some prompt', {}, mockUser);
+
+      // Should log finishReason in the text_response warn
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('finishReason: STOP')
+      );
+      // Should log safetyRatings in the text_response warn
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('HARM_CATEGORY_DANGEROUS_CONTENT')
+      );
+      // Should debug log full candidate structure
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('Full candidate structure on text response')
+      );
+    });
+
+    it('should not truncate prompts in log messages', async () => {
+      const logger = require('../../logger');
+      const longPrompt = 'A '.repeat(200) + 'beautiful sunset over the mountains';
+
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{ text: 'Cannot generate this image.' }]
+            },
+            finishReason: 'STOP'
+          }]
+        }
+      });
+
+      await imagenService.generateImage(longPrompt, {}, mockUser);
+
+      // Verify the full prompt appears in warn logs (not truncated)
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('beautiful sunset over the mountains')
       );
     });
 

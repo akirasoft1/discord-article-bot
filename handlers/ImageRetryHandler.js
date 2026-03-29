@@ -16,10 +16,12 @@ class ImageRetryHandler {
    * Initialize ImageRetryHandler
    * @param {Object} imagenService - ImagenService for generating images
    * @param {Object} analyzerService - ImagePromptAnalyzerService for analyzing failures
+   * @param {Object} config - Bot configuration (for admin user checks)
    */
-  constructor(imagenService, analyzerService) {
+  constructor(imagenService, analyzerService, config = {}) {
     this.imagenService = imagenService;
     this.analyzerService = analyzerService;
+    this.config = config;
 
     // Map of messageId -> pending retry data
     // { userId, originalPrompt, suggestedPrompts, channelId, messageId, analysisId, createdAt, timeout }
@@ -176,14 +178,17 @@ class ImageRetryHandler {
     }
 
     const selectedPrompt = pendingData.suggestedPrompts[promptIndex];
-    logger.info(`User ${user.username} retrying with suggestion ${promptIndex + 1}: "${selectedPrompt.substring(0, 50)}..."`);
+    logger.info(`User ${user.username} retrying with suggestion ${promptIndex + 1}: "${selectedPrompt}"`);
 
     try {
       // Show typing indicator
       await reaction.message.channel.sendTyping();
 
+      // Check if user is an admin (for premium model access)
+      const isAdmin = this.config.discord?.adminUserIds?.includes(user.id) || false;
+
       // Generate image with the selected prompt
-      const result = await this.imagenService.generateImage(selectedPrompt, {}, user);
+      const result = await this.imagenService.generateImage(selectedPrompt, { isAdmin }, user);
 
       // Update analysis record
       if (pendingData.analysisId) {

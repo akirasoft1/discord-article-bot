@@ -10,6 +10,7 @@ const FAILURE_COLORS = {
   safety: 0xED4245,      // Red - safety/content issues
   rate_limit: 0xFEE75C,  // Yellow - temporary issue
   no_candidates: 0x5865F2, // Blurple - unclear issue
+  no_image: 0xF0B232,      // Orange - prompt too complex
   text_response: 0xEB459E, // Pink - model misunderstanding
   unknown: 0x95A5A6       // Grey - unknown
 };
@@ -19,6 +20,7 @@ const FAILURE_TITLES = {
   safety: 'Safety Filter Blocked',
   rate_limit: 'Rate Limit Reached',
   no_candidates: 'No Image Generated',
+  no_image: 'Unable to Generate Image',
   text_response: 'Model Returned Text',
   unknown: 'Generation Failed'
 };
@@ -80,7 +82,7 @@ Your task is to:
 
 Respond with valid JSON in this exact format:
 {
-  "failureType": "safety|rate_limit|no_candidates|text_response|unknown",
+  "failureType": "safety|rate_limit|no_candidates|no_image|text_response|unknown",
   "analysis": "Brief explanation of why the prompt failed",
   "suggestions": ["List of general tips to improve the prompt"],
   "suggestedPrompts": ["Specific reworded prompts that might work"],

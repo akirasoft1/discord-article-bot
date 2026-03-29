@@ -704,6 +704,50 @@ describe('ReplyHandler', () => {
       expect(generatedPrompt).not.toMatch(/\b\d+:\d+\b.*aspect|aspect.*\b\d+:\d+\b/i);
     });
 
+    it('should pass isAdmin true for admin users when generating image', async () => {
+      // Configure admin user IDs in config
+      replyHandler.config.discord = { adminUserIds: ['user123'] };
+
+      mockOpenAIClient.responses.create.mockResolvedValue({
+        output_text: 'Enhanced prompt here',
+        usage: { input_tokens: 50, output_tokens: 20 }
+      });
+
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      const options = mockImagenService.generateImage.mock.calls[0][1];
+      expect(options.isAdmin).toBe(true);
+    });
+
+    it('should pass isAdmin false for non-admin users when generating image', async () => {
+      replyHandler.config.discord = { adminUserIds: ['otheradmin999'] };
+
+      mockOpenAIClient.responses.create.mockResolvedValue({
+        output_text: 'Enhanced prompt here',
+        usage: { input_tokens: 50, output_tokens: 20 }
+      });
+
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      const options = mockImagenService.generateImage.mock.calls[0][1];
+      expect(options.isAdmin).toBe(false);
+    });
+
+    it('should handle missing discord config gracefully for admin check', async () => {
+      // Config without discord section
+      replyHandler.config = { openai: { model: 'gpt-5.1' } };
+
+      mockOpenAIClient.responses.create.mockResolvedValue({
+        output_text: 'Enhanced prompt here',
+        usage: { input_tokens: 50, output_tokens: 20 }
+      });
+
+      await replyHandler.handleImageReply(mockMessage, originalPrompt);
+
+      const options = mockImagenService.generateImage.mock.calls[0][1];
+      expect(options.isAdmin).toBe(false);
+    });
+
     it('should handle image generation failure gracefully', async () => {
       mockOpenAIClient.responses.create.mockResolvedValue({
         output_text: 'Enhanced prompt',

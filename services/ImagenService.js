@@ -49,7 +49,7 @@ class ImagenService {
     this.model = this.genAI.getGenerativeModel({
       model: config.imagen.model,
       generationConfig: {
-        responseModalities: ['TEXT', 'IMAGE']
+        responseModalities: ['IMAGE']
       }
     });
 
@@ -60,7 +60,7 @@ class ImagenService {
       this.adminModel = this.genAI.getGenerativeModel({
         model: config.imagen.adminModel,
         generationConfig: {
-          responseModalities: ['TEXT', 'IMAGE']
+          responseModalities: ['IMAGE']
         }
       });
       this.adminModelName = config.imagen.adminModel;
@@ -341,10 +341,10 @@ class ImagenService {
     }
 
     try {
-      logger.info(`Generating image for prompt: "${trimmedPrompt.substring(0, 50)}..." with aspect ratio: ${aspectRatio}`);
+      logger.info(`Generating image for prompt: "${trimmedPrompt}" with aspect ratio: ${aspectRatio}`);
 
-      // Build the request with aspect ratio hint in the prompt
-      const enhancedPrompt = `${trimmedPrompt}\n\nAspect ratio: ${aspectRatio}`;
+      // Build the request with explicit image generation instruction and aspect ratio hint
+      const enhancedPrompt = `Generate an image based on the following description. Do not respond with text, prompt suggestions, or commentary — only generate the image.\n\n${trimmedPrompt}\n\nAspect ratio: ${aspectRatio}`;
 
       // Build parts array - text prompt and optional reference image
       const parts = [{ text: enhancedPrompt }];
@@ -394,7 +394,7 @@ class ImagenService {
       // Check for empty response
       if (!response.candidates || response.candidates.length === 0) {
         // Log detailed information about why no candidates were returned
-        logger.warn(`No candidates in image generation response - prompt: "${trimmedPrompt.substring(0, 100)}", aspectRatio: ${aspectRatio}`);
+        logger.warn(`No candidates in image generation response - prompt: "${trimmedPrompt}", aspectRatio: ${aspectRatio}`);
 
         // Check promptFeedback for block reasons (common when safety filters trigger)
         if (response.promptFeedback) {
@@ -464,7 +464,7 @@ class ImagenService {
         const safetyInfo = candidate.safetyRatings?.map(r =>
           `${r.category}: ${r.probability}${r.blocked ? ' (BLOCKED)' : ''}`
         ).join(', ') || 'none';
-        logger.warn(`Image generation blocked by safety filter - prompt: "${trimmedPrompt.substring(0, 100)}", finishReason: ${candidate.finishReason}, safetyRatings: [${safetyInfo}]`);
+        logger.warn(`Image generation blocked by safety filter - prompt: "${trimmedPrompt}", finishReason: ${candidate.finishReason}, safetyRatings: [${safetyInfo}]`);
         logger.debug(`Full candidate structure on safety rejection: ${JSON.stringify({ finishReason: candidate.finishReason, safetyRatings: candidate.safetyRatings, contentKeys: candidate.content ? Object.keys(candidate.content) : null })}`);
 
         // Use specific error message for prohibited content
@@ -483,15 +483,30 @@ class ImagenService {
         };
       }
 
+      // Handle NO_IMAGE finishReason - model was unable to generate an image from the prompt
+      if (candidate.finishReason === 'NO_IMAGE') {
+        logger.warn(`Image generation returned NO_IMAGE - prompt: "${trimmedPrompt}", finishReason: ${candidate.finishReason}`);
+        logger.debug(`Full candidate structure on NO_IMAGE: ${JSON.stringify({ finishReason: candidate.finishReason, safetyRatings: candidate.safetyRatings, contentKeys: candidate.content ? Object.keys(candidate.content) : null })}`);
+        return {
+          success: false,
+          error: 'The model was unable to generate an image from this prompt. Try simplifying or rephrasing it.',
+          failureContext: {
+            type: 'no_image',
+            originalPrompt: trimmedPrompt,
+            details: { finishReason: candidate.finishReason, safetyRatings: candidate.safetyRatings || null }
+          }
+        };
+      }
+
       // Log other non-STOP finish reasons for debugging
       if (candidate.finishReason && candidate.finishReason !== 'STOP') {
-        logger.warn(`Unexpected finish reason in image generation - prompt: "${trimmedPrompt.substring(0, 100)}", finishReason: ${candidate.finishReason}`);
+        logger.warn(`Unexpected finish reason in image generation - prompt: "${trimmedPrompt}", finishReason: ${candidate.finishReason}`);
       }
 
       // Extract image data from response
       const content = candidate.content;
       if (!content || !content.parts) {
-        logger.warn(`No content parts in image generation response - prompt: "${trimmedPrompt.substring(0, 100)}", hasContent: ${!!content}, finishReason: ${candidate.finishReason}`);
+        logger.warn(`No content parts in image generation response - prompt: "${trimmedPrompt}", hasContent: ${!!content}, finishReason: ${candidate.finishReason}`);
 
         // If finishReason indicates safety, treat as safety rejection even without content
         if (SAFETY_FINISH_REASONS.includes(candidate.finishReason)) {
@@ -524,8 +539,12 @@ class ImagenService {
         const textPart = content.parts.find(part => part.text);
         const partTypes = content.parts.map(p => Object.keys(p).join(',')).join('; ');
         if (textPart) {
-          logger.warn(`Image generation returned text instead of image - prompt: "${trimmedPrompt.substring(0, 100)}", partsCount: ${content.parts.length}, partTypes: [${partTypes}]`);
+          const safetyInfo = candidate.safetyRatings?.map(r =>
+            `${r.category}: ${r.probability}${r.blocked ? ' (BLOCKED)' : ''}`
+          ).join(', ') || 'none';
+          logger.warn(`Image generation returned text instead of image - prompt: "${trimmedPrompt}", finishReason: ${candidate.finishReason || 'none'}, safetyRatings: [${safetyInfo}], partsCount: ${content.parts.length}, partTypes: [${partTypes}]`);
           logger.warn(`Full text response from model:\n${textPart.text}`);
+          logger.debug(`Full candidate structure on text response: ${JSON.stringify({ finishReason: candidate.finishReason, safetyRatings: candidate.safetyRatings, partTypes, partsCount: content.parts.length })}`);
           return {
             success: false,
             error: 'No image was generated. Please try a different prompt.',
@@ -537,7 +556,7 @@ class ImagenService {
             }
           };
         } else {
-          logger.warn(`No image data in response parts - prompt: "${trimmedPrompt.substring(0, 100)}", partsCount: ${content.parts.length}, partTypes: [${partTypes}]`);
+          logger.warn(`No image data in response parts - prompt: "${trimmedPrompt}", finishReason: ${candidate.finishReason || 'none'}, partsCount: ${content.parts.length}, partTypes: [${partTypes}]`);
         }
         return {
           success: false,

@@ -132,7 +132,8 @@ class DiscordBot {
         );
         this.imageRetryHandler = new ImageRetryHandler(
           this.imagenService,
-          this.imagePromptAnalyzerService
+          this.imagePromptAnalyzerService,
+          config
         );
         logger.info('Image prompt analyzer and retry handler initialized');
 

@@ -321,7 +321,7 @@ class VeoService {
       // Check if URL has format=webp parameter
       if (parsedUrl.searchParams.get('format') === 'webp') {
         parsedUrl.searchParams.set('format', 'png');
-        logger.debug(`Converted Discord URL format from webp to png: ${url.substring(0, 80)}...`);
+        logger.debug(`Converted Discord URL format from webp to png: ${url}`);
         return parsedUrl.toString();
       }
 
@@ -456,7 +456,7 @@ class VeoService {
     const trimmedPrompt = prompt.trim();
 
     try {
-      logger.info(`Generating video from text for prompt: "${trimmedPrompt.substring(0, 50)}..." with duration: ${duration}s, ratio: ${aspectRatio}`);
+      logger.info(`Generating video from text for prompt: "${trimmedPrompt}" with duration: ${duration}s, ratio: ${aspectRatio}`);
 
       if (onProgress) onProgress('Starting video generation...');
 
@@ -658,7 +658,7 @@ class VeoService {
     }
 
     try {
-      logger.info(`Generating video from image for prompt: "${trimmedPrompt.substring(0, 50)}..." with duration: ${duration}s, ratio: ${aspectRatio}`);
+      logger.info(`Generating video from image for prompt: "${trimmedPrompt}" with duration: ${duration}s, ratio: ${aspectRatio}`);
 
       if (onProgress) onProgress('Starting video generation...');
 
@@ -886,7 +886,7 @@ class VeoService {
     }
 
     try {
-      logger.info(`Generating video for prompt: "${trimmedPrompt.substring(0, 50)}..." with duration: ${duration}s, ratio: ${aspectRatio}`);
+      logger.info(`Generating video for prompt: "${trimmedPrompt}" with duration: ${duration}s, ratio: ${aspectRatio}`);
 
       if (onProgress) onProgress('Starting video generation...');
 
