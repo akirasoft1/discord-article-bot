@@ -250,6 +250,32 @@ describe('ImagenService', () => {
       expect(Buffer.isBuffer(result.buffer)).toBe(true);
     });
 
+    it('should prefix prompt with image generation instruction', async () => {
+      const mockImageData = Buffer.from('fake-image-data').toString('base64');
+
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            content: {
+              parts: [{
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: mockImageData
+                }
+              }]
+            }
+          }]
+        }
+      });
+
+      await imagenService.generateImage('A beautiful sunset', {}, mockUser);
+
+      const callArgs = mockGeminiModel.generateContent.mock.calls[0][0];
+      const promptText = callArgs.contents[0].parts[0].text;
+      expect(promptText).toMatch(/^Generate an image/i);
+      expect(promptText).toContain('A beautiful sunset');
+    });
+
     it('should return error for invalid prompt', async () => {
       const result = await imagenService.generateImage('', {}, mockUser);
 

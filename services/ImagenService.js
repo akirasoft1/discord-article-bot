@@ -343,8 +343,8 @@ class ImagenService {
     try {
       logger.info(`Generating image for prompt: "${trimmedPrompt}" with aspect ratio: ${aspectRatio}`);
 
-      // Build the request with aspect ratio hint in the prompt
-      const enhancedPrompt = `${trimmedPrompt}\n\nAspect ratio: ${aspectRatio}`;
+      // Build the request with explicit image generation instruction and aspect ratio hint
+      const enhancedPrompt = `Generate an image based on the following description. Do not respond with text, prompt suggestions, or commentary — only generate the image.\n\n${trimmedPrompt}\n\nAspect ratio: ${aspectRatio}`;
 
       // Build parts array - text prompt and optional reference image
       const parts = [{ text: enhancedPrompt }];
