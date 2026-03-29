@@ -483,6 +483,21 @@ class ImagenService {
         };
       }
 
+      // Handle NO_IMAGE finishReason - model was unable to generate an image from the prompt
+      if (candidate.finishReason === 'NO_IMAGE') {
+        logger.warn(`Image generation returned NO_IMAGE - prompt: "${trimmedPrompt}", finishReason: ${candidate.finishReason}`);
+        logger.debug(`Full candidate structure on NO_IMAGE: ${JSON.stringify({ finishReason: candidate.finishReason, safetyRatings: candidate.safetyRatings, contentKeys: candidate.content ? Object.keys(candidate.content) : null })}`);
+        return {
+          success: false,
+          error: 'The model was unable to generate an image from this prompt. Try simplifying or rephrasing it.',
+          failureContext: {
+            type: 'no_image',
+            originalPrompt: trimmedPrompt,
+            details: { finishReason: candidate.finishReason, safetyRatings: candidate.safetyRatings || null }
+          }
+        };
+      }
+
       // Log other non-STOP finish reasons for debugging
       if (candidate.finishReason && candidate.finishReason !== 'STOP') {
         logger.warn(`Unexpected finish reason in image generation - prompt: "${trimmedPrompt}", finishReason: ${candidate.finishReason}`);

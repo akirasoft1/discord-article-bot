@@ -1093,6 +1093,41 @@ describe('ImagenService', () => {
       );
     });
 
+    it('should handle NO_IMAGE finishReason as a distinct failure type', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            finishReason: 'NO_IMAGE',
+            content: { parts: [] }
+          }]
+        }
+      });
+
+      const result = await imagenService.generateImage('A complex prompt', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('unable to generate an image');
+      expect(result.failureContext).toBeDefined();
+      expect(result.failureContext.type).toBe('no_image');
+      expect(result.failureContext.details.finishReason).toBe('NO_IMAGE');
+    });
+
+    it('should handle NO_IMAGE finishReason with null content', async () => {
+      mockGeminiModel.generateContent.mockResolvedValue({
+        response: {
+          candidates: [{
+            finishReason: 'NO_IMAGE',
+            content: null
+          }]
+        }
+      });
+
+      const result = await imagenService.generateImage('A complex prompt', {}, mockUser);
+
+      expect(result.success).toBe(false);
+      expect(result.failureContext.type).toBe('no_image');
+    });
+
     it('should log finishReason and safetyRatings on text_response path', async () => {
       const logger = require('../../logger');
 
