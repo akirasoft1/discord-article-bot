@@ -63,6 +63,19 @@ describe('ImagenService', () => {
       expect(imagenService.config).toBe(mockConfig);
     });
 
+    it('should configure responseModalities as IMAGE only', () => {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      const genAIInstance = GoogleGenerativeAI.mock.results[0].value;
+
+      expect(genAIInstance.getGenerativeModel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          generationConfig: expect.objectContaining({
+            responseModalities: ['IMAGE']
+          })
+        })
+      );
+    });
+
     it('should throw error if imagen is disabled', () => {
       const disabledConfig = {
         imagen: { ...mockConfig.imagen, enabled: false }

@@ -49,7 +49,7 @@ class ImagenService {
     this.model = this.genAI.getGenerativeModel({
       model: config.imagen.model,
       generationConfig: {
-        responseModalities: ['TEXT', 'IMAGE']
+        responseModalities: ['IMAGE']
       }
     });
 
@@ -60,7 +60,7 @@ class ImagenService {
       this.adminModel = this.genAI.getGenerativeModel({
         model: config.imagen.adminModel,
         generationConfig: {
-          responseModalities: ['TEXT', 'IMAGE']
+          responseModalities: ['IMAGE']
         }
       });
       this.adminModelName = config.imagen.adminModel;
