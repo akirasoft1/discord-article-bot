@@ -5,7 +5,6 @@ module.exports = {
   // Chat commands
   ChatSlashCommand: require('./ChatCommand'),
   ChatThreadSlashCommand: require('./ChatThreadCommand'),
-  PersonalitiesSlashCommand: require('./PersonalitiesCommand'),
   ChatResetSlashCommand: require('./ChatResetCommand'),
   ChatResumeSlashCommand: require('./ChatResumeCommand'),
   ChatListSlashCommand: require('./ChatListCommand'),
