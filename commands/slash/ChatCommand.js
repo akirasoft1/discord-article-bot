@@ -135,7 +135,7 @@ class ChatSlashCommand extends BaseSlashCommand {
       : '';
 
     const response = TextUtils.wrapUrls(
-      `${result.personality.emoji} **${result.personality.name}**${uncensoredIndicator}${fallbackNotice}\n\n${result.message}`
+      `**Prompt:** ${userMessage}\n\n${result.personality.emoji} **${result.personality.name}**${uncensoredIndicator}${fallbackNotice}\n\n${result.message}`
     );
 
     // Convert any generated images to Discord attachments

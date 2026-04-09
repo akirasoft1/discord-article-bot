@@ -29,6 +29,7 @@
   - Erik the Existentialist (philosopher)
   - x0r_kid (90s IRC gamer)
   - Uncensored (enhanced local LLM personality)
+- **Prompt Display**: Responses show the user's original prompt before the AI reply, matching the `/imagine` format
 - **Default Personality**: Just `/chat <message>` defaults to Channel Voice (falls back to Friendly Assistant if voice profile not enabled)
 - **Image Vision**: Attach images to chat messages for analysis and discussion
 - **Web Search**: Bot can search the web for current information when needed
