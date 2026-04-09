@@ -38,66 +38,34 @@ After the bot summarizes an article, **reply directly** to the summary message t
 
 ---
 
-## Personality Chat
+## Chat
 
-Chat with unique AI personalities for fun, creative conversations. The bot remembers conversation history within each channel.
+Chat with the bot using a voice that reflects the group's communication style. The bot remembers conversation history within each channel.
 
 ### Quick Start
 
-Just type `/chat message:Hello!` to start chatting with the default **Friendly Assistant** personality.
+Just type `/chat message:Hello!` to start chatting.
 
 ### Commands
 
 | Command | Description |
 |---------|-------------|
-| `/chat message:<text>` | Chat with the default personality (Friendly Assistant) |
-| `/chat message:<text> personality:<name>` | Chat with a specific personality |
+| `/chat message:<text>` | Chat with the bot |
 | `/chat message:<text> image:<file>` | Chat about an attached image |
-| `/chat message:<text> uncensored:true` | Route to local LLM for less restricted responses |
 | `/chatthread message:<text>` | Start a dedicated chat thread |
-| `/personalities` | List all available personalities |
 | `/chatlist` | List your resumable conversations |
-| `/chatresume personality:<name> message:<text>` | Resume an expired conversation |
-| `/chatreset personality:<name>` | Reset a conversation (admin only) |
-
-### Reply to Continue
-
-You can **reply directly** to any bot personality message to continue the conversation without using commands. Just use Discord's reply feature.
-
-**Example**:
-1. Use `/chat message:Tell me a story`
-2. The bot responds
-3. Reply to that message with "What happened next?"
-4. The conversation continues naturally
+| `/chatresume message:<text>` | Resume an expired conversation |
+| `/chatreset` | Reset conversation history (admin only) |
 
 ### Conversation Memory
 
-- **Channel-scoped**: Each channel has its own conversation with each personality
-- **Multi-user**: Everyone in the channel shares the same conversation - the personality knows who said what
+- **Channel-scoped**: Each channel has its own conversation history
+- **Multi-user**: Everyone in the channel shares the same conversation - the bot knows who said what
 - **Limits**: Conversations have resource limits:
   - Maximum 100 messages per conversation
   - Maximum 150,000 tokens per conversation
   - Conversations expire after 30 minutes of inactivity
 - **Resume**: Use `/chatresume` to pick up where you left off after expiration
-
-### Available Personalities
-
-| ID | Name | Description |
-|----|------|-------------|
-| `friendly-assistant` | 😊 Friendly Assistant | Helpful, informal assistant for casual chat and questions (**default**) |
-| `grumpy-historian` | 📚 Professor Grimsworth | An irritable history professor who relates everything to obscure historical events |
-| `noir-detective` | 🕵️ Jack Shadows | A hardboiled 1940s detective who narrates everything in classic noir prose |
-| `existential-philosopher` | 🤔 Erik the Existentialist | A philosophy grad student who spirals every topic into questions about meaning |
-| `irc-gamer` | 💾 x0r_kid | A 90s IRC gamer kid with leet speak and old-school internet vibes |
-| `uncensored` | 🔓 Uncensored | Enhanced personality that uses local LLM for less restricted responses |
-
-### Uncensored Mode
-
-When available, you can get less restricted responses by either:
-- Using `/chat message:<text> uncensored:true` with any personality
-- Choosing the `uncensored` personality directly
-
-Uncensored responses are marked with a 🔓 emoji. This requires the bot admin to have a local LLM (Ollama) configured.
 
 ---
 
@@ -195,11 +163,10 @@ React to a bot's summary message with the 📚 (books) emoji to mark that articl
 ## Tips
 
 - Type `/` in Discord to see all available bot commands with autocomplete
-- **Reply to bot messages** to continue personality chats or ask follow-up questions about summaries
+- **Reply to bot messages** to ask follow-up questions about summaries or regenerate images
 - If the bot detects a questionable source, it will add a ⚠️ warning
-- Personalities maintain their character throughout conversations
-- Multiple users can participate in the same personality conversation - it's like a group chat with a character
-- Mention the bot (`@BotName`) to start a conversation with the default personality
+- Multiple users can participate in the same conversation - the bot knows who said what
+- Mention the bot (`@BotName`) to start a conversation
 
 ---
 
@@ -210,13 +177,11 @@ React to a bot's summary message with the 📚 (books) emoji to mark that articl
 | `/help` | Show all commands |
 | `/summarize url:<url>` | Summarize an article |
 | `/resummarize url:<url>` | Re-summarize (bypass cache) |
-| `/personalities` | List chat personalities |
-| `/chat message:<msg>` | Chat with default personality |
-| `/chat message:<msg> personality:<id>` | Chat with a specific personality |
+| `/chat message:<msg>` | Chat with the bot |
 | `/chatthread message:<msg>` | Start a chat thread |
 | `/chatlist` | List resumable conversations |
-| `/chatresume personality:<id> message:<msg>` | Resume expired conversation |
-| `/chatreset personality:<id>` | Reset conversation (admin) |
+| `/chatresume message:<msg>` | Resume expired conversation |
+| `/chatreset` | Reset conversation (admin) |
 | `/imagine prompt:<text>` | Generate an image |
 | `/videogen prompt:<text>` | Generate a video |
 | `/memories` | View your memories |

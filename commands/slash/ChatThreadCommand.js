@@ -5,35 +5,18 @@ const { SlashCommandBuilder, ChannelType, AttachmentBuilder } = require('discord
 const BaseSlashCommand = require('../base/BaseSlashCommand');
 const TextUtils = require('../../utils/textUtils');
 const logger = require('../../logger');
-const personalityManager = require('../../personalities');
 
 class ChatThreadSlashCommand extends BaseSlashCommand {
   constructor(chatService) {
-    // Build personality choices dynamically
-    const personalities = personalityManager.list();
-    const choices = personalities.slice(0, 25).map(p => ({
-      name: `${p.emoji} ${p.name}`,
-      value: p.id
-    }));
-
     super({
       data: new SlashCommandBuilder()
         .setName('chatthread')
-        .setDescription('Start a dedicated thread for an extended conversation with an AI personality')
+        .setDescription('Start a dedicated thread for an extended conversation')
         .addStringOption(option =>
           option.setName('message')
             .setDescription('Your opening message')
             .setRequired(true)
-            .setMaxLength(2000))
-        .addStringOption(option => {
-          option.setName('personality')
-            .setDescription('Which personality to chat with (default: friendly)')
-            .setRequired(false);
-          if (choices.length > 0) {
-            option.addChoices(...choices);
-          }
-          return option;
-        }),
+            .setMaxLength(2000)),
       deferReply: true,
       cooldown: 10 // Slightly higher cooldown to prevent thread spam
     });
@@ -44,29 +27,17 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
   }
 
   async execute(interaction, context) {
-    const personalityId = interaction.options.getString('personality') || 'friendly';
+    const personalityId = 'channel-voice';
     const userMessage = interaction.options.getString('message');
     const channelId = interaction.channel.id;
     const guildId = interaction.guild?.id || null;
 
-    // Get personality info
-    const personality = personalityManager.get(personalityId);
-    if (!personality) {
-      const available = personalityManager.list()
-        .map(p => `\`${p.id}\` - ${p.emoji} ${p.name}`)
-        .join('\n');
-      await this.sendReply(interaction, {
-        content: `Unknown personality. Available options:\n${available}`
-      });
-      return;
-    }
-
-    this.logExecution(interaction, `personality=${personalityId}, creating thread`);
+    this.logExecution(interaction, `creating thread`);
 
     // Create thread for conversation
     let thread;
     try {
-      const threadName = `${personality.emoji} Chat with ${personality.name}`;
+      const threadName = `💬 Chat: ${userMessage.substring(0, 90)}`;
       thread = await interaction.channel.threads.create({
         name: threadName.substring(0, 100), // Thread names max 100 chars
         autoArchiveDuration: 60, // Archive after 1 hour of inactivity
@@ -93,11 +64,11 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
 
     // Reply to the original interaction
     await this.sendReply(interaction, {
-      content: `Started a conversation with ${personality.emoji} **${personality.name}** in ${thread}!\n\nJust type your messages in the thread - no commands needed.`,
+      content: `Started a conversation in ${thread}!\n\nJust type your messages in the thread - no commands needed.`,
       ephemeral: false
     });
 
-    // Get the initial response from the personality
+    // Get the initial response
     const result = await this.chatService.chat(
       personalityId,
       userMessage,
@@ -117,9 +88,7 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
     }
 
     // Send the response in the thread
-    const response = TextUtils.wrapUrls(
-      `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
-    );
+    const response = TextUtils.wrapUrls(result.message);
 
     // Split long messages
     const chunks = this.splitMessage(response, 2000);
@@ -210,9 +179,7 @@ class ChatThreadSlashCommand extends BaseSlashCommand {
       return true;
     }
 
-    const response = TextUtils.wrapUrls(
-      `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
-    );
+    const response = TextUtils.wrapUrls(result.message);
 
     // Split long messages
     const chunks = this.splitMessage(response, 2000);

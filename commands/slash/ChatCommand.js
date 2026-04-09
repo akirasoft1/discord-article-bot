@@ -1,48 +1,25 @@
 // commands/slash/ChatCommand.js
-// Slash command for chatting with AI personalities
+// Slash command for chatting with the bot using channel voice personality
 
 const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
 const BaseSlashCommand = require('../base/BaseSlashCommand');
 const TextUtils = require('../../utils/textUtils');
 const logger = require('../../logger');
-const personalityManager = require('../../personalities');
-const localLlmService = require('../../services/LocalLlmService');
 
 class ChatSlashCommand extends BaseSlashCommand {
   constructor(chatService) {
-    // Build personality choices dynamically
-    const personalities = personalityManager.list();
-    const choices = personalities.slice(0, 25).map(p => ({
-      name: `${p.emoji} ${p.name}`,
-      value: p.id
-    }));
-
     super({
       data: new SlashCommandBuilder()
         .setName('chat')
-        .setDescription('Chat with an AI personality')
+        .setDescription('Chat with the bot')
         .addStringOption(option =>
           option.setName('message')
-            .setDescription('Your message to the personality')
+            .setDescription('Your message')
             .setRequired(true)
             .setMaxLength(2000))
-        .addStringOption(option => {
-          option.setName('personality')
-            .setDescription('Which personality to chat with (default: uncensored if available, otherwise friendly)')
-            .setRequired(false);
-          // Add choices if we have them
-          if (choices.length > 0) {
-            option.addChoices(...choices);
-          }
-          return option;
-        })
         .addAttachmentOption(option =>
           option.setName('image')
             .setDescription('Optional image to include in the conversation')
-            .setRequired(false))
-        .addBooleanOption(option =>
-          option.setName('uncensored')
-            .setDescription('Use local LLM for less restricted responses (if enabled)')
             .setRequired(false)),
       deferReply: true,
       cooldown: 0
@@ -52,33 +29,13 @@ class ChatSlashCommand extends BaseSlashCommand {
   }
 
   async execute(interaction, context) {
-    // Default to uncensored if local LLM is available, otherwise friendly
-    const defaultPersonality = personalityManager.get('channel-voice')
-      ? 'channel-voice'
-      : personalityManager.get('uncensored') ? 'uncensored' : 'friendly';
-    const personalityId = interaction.options.getString('personality') || defaultPersonality;
+    const personalityId = 'channel-voice';
     const userMessage = interaction.options.getString('message');
     const attachment = interaction.options.getAttachment('image');
-    const useUncensored = interaction.options.getBoolean('uncensored') || false;
     const channelId = interaction.channel.id;
     const guildId = interaction.guild?.id || null;
 
-    this.logExecution(interaction, `personality=${personalityId}${useUncensored ? ' uncensored=true' : ''}`);
-
-    // Check uncensored access if requested
-    if (useUncensored) {
-      const isNsfwChannel = interaction.channel.nsfw || false;
-      const accessCheck = localLlmService.checkUncensoredAccess(
-        channelId,
-        interaction.user.id,
-        isNsfwChannel
-      );
-
-      if (!accessCheck.allowed) {
-        await this.sendError(interaction, accessCheck.reason);
-        return;
-      }
-    }
+    this.logExecution(interaction, `message="${userMessage.substring(0, 50)}"`);
 
     // Get image URL if attachment provided
     let imageUrl = null;
@@ -92,27 +49,17 @@ class ChatSlashCommand extends BaseSlashCommand {
       }
     }
 
-    // Call chat service
+    // Call chat service with channel-voice personality
     const result = await this.chatService.chat(
       personalityId,
       userMessage,
       interaction.user,
       channelId,
       guildId,
-      imageUrl,
-      { useUncensored }
+      imageUrl
     );
 
     if (!result.success) {
-      if (result.availablePersonalities) {
-        const availableList = result.availablePersonalities
-          .map(p => `\`${p.id}\` - ${p.emoji} ${p.name}`)
-          .join('\n');
-        await this.sendReply(interaction, {
-          content: `Unknown personality. Available options:\n${availableList}`
-        });
-        return;
-      }
       // Handle specific error reasons with helpful messages (without "Error: " prefix)
       if (result.reason === 'expired' || result.reason === 'message_limit' || result.reason === 'token_limit') {
         await this.sendReply(interaction, {
@@ -124,18 +71,8 @@ class ChatSlashCommand extends BaseSlashCommand {
       return;
     }
 
-    // Format response with personality header and wrap URLs
-    // Add unlock emoji if local LLM was used (either via uncensored option or uncensored personality)
-    const usedLocalLlm = (useUncensored || personalityId === 'uncensored') && !result.fallback?.occurred;
-    const uncensoredIndicator = usedLocalLlm ? ' \uD83D\uDD13' : '';
-
-    // Add fallback notice if the local LLM was unavailable
-    const fallbackNotice = result.fallback?.occurred
-      ? `\n> *\u26A0\uFE0F Local LLM unavailable \u2014 responded using ${result.personality.emoji} ${result.personality.name} instead*\n`
-      : '';
-
     const response = TextUtils.wrapUrls(
-      `**Prompt:** ${userMessage}\n\n${result.personality.emoji} **${result.personality.name}**${uncensoredIndicator}${fallbackNotice}\n\n${result.message}`
+      `**Prompt:** ${userMessage}\n\n${result.message}`
     );
 
     // Convert any generated images to Discord attachments
@@ -158,7 +95,6 @@ class ChatSlashCommand extends BaseSlashCommand {
 
     // Send response with images if any, handling long messages
     if (imageAttachments.length > 0) {
-      // For messages with images, send text first then images
       await this.sendLongResponse(interaction, response);
       await interaction.followUp({ files: imageAttachments });
     } else {
