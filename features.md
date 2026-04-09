@@ -20,33 +20,13 @@
 - **Automatic Polling**: Monitors collection for new links
 - **Multiple Formats**: Supports readable, monolith, and PDF archives
 
-### Personality Chat
-- **7 Built-in Personalities**:
-  - Channel Voice (learned group communication style - **default**)
-  - Friendly Assistant (helpful, informal)
-  - Professor Grimsworth (grumpy historian)
-  - Jack Shadows (noir detective)
-  - Erik the Existentialist (philosopher)
-  - x0r_kid (90s IRC gamer)
-  - Uncensored (enhanced local LLM personality)
-- **Prompt Display**: Responses show the user's original prompt before the AI reply, matching the `/imagine` format
-- **Default Personality**: Just `/chat <message>` defaults to Channel Voice (falls back to Friendly Assistant if voice profile not enabled)
+### Chat
+- **Channel Voice**: Bot uses a learned group communication style as its voice, dynamically generated from IRC history and Discord messages
+- **Simple Interface**: Just `/chat <message>` — no personality picker needed
+- **Prompt Display**: Responses show the user's original prompt before the AI reply
 - **Image Vision**: Attach images to chat messages for analysis and discussion
 - **Web Search**: Bot can search the web for current information when needed
-- **Extensible System**: Add new personalities via `.js` files
-- **Per-user Token Tracking**: Usage recorded per personality
-
-### Uncensored Mode (Local LLM)
-- **Local LLM Support**: Route chat requests to a local Ollama instance for less restricted responses
-- **Opt-in Per Request**: Use `/chat message:... uncensored:true` to enable for that message
-- **Dedicated Personality**: `uncensored` personality defaults to local LLM automatically
-- **Access Controls**: Configurable per-channel, per-user, and NSFW-only restrictions
-- **Personality Variants**: Personalities can define `uncensoredSystemPrompt` for enhanced local mode
-- **Visual Indicator**: Uncensored responses marked with 🔓 emoji
-- **Automatic Fallback**: When local LLM goes down mid-runtime, automatically falls back to cloud provider with the `friendly` personality and notifies the user
-- **Circuit Breaker**: After a connection failure, the local LLM is temporarily marked unavailable (60s cooldown) to avoid repeated timeout delays on subsequent requests
-- **DeepSeek-R1 Support**: Strips thinking tokens (`<think>...</think>`) from reasoning model responses
-- **Response Length Control**: Configurable `maxResponseLength` truncates overly verbose local LLM responses at sentence boundaries
+- **Per-user Token Tracking**: Usage recorded per user
 
 ### Conversation Memory
 - **Channel-Scoped Memory**: All users in a channel share a conversation with each personality

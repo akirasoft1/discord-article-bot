@@ -3,7 +3,6 @@
 
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const BaseSlashCommand = require('../base/BaseSlashCommand');
-const personalityManager = require('../../personalities');
 const logger = require('../../logger');
 
 class ChatListSlashCommand extends BaseSlashCommand {
@@ -41,19 +40,14 @@ class ChatListSlashCommand extends BaseSlashCommand {
       .setColor(0x5865F2);
 
     for (const conv of conversations) {
-      // Use conversation's personality data which includes emoji and name
-      const emoji = conv.personality?.emoji || '🎭';
-      const name = conv.personality?.name || conv.personalityId || 'Unknown';
-      const personalityId = conv.personality?.id || conv.personalityId;
-
       const timeAgo = this.getTimeAgo(new Date(conv.lastActivity));
       const preview = conv.lastUserMessage
         ? `"${conv.lastUserMessage.substring(0, 50)}${conv.lastUserMessage.length > 50 ? '...' : ''}"`
         : '';
 
       embed.addFields({
-        name: `${emoji} ${name} (${conv.status || 'expired'})`,
-        value: `${conv.messageCount || 0} messages • ${timeAgo}\n${preview}\n\`/chatresume personality:${personalityId}\``,
+        name: `💬 Conversation (${conv.status || 'expired'})`,
+        value: `${conv.messageCount || 0} messages • ${timeAgo}\n${preview}\nUse \`/chatresume\` to continue`,
         inline: false
       });
     }

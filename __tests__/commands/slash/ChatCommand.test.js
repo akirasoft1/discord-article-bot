@@ -1,5 +1,5 @@
 // __tests__/commands/slash/ChatCommand.test.js
-// Tests for ChatSlashCommand - prompt display in responses
+// Tests for ChatSlashCommand - channel-voice default, simplified response format
 
 // Mock the logger
 jest.mock('../../../logger', () => ({
@@ -9,22 +9,22 @@ jest.mock('../../../logger', () => ({
   warn: jest.fn()
 }));
 
-// Mock personalities
+// Mock personalities - only channel-voice matters now
 jest.mock('../../../personalities', () => ({
   get: jest.fn((id) => {
     const personalities = {
-      'friendly': {
-        id: 'friendly',
-        name: 'Friendly Assistant',
-        emoji: '😊',
-        description: 'A friendly assistant',
-        systemPrompt: 'You are a friendly assistant.'
+      'channel-voice': {
+        id: 'channel-voice',
+        name: 'Channel Voice',
+        emoji: '🗣️',
+        description: 'Learned group communication style',
+        systemPrompt: 'You speak in the style of the group.'
       }
     };
     return personalities[id] || null;
   }),
   list: jest.fn(() => [
-    { id: 'friendly', name: 'Friendly Assistant', emoji: '😊', description: 'A friendly assistant' }
+    { id: 'channel-voice', name: 'Channel Voice', emoji: '🗣️', description: 'Learned group communication style' }
   ])
 }));
 
@@ -48,9 +48,9 @@ describe('ChatSlashCommand', () => {
         success: true,
         message: 'Hello! How can I help you today?',
         personality: {
-          id: 'friendly',
-          name: 'Friendly Assistant',
-          emoji: '😊'
+          id: 'channel-voice',
+          name: 'Channel Voice',
+          emoji: '🗣️'
         },
         tokens: { input: 100, output: 50, total: 150 }
       })
@@ -63,7 +63,6 @@ describe('ChatSlashCommand', () => {
       options: {
         getString: jest.fn((name) => {
           if (name === 'message') return 'What is the meaning of life?';
-          if (name === 'personality') return 'friendly';
           return null;
         }),
         getAttachment: jest.fn().mockReturnValue(null),
@@ -80,7 +79,46 @@ describe('ChatSlashCommand', () => {
     command = new ChatSlashCommand(mockChatService);
   });
 
+  describe('constructor', () => {
+    it('should not have a personality option', () => {
+      const options = command.data.options;
+      const personalityOption = options.find(o => o.name === 'personality');
+      expect(personalityOption).toBeUndefined();
+    });
+
+    it('should not have an uncensored option', () => {
+      const options = command.data.options;
+      const uncensoredOption = options.find(o => o.name === 'uncensored');
+      expect(uncensoredOption).toBeUndefined();
+    });
+
+    it('should have a message option', () => {
+      const options = command.data.options;
+      const messageOption = options.find(o => o.name === 'message');
+      expect(messageOption).toBeDefined();
+    });
+
+    it('should have an image option', () => {
+      const options = command.data.options;
+      const imageOption = options.find(o => o.name === 'image');
+      expect(imageOption).toBeDefined();
+    });
+  });
+
   describe('execute', () => {
+    it('should always use channel-voice personality', async () => {
+      await command.execute(mockInteraction, {});
+
+      expect(mockChatService.chat).toHaveBeenCalledWith(
+        'channel-voice',
+        'What is the meaning of life?',
+        expect.any(Object),
+        'channel123',
+        'guild456',
+        null
+      );
+    });
+
     it('should include user prompt in response', async () => {
       await command.execute(mockInteraction, {});
 
@@ -91,28 +129,25 @@ describe('ChatSlashCommand', () => {
       );
     });
 
-    it('should include personality header after prompt', async () => {
-      await command.execute(mockInteraction, {});
-
-      const response = mockInteraction.editReply.mock.calls[0][0].content;
-      expect(response).toContain('**Prompt:**');
-      expect(response).toContain('😊 **Friendly Assistant**');
-    });
-
-    it('should show prompt before personality response', async () => {
-      await command.execute(mockInteraction, {});
-
-      const response = mockInteraction.editReply.mock.calls[0][0].content;
-      const promptIndex = response.indexOf('**Prompt:**');
-      const personalityIndex = response.indexOf('😊 **Friendly Assistant**');
-      expect(promptIndex).toBeLessThan(personalityIndex);
-    });
-
     it('should include the AI response message', async () => {
       await command.execute(mockInteraction, {});
 
       const response = mockInteraction.editReply.mock.calls[0][0].content;
       expect(response).toContain('Hello! How can I help you today?');
+    });
+
+    it('should not include personality emoji/name header in response', async () => {
+      await command.execute(mockInteraction, {});
+
+      const response = mockInteraction.editReply.mock.calls[0][0].content;
+      expect(response).not.toContain('🗣️ **Channel Voice**');
+    });
+
+    it('should format response as prompt then message only', async () => {
+      await command.execute(mockInteraction, {});
+
+      const response = mockInteraction.editReply.mock.calls[0][0].content;
+      expect(response).toBe('**Prompt:** What is the meaning of life?\n\nHello! How can I help you today?');
     });
 
     it('should not include prompt line in error responses', async () => {
