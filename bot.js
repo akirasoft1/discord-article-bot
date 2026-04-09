@@ -38,7 +38,6 @@ const SlashCommandHandler = require('./handlers/SlashCommandHandler');
 const {
   ChatSlashCommand,
   ChatThreadSlashCommand,
-  PersonalitiesSlashCommand,
   ChatResetSlashCommand,
   ChatResumeSlashCommand,
   ChatListSlashCommand,
@@ -325,7 +324,6 @@ class DiscordBot {
     this.slashCommandHandler.register(new ChatSlashCommand(this.chatService));
     this.chatThreadCommand = new ChatThreadSlashCommand(this.chatService);
     this.slashCommandHandler.register(this.chatThreadCommand);
-    this.slashCommandHandler.register(new PersonalitiesSlashCommand());
     this.slashCommandHandler.register(new ChatResetSlashCommand(this.chatService));
     this.slashCommandHandler.register(new ChatResumeSlashCommand(this.chatService));
     this.slashCommandHandler.register(new ChatListSlashCommand(this.chatService));

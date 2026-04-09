@@ -40,10 +40,10 @@ describe('PersonalityManager', () => {
   });
 
   describe('get', () => {
-    it('should return a personality by ID', () => {
-      const personality = personalityManager.get('grumpy-historian');
+    it('should return channel-voice personality by ID', () => {
+      const personality = personalityManager.get('channel-voice');
       expect(personality).not.toBeNull();
-      expect(personality.name).toBe('Professor Grimsworth');
+      expect(personality.name).toBe('Channel Voice');
     });
 
     it('should return null for non-existent personality', () => {
@@ -53,8 +53,8 @@ describe('PersonalityManager', () => {
   });
 
   describe('exists', () => {
-    it('should return true for existing personality', () => {
-      expect(personalityManager.exists('noir-detective')).toBe(true);
+    it('should return true for channel-voice personality', () => {
+      expect(personalityManager.exists('channel-voice')).toBe(true);
     });
 
     it('should return false for non-existent personality', () => {
@@ -86,36 +86,11 @@ describe('PersonalityManager', () => {
     });
   });
 
-  describe('specific personalities', () => {
-    it('should have grumpy-historian personality', () => {
-      const personality = personalityManager.get('grumpy-historian');
+  describe('channel-voice personality', () => {
+    it('should have channel-voice as the primary personality', () => {
+      const personality = personalityManager.get('channel-voice');
       expect(personality).not.toBeNull();
-      expect(personality.emoji).toBe('📚');
-    });
-
-    it('should have noir-detective personality', () => {
-      const personality = personalityManager.get('noir-detective');
-      expect(personality).not.toBeNull();
-      expect(personality.emoji).toBe('🕵️');
-    });
-
-    it('should have existential personality', () => {
-      const personality = personalityManager.get('existential');
-      expect(personality).not.toBeNull();
-      expect(personality.emoji).toBe('🤔');
-    });
-
-    it('should have irc-gamer personality', () => {
-      const personality = personalityManager.get('irc-gamer');
-      expect(personality).not.toBeNull();
-      expect(personality.emoji).toBe('💾');
-    });
-
-    it('should have friendly personality', () => {
-      const personality = personalityManager.get('friendly');
-      expect(personality).not.toBeNull();
-      expect(personality.name).toBe('Friendly Assistant');
-      expect(personality.emoji).toBe('😊');
+      expect(personality.id).toBe('channel-voice');
     });
   });
 });
