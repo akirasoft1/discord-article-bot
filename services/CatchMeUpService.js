@@ -92,16 +92,32 @@ class CatchMeUpService {
 
       const gatheredContext = contextParts.join('\n\n');
 
+      // Guard: if context is too thin, don't waste an LLM call on it
+      const contextLines = gatheredContext.split('\n').filter(l => l.trim() && !l.startsWith('**')).length;
+      if (contextLines < 3) {
+        logger.info(`Catch-up context too thin (${contextLines} lines), skipping LLM synthesis`);
+        return {
+          success: true,
+          nothingNew: true,
+          message: "Things have been pretty quiet — not enough recent conversation to summarize."
+        };
+      }
+
       // 6. Build system prompt with voice styling
       let systemPrompt = `You are summarizing what happened in a Discord server while a user was away (approximately ${lookbackLabel}).
 
+CRITICAL RULES:
+- ONLY reference conversations, users, and events that appear in the provided chat logs below
+- Do NOT invent, fabricate, or hallucinate any content, usernames, events, or discussions
+- If the chat logs are sparse, keep the summary short — a few sentences is fine
+- It is much better to say "not much happened" than to make things up
+- Only mention usernames that explicitly appear in the [Username]: format in the logs
+
 Your task:
-- Provide a concise, engaging summary of what the user missed
-- Highlight the most interesting articles, discussions, and trends
-- Keep it under 500 words
-- Use a natural, conversational tone — like a friend filling someone in
-- Group related items together rather than listing everything chronologically
-- If there are many articles, highlight the 3-5 most notable ones, not all of them`;
+- Summarize what actually happened based on the chat logs provided
+- Keep it concise and natural — like a friend filling someone in
+- Group related topics together
+- If there's very little to report, just say so briefly`;
 
       if (voiceProfile) {
         systemPrompt += `\n\nStyle your response to match this group's communication style:\n${voiceProfile.voiceInstructions || ''}`;
@@ -111,13 +127,17 @@ Your task:
       }
 
       // 7. Synthesize
+      logger.info(`Catch-up LLM input for user ${userId}: ${contextLines} context lines, ${gatheredContext.length} chars`);
+      logger.debug(`Catch-up raw context:\n${gatheredContext}`);
+
       const response = await this.openaiClient.responses.create({
         model: this.config.openai.model || 'gpt-4.1-mini',
         instructions: systemPrompt,
         input: gatheredContext
       });
 
-      logger.info(`Catch-up generated for user ${userId}: ${response.usage?.output_tokens || 0} tokens`);
+      logger.info(`Catch-up generated for user ${userId}: ${response.usage?.input_tokens || 0} input tokens, ${response.usage?.output_tokens || 0} output tokens`);
+      logger.debug(`Catch-up LLM output:\n${response.output_text}`);
 
       return {
         success: true,
