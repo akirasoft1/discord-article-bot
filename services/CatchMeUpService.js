@@ -57,11 +57,7 @@ class CatchMeUpService {
       logger.info(`Generating catch-up for user ${userId}: lookback ${lookbackLabel}, ${activeChannels.length} active channels`);
 
       // 2. Gather data in parallel
-      const [articles, trends, voiceProfile] = await Promise.all([
-        this.mongoService.getRecentArticleSummaries(lookbackDays),
-        this.mongoService.getArticleTrends(lookbackDays),
-        this.voiceProfileService?.getProfile().catch(() => null) || Promise.resolve(null)
-      ]);
+      const voiceProfile = await (this.voiceProfileService?.getProfile().catch(() => null) || Promise.resolve(null));
 
       // 3. Gather recent messages from active channels
       const channelContexts = [];
@@ -75,11 +71,9 @@ class CatchMeUpService {
       }
 
       // 4. Check if there's anything to report
-      const hasArticles = articles.length > 0;
-      const hasTrends = trends.length > 0;
       const hasMessages = channelContexts.some(c => c.context.length > 0);
 
-      if (!hasArticles && !hasTrends && !hasMessages) {
+      if (!hasMessages) {
         return {
           success: true,
           nothingNew: true,
@@ -90,20 +84,8 @@ class CatchMeUpService {
       // 5. Build context for synthesis
       const contextParts = [];
 
-      if (hasArticles) {
-        const articleList = articles.slice(0, 10).map(a =>
-          `- "${a.title}" (${a.topic || 'General'}): ${a.summary?.substring(0, 150) || 'No summary'}...`
-        ).join('\n');
-        contextParts.push(`**Recent Articles (${articles.length} total):**\n${articleList}`);
-      }
-
-      if (hasTrends) {
-        const trendList = trends.map(t => `${t._id}: ${t.count} articles`).join(', ');
-        contextParts.push(`**Trending Topics:** ${trendList}`);
-      }
-
-      if (hasMessages) {
-        for (const { context } of channelContexts) {
+      for (const { context } of channelContexts) {
+        if (context) {
           contextParts.push(`**Recent Chat:**\n${context}`);
         }
       }
