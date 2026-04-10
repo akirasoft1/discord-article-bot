@@ -1,12 +1,11 @@
 // handlers/ReplyHandler.js
-// Handles replies to bot messages for personality chats, summarization follow-ups, and image regeneration
+// Handles replies to bot messages for summarization follow-ups and image regeneration
 
 const { AttachmentBuilder } = require('discord.js');
 const logger = require('../logger');
-const personalityManager = require('../personalities');
 const TextUtils = require('../utils/textUtils');
 const { withRootSpan, withSpan, setSpanAttributes } = require('../tracing');
-const { DISCORD, REPLY, ERROR, CHAT, SUMMARIZATION } = require('../tracing-attributes');
+const { DISCORD, REPLY, ERROR, SUMMARIZATION } = require('../tracing-attributes');
 
 class ReplyHandler {
   constructor(chatService, summarizationService, openaiClient, config, imagenService = null) {
@@ -40,20 +39,6 @@ class ReplyHandler {
       [DISCORD.MESSAGE_ID]: message.id,
       [REPLY.OPERATION]: 'handle_reply',
     }, async (span) => {
-      // Try to detect if this is a personality chat message
-      const personalityInfo = this.detectPersonalityFromMessage(botContent);
-      if (personalityInfo) {
-        logger.info(`Detected reply to personality chat: ${personalityInfo.id}`);
-        span.setAttributes({
-          [REPLY.TYPE]: 'personality_chat',
-          [REPLY.PERSONALITY_DETECTED]: true,
-          [CHAT.PERSONALITY_ID]: personalityInfo.id,
-          [CHAT.PERSONALITY_NAME]: personalityInfo.name,
-        });
-        await this.handlePersonalityChatReply(message, personalityInfo);
-        return true;
-      }
-
       // Try to detect if this is a summarization message
       if (this.isSummarizationMessage(botContent)) {
         logger.info('Detected reply to summarization message');
@@ -85,41 +70,6 @@ class ReplyHandler {
       span.setAttribute(REPLY.TYPE, 'unhandled');
       return false;
     });
-  }
-
-  /**
-   * Detect personality from a bot message by looking for emoji + name pattern
-   * Bot messages are formatted as: "🕵️ **Jack Shadows**\n\n<message>"
-   * @param {string} content - The bot message content
-   * @returns {Object|null} Personality info {id, name, emoji} or null if not detected
-   */
-  detectPersonalityFromMessage(content) {
-    // Get all personalities and try to match
-    const personalities = personalityManager.getAll();
-
-    for (const personality of personalities) {
-      // Check for the format: "emoji **Name**" at the start of the message
-      const pattern = new RegExp(`^${this.escapeRegex(personality.emoji)}\\s*\\*\\*${this.escapeRegex(personality.name)}\\*\\*`, 'i');
-
-      if (pattern.test(content)) {
-        return {
-          id: personality.id,
-          name: personality.name,
-          emoji: personality.emoji
-        };
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Escape special regex characters in a string
-   * @param {string} str - String to escape
-   * @returns {string} Escaped string
-   */
-  escapeRegex(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   /**
@@ -374,179 +324,6 @@ Create an enhanced prompt that incorporates this feedback:`;
       'image/webp': 'webp'
     };
     return extensions[mimeType] || 'png';
-  }
-
-  /**
-   * Handle a reply to a personality chat message
-   * @param {Message} message - The user's reply message
-   * @param {Object} personalityInfo - The detected personality info
-   */
-  async handlePersonalityChatReply(message, personalityInfo) {
-    return withSpan('discord.reply.personality_chat', {
-      [CHAT.PERSONALITY_ID]: personalityInfo.id,
-      [CHAT.PERSONALITY_NAME]: personalityInfo.name,
-      [DISCORD.CHANNEL_ID]: message.channel.id,
-    }, async (span) => {
-      const channelId = message.channel.id;
-      const guildId = message.guild?.id || null;
-      const userMessage = message.content;
-
-      // Show typing indicator
-      await message.channel.sendTyping();
-
-      // For replies, we let chatService.chat() handle the conversation logic
-      // It will check for idle timeout and either continue or start fresh
-      // We only show the "forgotten" message if the conversation was explicitly
-      // expired or reset (not just idle - idle conversations get auto-renewed by !chat)
-      const status = await this.chatService.mongoService.getConversationStatus(channelId, personalityInfo.id);
-
-      logger.debug(`Reply handler - conversation status for ${personalityInfo.id} in ${channelId}: ${JSON.stringify(status)}`);
-      span.setAttribute(REPLY.CONVERSATION_STATUS, status.status || 'new');
-
-      // Only show forgotten message for explicitly expired/reset conversations
-      // For idle conversations, chatService.chat() will handle them (start fresh)
-      if (status.exists && (status.status === 'expired' || status.status === 'reset')) {
-        logger.info(`Conversation ${personalityInfo.id} is ${status.status}, showing expired message`);
-        // Conversation was explicitly expired or reset - respond in character about forgetting
-        await this.handleExpiredConversationReply(message, personalityInfo);
-        return;
-      }
-
-      // Continue the conversation (or start fresh if idle - chatService handles this)
-      const result = await this.chatService.chat(
-        personalityInfo.id,
-        userMessage,
-        message.author,
-        channelId,
-        guildId
-      );
-
-      if (!result.success) {
-        span.setAttributes({
-          [ERROR.TYPE]: 'chat_error',
-          [ERROR.MESSAGE]: result.error || 'Unknown error',
-        });
-        if (result.availablePersonalities) {
-          return message.reply({
-            content: `I couldn't find that personality. Something went wrong.`,
-            allowedMentions: { repliedUser: false }
-          });
-        }
-        return message.reply({
-          content: result.error,
-          allowedMentions: { repliedUser: false }
-        });
-      }
-
-      span.setAttribute(CHAT.HAS_IMAGE, result.images?.length > 0);
-
-      // Format response with personality header and wrap URLs
-      const response = TextUtils.wrapUrls(
-        `${result.personality.emoji} **${result.personality.name}**\n\n${result.message}`
-      );
-
-      // Convert any generated images to Discord attachments
-      const imageAttachments = this._createImageAttachments(result.images);
-
-      // Split if too long for Discord
-      if (response.length > 2000) {
-        const chunks = this.splitMessage(response, 2000);
-        for (const chunk of chunks) {
-          await message.channel.send(chunk);
-        }
-        // Send images after text chunks
-        if (imageAttachments.length > 0) {
-          await message.channel.send({ files: imageAttachments });
-        }
-      } else {
-        await message.reply({
-          content: response,
-          allowedMentions: { repliedUser: false }
-        });
-        // Send images as follow-up
-        if (imageAttachments.length > 0) {
-          await message.channel.send({ files: imageAttachments });
-        }
-      }
-    });
-  }
-
-  /**
-   * Create Discord attachments from base64 images
-   * @param {Array<{id: string, base64: string}>} images - Generated images
-   * @returns {Array<AttachmentBuilder>} Discord attachment builders
-   * @private
-   */
-  _createImageAttachments(images) {
-    const attachments = [];
-    if (!images || images.length === 0) {
-      return attachments;
-    }
-
-    for (let i = 0; i < images.length; i++) {
-      const img = images[i];
-      try {
-        const buffer = Buffer.from(img.base64, 'base64');
-        const attachment = new AttachmentBuilder(buffer, {
-          name: `generated_image_${i + 1}.png`
-        });
-        attachments.push(attachment);
-        logger.info(`Prepared image attachment: generated_image_${i + 1}.png`);
-      } catch (error) {
-        logger.error(`Failed to create image attachment: ${error.message}`);
-      }
-    }
-
-    return attachments;
-  }
-
-  /**
-   * Handle reply to an expired personality conversation
-   * Responds in character about having forgotten the conversation
-   * @param {Message} message - The user's reply message
-   * @param {Object} personalityInfo - The detected personality info
-   */
-  async handleExpiredConversationReply(message, personalityInfo) {
-    const personality = personalityManager.get(personalityInfo.id);
-
-    if (!personality) {
-      return message.reply({
-        content: `I couldn't find that personality.`,
-        allowedMentions: { repliedUser: false }
-      });
-    }
-
-    // Generate an in-character "I've forgotten" response
-    const forgetPrompt = `${personality.systemPrompt}
-
-The user is trying to continue a conversation with you, but too much time has passed (30+ minutes of inactivity) and you've completely forgotten what you were talking about.
-
-Respond IN CHARACTER explaining that you don't remember what you were discussing. Stay true to your personality while letting them know they need to start a new conversation. Be brief (1-2 sentences max). Do NOT use phrases like "start a new conversation" or mention commands - just express confusion about what they were talking about in your character's unique voice.`;
-
-    try {
-      const response = await this.openaiClient.responses.create({
-        model: this.config.openai.model || 'gpt-5.1',
-        instructions: forgetPrompt,
-        input: message.content,
-      });
-
-      const characterResponse = response.output_text;
-
-      // Add the command hint after the in-character response
-      const fullResponse = `${personalityInfo.emoji} **${personalityInfo.name}**\n\n${characterResponse}\n\n*This conversation has expired. Start a new one with \`!chat ${personalityInfo.id} <message>\`*`;
-
-      await message.reply({
-        content: fullResponse,
-        allowedMentions: { repliedUser: false }
-      });
-
-    } catch (error) {
-      logger.error(`Error generating expired conversation response: ${error.message}`);
-      await message.reply({
-        content: `${personalityInfo.emoji} **${personalityInfo.name}**\n\n*This conversation has expired after 30 minutes of inactivity. Start a new one with \`!chat ${personalityInfo.id} <message>\`*`,
-        allowedMentions: { repliedUser: false }
-      });
-    }
   }
 
   /**
