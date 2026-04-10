@@ -182,7 +182,9 @@ module.exports = {
     // Maximum prompt length in characters
     maxPromptLength: parseInt(process.env.IMAGEGEN_MAX_PROMPT_LENGTH || '1000', 10),
     // Cooldown between image generations per user (in seconds)
-    cooldownSeconds: parseInt(process.env.IMAGEGEN_COOLDOWN_SECONDS || '30', 10)
+    cooldownSeconds: parseInt(process.env.IMAGEGEN_COOLDOWN_SECONDS || '30', 10),
+    // Auto-retry with simplified prompt on failure (skips safety blocks)
+    autoRetry: process.env.IMAGEGEN_AUTO_RETRY !== 'false' // default true
   },
   // Veo - Google Vertex AI video generation (first & last frame)
   veo: {
