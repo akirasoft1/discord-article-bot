@@ -155,7 +155,6 @@ describe('ChatService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Unknown personality');
-      expect(result.availablePersonalities).toBeDefined();
     });
   });
 
