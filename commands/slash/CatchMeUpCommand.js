@@ -10,8 +10,15 @@ class CatchMeUpSlashCommand extends BaseSlashCommand {
     super({
       data: new SlashCommandBuilder()
         .setName('catchmeup')
-        .setDescription('Get a DM summary of what you missed while you were away'),
+        .setDescription('Get a DM summary of what you missed while you were away')
+        .addIntegerOption(option =>
+          option.setName('days')
+            .setDescription('Number of days to look back (default: auto-detect from last activity)')
+            .setRequired(false)
+            .setMinValue(1)
+            .setMaxValue(30)),
       deferReply: true,
+      ephemeral: true, // All responses are ephemeral — actual content goes via DM
       cooldown: 60 // 1 minute cooldown to prevent spam
     });
 
@@ -23,8 +30,9 @@ class CatchMeUpSlashCommand extends BaseSlashCommand {
 
     const userId = interaction.user.id;
     const guildId = interaction.guild?.id || null;
+    const days = interaction.options.getInteger('days') || null;
 
-    const result = await this.catchMeUpService.generateCatchUp(userId, guildId);
+    const result = await this.catchMeUpService.generateCatchUp(userId, guildId, { days });
 
     if (!result.success) {
       await this.sendReply(interaction, {
@@ -43,9 +51,14 @@ class CatchMeUpSlashCommand extends BaseSlashCommand {
       return;
     }
 
+    // Split long messages into Discord-safe chunks
+    const chunks = this.splitMessage(result.message, 2000);
+
     // Send catch-up via DM
     try {
-      await interaction.user.send(result.message);
+      for (const chunk of chunks) {
+        await interaction.user.send(chunk);
+      }
 
       await this.sendReply(interaction, {
         content: "I've sent you a DM with your catch-up summary!",
@@ -58,11 +71,13 @@ class CatchMeUpSlashCommand extends BaseSlashCommand {
         ephemeral: true
       });
 
-      // Fall back to ephemeral reply in channel
-      await interaction.followUp({
-        content: result.message,
-        ephemeral: true
-      });
+      // Fall back to ephemeral replies in channel
+      for (const chunk of chunks) {
+        await interaction.followUp({
+          content: chunk,
+          ephemeral: true
+        });
+      }
     }
   }
 }

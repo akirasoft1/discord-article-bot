@@ -5,6 +5,8 @@ const logger = require('../logger');
 
 // Default lookback when no last-seen record exists (3 days)
 const DEFAULT_LOOKBACK_DAYS = 3;
+// Minimum lookback in hours (to avoid near-zero ranges)
+const MIN_LOOKBACK_HOURS = 1;
 
 class CatchMeUpService {
   /**
@@ -26,18 +28,33 @@ class CatchMeUpService {
    * Generate a catch-up summary for a user
    * @param {string} userId - Discord user ID
    * @param {string} guildId - Discord guild ID
+   * @param {Object} options - Options
+   * @param {number} options.days - Override lookback period in days
    * @returns {Promise<{success: boolean, message?: string, nothingNew?: boolean, error?: string}>}
    */
-  async generateCatchUp(userId, guildId) {
+  async generateCatchUp(userId, guildId, options = {}) {
     try {
       // 1. Determine time range
       const lastSeen = await this.mongoService.getUserLastSeen(userId, guildId);
-      const lookbackDays = lastSeen
-        ? Math.max(1, Math.ceil((Date.now() - new Date(lastSeen.lastSeenAt).getTime()) / (1000 * 60 * 60 * 24)))
-        : DEFAULT_LOOKBACK_DAYS;
+      let lookbackDays;
+
+      if (options.days) {
+        // User explicitly requested a lookback period
+        lookbackDays = options.days;
+      } else if (lastSeen) {
+        // Calculate from actual time away (can be fractional — hours matter)
+        const hoursAway = (Date.now() - new Date(lastSeen.lastSeenAt).getTime()) / (1000 * 60 * 60);
+        lookbackDays = Math.max(MIN_LOOKBACK_HOURS / 24, hoursAway / 24);
+      } else {
+        lookbackDays = DEFAULT_LOOKBACK_DAYS;
+      }
+
       const activeChannels = lastSeen?.activeChannels || [];
 
-      logger.info(`Generating catch-up for user ${userId}: lookback ${lookbackDays} days, ${activeChannels.length} active channels`);
+      const lookbackLabel = lookbackDays >= 1
+        ? `${Math.round(lookbackDays)} day${Math.round(lookbackDays) !== 1 ? 's' : ''}`
+        : `${Math.round(lookbackDays * 24)} hour${Math.round(lookbackDays * 24) !== 1 ? 's' : ''}`;
+      logger.info(`Generating catch-up for user ${userId}: lookback ${lookbackLabel}, ${activeChannels.length} active channels`);
 
       // 2. Gather data in parallel
       const [articles, trends, voiceProfile] = await Promise.all([
@@ -94,7 +111,7 @@ class CatchMeUpService {
       const gatheredContext = contextParts.join('\n\n');
 
       // 6. Build system prompt with voice styling
-      let systemPrompt = `You are summarizing what happened in a Discord server while a user was away (approximately ${lookbackDays} day${lookbackDays !== 1 ? 's' : ''}).
+      let systemPrompt = `You are summarizing what happened in a Discord server while a user was away (approximately ${lookbackLabel}).
 
 Your task:
 - Provide a concise, engaging summary of what the user missed
