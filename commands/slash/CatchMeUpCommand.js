@@ -12,6 +12,7 @@ class CatchMeUpSlashCommand extends BaseSlashCommand {
         .setName('catchmeup')
         .setDescription('Get a DM summary of what you missed while you were away'),
       deferReply: true,
+      ephemeral: true, // All responses are ephemeral — actual content goes via DM
       cooldown: 60 // 1 minute cooldown to prevent spam
     });
 
