@@ -26,15 +26,7 @@ describe('CatchMeUpService', () => {
         guildId: 'guild456',
         lastSeenAt: new Date('2026-04-08T00:00:00Z'),
         activeChannels: ['channel1', 'channel2']
-      }),
-      getRecentArticleSummaries: jest.fn().mockResolvedValue([
-        { title: 'New AI Paper', topic: 'AI', summary: 'A paper about AI.', createdAt: new Date() },
-        { title: 'Kubernetes Update', topic: 'DevOps', summary: 'K8s 1.31 released.', createdAt: new Date() }
-      ]),
-      getArticleTrends: jest.fn().mockResolvedValue([
-        { _id: 'AI', count: 5 },
-        { _id: 'DevOps', count: 3 }
-      ])
+      })
     };
 
     mockChannelContextService = {
@@ -81,7 +73,6 @@ describe('CatchMeUpService', () => {
       expect(result.success).toBe(true);
       expect(result.message).toContain('While you were gone');
       expect(mockMongoService.getUserLastSeen).toHaveBeenCalledWith('user123', 'guild456');
-      expect(mockMongoService.getRecentArticleSummaries).toHaveBeenCalled();
       expect(mockOpenAIClient.responses.create).toHaveBeenCalled();
     });
 
@@ -106,9 +97,9 @@ describe('CatchMeUpService', () => {
 
       const result = await service.generateCatchUp('user123', 'guild456');
 
+      // No active channels = nothing new
       expect(result.success).toBe(true);
-      // Should still fetch articles with a default time range
-      expect(mockMongoService.getRecentArticleSummaries).toHaveBeenCalled();
+      expect(result.nothingNew).toBe(true);
     });
 
     it('should include recent messages from active channels', async () => {
@@ -117,36 +108,11 @@ describe('CatchMeUpService', () => {
       expect(mockChannelContextService.getRecentContext).toHaveBeenCalled();
     });
 
-    it('should include article trends in the context', async () => {
-      await service.generateCatchUp('user123', 'guild456');
-
-      const callArgs = mockOpenAIClient.responses.create.mock.calls[0][0];
-      expect(callArgs.input).toContain('AI');
-      expect(callArgs.input).toContain('DevOps');
-    });
-
     it('should use explicit days parameter when provided', async () => {
-      await service.generateCatchUp('user123', 'guild456', { days: 7 });
+      const result = await service.generateCatchUp('user123', 'guild456', { days: 7 });
 
-      expect(mockMongoService.getRecentArticleSummaries).toHaveBeenCalledWith(7);
-      expect(mockMongoService.getArticleTrends).toHaveBeenCalledWith(7);
-    });
-
-    it('should calculate fractional day lookback for short absences', async () => {
-      // User was last seen 3 hours ago
-      mockMongoService.getUserLastSeen.mockResolvedValue({
-        userId: 'user123',
-        guildId: 'guild456',
-        lastSeenAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
-        activeChannels: ['channel1']
-      });
-
-      await service.generateCatchUp('user123', 'guild456');
-
-      // Should use fractional days (3 hours ≈ 0.125 days)
-      const calledDays = mockMongoService.getRecentArticleSummaries.mock.calls[0][0];
-      expect(calledDays).toBeLessThan(1);
-      expect(calledDays).toBeGreaterThan(0);
+      expect(result.success).toBe(true);
+      expect(mockOpenAIClient.responses.create).toHaveBeenCalled();
     });
 
     it('should handle errors gracefully', async () => {
@@ -158,9 +124,7 @@ describe('CatchMeUpService', () => {
       expect(result.error).toContain('error');
     });
 
-    it('should return message about nothing to catch up on when no data', async () => {
-      mockMongoService.getRecentArticleSummaries.mockResolvedValue([]);
-      mockMongoService.getArticleTrends.mockResolvedValue([]);
+    it('should return nothing new when no chat context available', async () => {
       mockChannelContextService.getRecentContext.mockReturnValue('');
 
       const result = await service.generateCatchUp('user123', 'guild456');

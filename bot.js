@@ -27,6 +27,7 @@ const NickMappingService = require('./services/NickMappingService');
 const ChannelContextService = require('./services/ChannelContextService');
 const ImagePromptAnalyzerService = require('./services/ImagePromptAnalyzerService');
 const CatchMeUpService = require('./services/CatchMeUpService');
+const MongoService = require('./services/MongoService');
 const ImageRetryHandler = require('./handlers/ImageRetryHandler');
 const TextUtils = require('./utils/textUtils');
 const localLlmService = require('./services/LocalLlmService');
@@ -53,6 +54,7 @@ const {
   HistorySlashCommand,
   ThrowbackSlashCommand,
   CatchMeUpSlashCommand,
+  StatsSlashCommand,
   HelpSlashCommand,
   ContextSlashCommand,
   ChannelTrackSlashCommand
@@ -82,11 +84,13 @@ class DiscordBot {
       baseURL: config.openai.baseURL,
     });
 
+    // Core services - MongoService is a top-level dependency
+    this.mongoService = new MongoService(config.mongo.uri);
     this.messageService = new MessageService(this.openaiClient);
-    this.summarizationService = new SummarizationService(this.openaiClient, config, this.client, this.messageService);
-    this.reactionHandler = new ReactionHandler(this.summarizationService, this.summarizationService.mongoService);
-    this.rssService = new RssService(this.summarizationService.mongoService, this.summarizationService, this.client);
-    this.followUpService = new FollowUpService(this.summarizationService.mongoService, this.summarizationService, this.client);
+    this.summarizationService = new SummarizationService(this.openaiClient, config, this.client, this.messageService, this.mongoService);
+    this.reactionHandler = new ReactionHandler(this.summarizationService, this.mongoService);
+    this.rssService = new RssService(this.mongoService, this.summarizationService, this.client);
+    this.followUpService = new FollowUpService(this.mongoService, this.summarizationService, this.client);
 
     // Initialize Mem0 (AI memory) service if enabled
     this.mem0Service = null;
@@ -99,65 +103,6 @@ class DiscordBot {
       }
     } else {
       logger.info('Mem0 (AI memory) is disabled');
-    }
-
-    this.chatService = new ChatService(this.openaiClient, config, this.summarizationService.mongoService, this.mem0Service);
-    this.replyHandler = new ReplyHandler(this.chatService, this.summarizationService, this.openaiClient, config);
-
-    // Initialize Linkwarden services for self-hosted article archiving
-    this.linkwardenService = null;
-    this.linkwardenPollingService = null;
-    if (config.linkwarden.enabled) {
-      logger.info('Linkwarden integration is enabled');
-      this.linkwardenService = new LinkwardenService(config);
-      this.linkwardenPollingService = new LinkwardenPollingService(
-        this.linkwardenService,
-        this.summarizationService,
-        this.client,
-        config
-      );
-    }
-
-    // Initialize Imagen (image generation) service
-    this.imagenService = null;
-    if (config.imagen.enabled && config.imagen.apiKey) {
-      try {
-        this.imagenService = new ImagenService(config, this.summarizationService.mongoService);
-        logger.info('Imagen (image generation) service initialized');
-
-        // Initialize Image Prompt Analyzer for failure analysis and suggestions
-        this.imagePromptAnalyzerService = new ImagePromptAnalyzerService(
-          this.openaiClient,
-          config,
-          this.summarizationService.mongoService
-        );
-        this.imageRetryHandler = new ImageRetryHandler(
-          this.imagenService,
-          this.imagePromptAnalyzerService,
-          config
-        );
-        logger.info('Image prompt analyzer and retry handler initialized');
-
-        // Inject imagenService into replyHandler for image regeneration support
-        this.replyHandler.imagenService = this.imagenService;
-      } catch (error) {
-        logger.warn(`Failed to initialize Imagen service: ${error.message}`);
-      }
-    } else {
-      logger.info('Imagen (image generation) is disabled or API key not configured');
-    }
-
-    // Initialize Veo (video generation) service
-    this.veoService = null;
-    if (config.veo.enabled && config.veo.projectId && config.veo.gcsBucket) {
-      try {
-        this.veoService = new VeoService(config, this.summarizationService.mongoService);
-        logger.info('Veo (video generation) service initialized');
-      } catch (error) {
-        logger.warn(`Failed to initialize Veo service: ${error.message}`);
-      }
-    } else {
-      logger.info('Veo (video generation) is disabled or not fully configured');
     }
 
     // Initialize IRC history services (Qdrant + nick mapping)
@@ -182,11 +127,9 @@ class DiscordBot {
         this.channelContextService = new ChannelContextService(
           config,
           this.openaiClient,
-          this.summarizationService.mongoService,
+          this.mongoService,
           this.mem0Service
         );
-        // Wire up to ChatService for context injection
-        this.chatService.setChannelContextService(this.channelContextService);
         logger.info('Channel context service initialized (pending start)');
       } catch (error) {
         logger.warn(`Failed to initialize Channel context service: ${error.message}`);
@@ -203,12 +146,10 @@ class DiscordBot {
         this.voiceProfileService = new VoiceProfileService(
           this.openaiClient,
           config,
-          this.summarizationService.mongoService,
+          this.mongoService,
           this.qdrantService,
           this.channelContextService
         );
-        this.chatService.setVoiceProfileService(this.voiceProfileService);
-        this.chatService.setQdrantService(this.qdrantService);
         logger.info('Voice profile service initialized');
       } catch (error) {
         logger.warn(`Failed to initialize Voice profile service: ${error.message}`);
@@ -217,8 +158,64 @@ class DiscordBot {
       logger.warn('Voice profile requires both Qdrant and Channel Context services enabled');
     }
 
+    // ChatService - all dependencies injected via constructor
+    this.chatService = new ChatService(
+      this.openaiClient, config, this.mongoService, this.mem0Service,
+      this.channelContextService, this.voiceProfileService, this.qdrantService
+    );
+
+    // Initialize Imagen (image generation) service
+    this.imagenService = null;
+    this.imageRetryHandler = null;
+    if (config.imagen.enabled && config.imagen.apiKey) {
+      try {
+        this.imagenService = new ImagenService(config, this.mongoService);
+        logger.info('Imagen (image generation) service initialized');
+
+        this.imagePromptAnalyzerService = new ImagePromptAnalyzerService(
+          this.openaiClient, config, this.mongoService
+        );
+        this.imageRetryHandler = new ImageRetryHandler(
+          this.imagenService, this.imagePromptAnalyzerService, config
+        );
+        logger.info('Image prompt analyzer and retry handler initialized');
+      } catch (error) {
+        logger.warn(`Failed to initialize Imagen service: ${error.message}`);
+      }
+    } else {
+      logger.info('Imagen (image generation) is disabled or API key not configured');
+    }
+
+    // ReplyHandler - all dependencies injected via constructor
+    this.replyHandler = new ReplyHandler(
+      this.chatService, this.summarizationService, this.openaiClient, config, this.imagenService
+    );
+
+    // Initialize Linkwarden services for self-hosted article archiving
+    this.linkwardenService = null;
+    this.linkwardenPollingService = null;
+    if (config.linkwarden.enabled) {
+      logger.info('Linkwarden integration is enabled');
+      this.linkwardenService = new LinkwardenService(config);
+      this.linkwardenPollingService = new LinkwardenPollingService(
+        this.linkwardenService, this.summarizationService, this.client, config
+      );
+    }
+
+    // Initialize Veo (video generation) service
+    this.veoService = null;
+    if (config.veo.enabled && config.veo.projectId && config.veo.gcsBucket) {
+      try {
+        this.veoService = new VeoService(config, this.mongoService);
+        logger.info('Veo (video generation) service initialized');
+      } catch (error) {
+        logger.warn(`Failed to initialize Veo service: ${error.message}`);
+      }
+    } else {
+      logger.info('Veo (video generation) is disabled or not fully configured');
+    }
+
     // Initialize Local LLM service for uncensored chat mode
-    // Wire up to personality manager so local-LLM-only personalities are filtered appropriately
     personalityManager.setLocalLlmService(localLlmService);
 
     if (config.localLlm?.enabled) {
@@ -226,7 +223,6 @@ class DiscordBot {
         .then(success => {
           if (success) {
             logger.info('Local LLM service ready for uncensored mode');
-            // Log available local-LLM personalities now that service is ready
             const localLlmPersonalities = personalityManager.list().filter(p => p.useLocalLlm);
             if (localLlmPersonalities.length > 0) {
               logger.info(`Local LLM personalities available: ${localLlmPersonalities.map(p => p.id).join(', ')}`);
@@ -244,11 +240,8 @@ class DiscordBot {
 
     // Initialize catch-me-up service
     this.catchMeUpService = new CatchMeUpService(
-      this.summarizationService.mongoService,
-      this.channelContextService,
-      this.voiceProfileService,
-      this.openaiClient,
-      config
+      this.mongoService, this.channelContextService, this.voiceProfileService,
+      this.openaiClient, config
     );
 
     // Initialize slash command handler
@@ -345,7 +338,7 @@ class DiscordBot {
     this.slashCommandHandler.register(new ContextSlashCommand(this.channelContextService));
     this.slashCommandHandler.register(new ChannelTrackSlashCommand(
       this.channelContextService,
-      this.summarizationService.mongoService
+      this.mongoService
     ));
 
     // Register memory slash commands (if Mem0 is enabled)
@@ -379,6 +372,7 @@ class DiscordBot {
 
     // Register catch-me-up command
     this.slashCommandHandler.register(new CatchMeUpSlashCommand(this.catchMeUpService));
+    this.slashCommandHandler.register(new StatsSlashCommand(this.mongoService));
 
     logger.info(`Registered ${this.slashCommandHandler.size} slash commands`);
   }
@@ -480,8 +474,8 @@ class DiscordBot {
       if (message.author.bot) return;
 
       // Track user activity for catch-me-up (non-blocking)
-      if (message.guild && this.summarizationService?.mongoService) {
-        this.summarizationService.mongoService.recordUserActivity(
+      if (message.guild && this.mongoService) {
+        this.mongoService.recordUserActivity(
           message.author.id, message.guild.id, message.channel.id
         ).catch(err => logger.debug(`User activity tracking failed: ${err.message}`));
       }

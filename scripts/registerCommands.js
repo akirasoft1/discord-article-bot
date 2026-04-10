@@ -14,6 +14,7 @@ const {
   ChatResumeSlashCommand,
   ChatListSlashCommand,
   CatchMeUpSlashCommand,
+  StatsSlashCommand,
   SummarizeSlashCommand,
   ResummarizeSlashCommand,
   ImagineSlashCommand,
@@ -52,6 +53,7 @@ async function registerCommands() {
   commands.push(new ChatResumeSlashCommand(null));
   commands.push(new ChatListSlashCommand(null));
   commands.push(new CatchMeUpSlashCommand(null));
+  commands.push(new StatsSlashCommand(null));
   commands.push(new SummarizeSlashCommand(null));
   commands.push(new ResummarizeSlashCommand(null));
   commands.push(new HelpSlashCommand());

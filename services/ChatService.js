@@ -15,37 +15,13 @@ const LIMITS = {
 };
 
 class ChatService {
-  constructor(openaiClient, config, mongoService, mem0Service = null) {
+  constructor(openaiClient, config, mongoService, mem0Service = null, channelContextService = null, voiceProfileService = null, qdrantService = null) {
     this.openaiClient = openaiClient;
     this.config = config;
     this.mongoService = mongoService;
     this.mem0Service = mem0Service;
-    this.channelContextService = null;
-    this.voiceProfileService = null;
-    this.qdrantService = null;
-  }
-
-  /**
-   * Set the channel context service (called after bot initialization)
-   * @param {Object} channelContextService - ChannelContextService instance
-   */
-  setChannelContextService(channelContextService) {
     this.channelContextService = channelContextService;
-  }
-
-  /**
-   * Set the voice profile service for dynamic style injection
-   * @param {Object} voiceProfileService - VoiceProfileService instance
-   */
-  setVoiceProfileService(voiceProfileService) {
     this.voiceProfileService = voiceProfileService;
-  }
-
-  /**
-   * Set the Qdrant service for IRC history few-shot retrieval
-   * @param {Object} qdrantService - QdrantService instance
-   */
-  setQdrantService(qdrantService) {
     this.qdrantService = qdrantService;
   }
 
