@@ -33,6 +33,12 @@ describe('CatchMeUpService', () => {
       getRecentContext: jest.fn().mockReturnValue(
         '[Alice]: Just deployed the new feature\n[Bob]: Nice, tests passing?'
       ),
+      getRecentMessagesFromStore: jest.fn().mockResolvedValue([
+        { authorName: 'Alice', content: 'Just deployed the new feature', timestamp: new Date().toISOString() },
+        { authorName: 'Bob', content: 'Nice, tests passing?', timestamp: new Date().toISOString() },
+        { authorName: 'Alice', content: 'All green', timestamp: new Date().toISOString() },
+        { authorName: 'Charlie', content: 'Ship it', timestamp: new Date().toISOString() }
+      ]),
       isChannelTracked: jest.fn().mockReturnValue(true)
     };
 
@@ -102,13 +108,24 @@ describe('CatchMeUpService', () => {
       expect(result.nothingNew).toBe(true);
     });
 
-    it('should include recent messages from active channels', async () => {
+    it('should fetch messages from persisted store for active channels', async () => {
+      await service.generateCatchUp('user123', 'guild456');
+
+      expect(mockChannelContextService.getRecentMessagesFromStore).toHaveBeenCalled();
+    });
+
+    it('should fall back to in-memory buffer when store is empty', async () => {
+      mockChannelContextService.getRecentMessagesFromStore.mockResolvedValue([]);
+
       await service.generateCatchUp('user123', 'guild456');
 
       expect(mockChannelContextService.getRecentContext).toHaveBeenCalled();
     });
 
     it('should skip LLM call when context is too thin', async () => {
+      mockChannelContextService.getRecentMessagesFromStore.mockResolvedValue([
+        { authorName: 'Alice', content: 'hi', timestamp: new Date().toISOString() }
+      ]);
       mockChannelContextService.getRecentContext.mockReturnValue('[Alice]: hi');
 
       const result = await service.generateCatchUp('user123', 'guild456');
@@ -135,6 +152,7 @@ describe('CatchMeUpService', () => {
     });
 
     it('should return nothing new when no chat context available', async () => {
+      mockChannelContextService.getRecentMessagesFromStore.mockResolvedValue([]);
       mockChannelContextService.getRecentContext.mockReturnValue('');
 
       const result = await service.generateCatchUp('user123', 'guild456');

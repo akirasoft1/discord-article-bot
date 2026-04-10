@@ -60,13 +60,23 @@ class CatchMeUpService {
       const voiceProfile = await (this.voiceProfileService?.getProfile().catch(() => null) || Promise.resolve(null));
 
       // 3. Gather recent messages from active channels
+      // Use both in-memory buffer (hot, survives nothing) and Qdrant store (warm, survives restarts)
+      const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
       const channelContexts = [];
       for (const channelId of activeChannels.slice(0, 5)) { // Cap at 5 channels
-        if (this.channelContextService?.isChannelTracked(channelId)) {
-          const context = this.channelContextService.getRecentContext(channelId, 15);
-          if (context) {
-            channelContexts.push({ channelId, context });
-          }
+        if (!this.channelContextService?.isChannelTracked(channelId)) continue;
+
+        // Try persisted store first (survives pod restarts), fall back to in-memory
+        let context = '';
+        const storedMessages = await this.channelContextService.getRecentMessagesFromStore(channelId, since, 50);
+        if (storedMessages.length > 0) {
+          context = storedMessages.map(m => `[${m.authorName}]: ${m.content}`).join('\n');
+        } else {
+          context = this.channelContextService.getRecentContext(channelId, 15) || '';
+        }
+
+        if (context) {
+          channelContexts.push({ channelId, context });
         }
       }
 
