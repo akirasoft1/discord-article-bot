@@ -1230,6 +1230,76 @@ class MongoService {
             return null;
         }
     }
+    // ==================== CATCH ME UP ====================
+
+    /**
+     * Get recent article summaries within a time range
+     * @param {number} days - Number of days to look back
+     * @param {number} limit - Maximum number of articles to return
+     * @returns {Promise<Array>} Recent articles with summaries
+     */
+    async getRecentArticleSummaries(days = 7, limit = 20) {
+        if (!this.db) {
+            logger.error('Cannot get recent articles: Not connected to MongoDB.');
+            return [];
+        }
+        try {
+            const collection = this.db.collection('articles');
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - days);
+
+            return await collection.find({
+                createdAt: { $gte: cutoff }
+            }).sort({ createdAt: -1 }).limit(limit).toArray();
+        } catch (error) {
+            logger.error(`Error getting recent article summaries: ${error.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Record user activity for last-seen tracking
+     * @param {string} userId - Discord user ID
+     * @param {string} guildId - Discord guild ID
+     * @param {string} channelId - Discord channel ID where activity occurred
+     */
+    async recordUserActivity(userId, guildId, channelId) {
+        if (!this.db) return;
+        try {
+            const collection = this.db.collection('user_activity');
+            await collection.updateOne(
+                { userId, guildId },
+                {
+                    $set: {
+                        userId,
+                        guildId,
+                        lastSeenAt: new Date()
+                    },
+                    $addToSet: { activeChannels: channelId }
+                },
+                { upsert: true }
+            );
+        } catch (error) {
+            logger.error(`Error recording user activity: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get user's last seen activity record
+     * @param {string} userId - Discord user ID
+     * @param {string} guildId - Discord guild ID
+     * @returns {Promise<Object|null>} User activity record or null
+     */
+    async getUserLastSeen(userId, guildId) {
+        if (!this.db) return null;
+        try {
+            const collection = this.db.collection('user_activity');
+            return await collection.findOne({ userId, guildId });
+        } catch (error) {
+            logger.error(`Error getting user last seen: ${error.message}`);
+            return null;
+        }
+    }
 }
 
 module.exports = MongoService;

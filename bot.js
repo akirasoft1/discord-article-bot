@@ -26,6 +26,7 @@ const QdrantService = require('./services/QdrantService');
 const NickMappingService = require('./services/NickMappingService');
 const ChannelContextService = require('./services/ChannelContextService');
 const ImagePromptAnalyzerService = require('./services/ImagePromptAnalyzerService');
+const CatchMeUpService = require('./services/CatchMeUpService');
 const ImageRetryHandler = require('./handlers/ImageRetryHandler');
 const TextUtils = require('./utils/textUtils');
 const localLlmService = require('./services/LocalLlmService');
@@ -51,6 +52,7 @@ const {
   RecallSlashCommand,
   HistorySlashCommand,
   ThrowbackSlashCommand,
+  CatchMeUpSlashCommand,
   HelpSlashCommand,
   ContextSlashCommand,
   ChannelTrackSlashCommand
@@ -240,9 +242,15 @@ class DiscordBot {
       logger.info('Local LLM (uncensored mode) is disabled');
     }
 
-    // Initialize slash command handler
-    // this.commandHandler = new CommandHandler();
-    // this.registerCommands();
+    // Initialize catch-me-up service
+    this.catchMeUpService = new CatchMeUpService(
+      this.summarizationService.mongoService,
+      this.channelContextService,
+      this.voiceProfileService,
+      this.openaiClient,
+      config
+    );
+
     // Initialize slash command handler
     this.slashCommandHandler = new SlashCommandHandler(config);
     this.registerSlashCommands();
@@ -369,6 +377,9 @@ class DiscordBot {
       logger.info('IRC history slash commands registered');
     }
 
+    // Register catch-me-up command
+    this.slashCommandHandler.register(new CatchMeUpSlashCommand(this.catchMeUpService));
+
     logger.info(`Registered ${this.slashCommandHandler.size} slash commands`);
   }
 
@@ -467,6 +478,13 @@ class DiscordBot {
 
     this.client.on('messageCreate', async message => {
       if (message.author.bot) return;
+
+      // Track user activity for catch-me-up (non-blocking)
+      if (message.guild && this.summarizationService?.mongoService) {
+        this.summarizationService.mongoService.recordUserActivity(
+          message.author.id, message.guild.id, message.channel.id
+        ).catch(err => logger.debug(`User activity tracking failed: ${err.message}`));
+      }
 
       // Passive channel context recording (non-blocking)
       if (this.channelContextService?.isChannelTracked(message.channel.id)) {

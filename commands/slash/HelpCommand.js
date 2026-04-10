@@ -45,7 +45,8 @@ class HelpSlashCommand extends BaseSlashCommand {
         '`/chatthread` - Start a dedicated conversation thread',
         '`/chatlist` - View your resumable conversations',
         '`/chatresume` - Resume an expired conversation',
-        '`/chatreset` - Reset conversation history (admin)'
+        '`/chatreset` - Reset conversation history (admin)',
+        '`/catchmeup` - Get a DM summary of what you missed'
       ].join('\n'),
       inline: false
     });
