@@ -108,6 +108,16 @@ describe('CatchMeUpService', () => {
       expect(mockChannelContextService.getRecentContext).toHaveBeenCalled();
     });
 
+    it('should skip LLM call when context is too thin', async () => {
+      mockChannelContextService.getRecentContext.mockReturnValue('[Alice]: hi');
+
+      const result = await service.generateCatchUp('user123', 'guild456');
+
+      expect(result.success).toBe(true);
+      expect(result.nothingNew).toBe(true);
+      expect(mockOpenAIClient.responses.create).not.toHaveBeenCalled();
+    });
+
     it('should use explicit days parameter when provided', async () => {
       const result = await service.generateCatchUp('user123', 'guild456', { days: 7 });
 
