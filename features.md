@@ -27,6 +27,7 @@
 - **Image Vision**: Attach images to chat messages for analysis and discussion
 - **Web Search**: Bot can search the web for current information when needed
 - **Per-user Token Tracking**: Usage recorded per user
+- **Catch Me Up**: `/catchmeup` sends a DM summarizing what happened while you were away — articles, trends, and chat highlights from channels you've been active in, styled in the group's voice
 
 ### Conversation Memory
 - **Channel-Scoped Memory**: All users in a channel share a conversation with each personality
@@ -65,8 +66,8 @@
 - **Per-User Cooldowns**: Configurable cooldown to prevent abuse
 - **Usage Tracking**: All generations tracked in MongoDB (including which model was used)
 - **Safety Filters**: Relies on Gemini's built-in content safety with detailed logging of FinishReason (SAFETY, IMAGE_SAFETY, IMAGE_PROHIBITED_CONTENT), BlockedReason, blockReasonMessage, and safety ratings
-- **Intelligent Retry**: When generation fails, AI analyzes the prompt and suggests alternatives
-- **Interactive Approval**: React with 1️⃣ 2️⃣ 3️⃣ to retry with suggested prompts, ❌ to dismiss
+- **Auto-Retry**: When generation fails (non-safety), AI automatically retries with a simplified prompt before falling back to interactive suggestions
+- **Interactive Fallback**: If auto-retry also fails, react with 1️⃣ 2️⃣ 3️⃣ to retry with suggested prompts, ❌ to dismiss
 - **Failure Analysis**: Detailed analysis of why prompts fail (safety, rate limits, etc.)
 - **Learning Loop**: Retry attempts tracked in MongoDB to improve future suggestions
 - **Reply to Regenerate**: Reply to a generated image with feedback to create an enhanced version (aspect ratio directives are stripped to prevent conflicts with the image generation API)

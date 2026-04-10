@@ -779,4 +779,112 @@ describe('MongoService', () => {
       });
     });
   });
+
+  describe('catch-me-up data methods', () => {
+    describe('getRecentArticleSummaries', () => {
+      it('should return recent article summaries within time range', async () => {
+        const mockArticles = [
+          { url: 'https://example.com/1', title: 'Article 1', topic: 'Tech', summary: 'Summary 1', createdAt: new Date() },
+          { url: 'https://example.com/2', title: 'Article 2', topic: 'Science', summary: 'Summary 2', createdAt: new Date() }
+        ];
+
+        const articlesCollection = {
+          find: jest.fn().mockReturnValue({
+            sort: jest.fn().mockReturnValue({
+              limit: jest.fn().mockReturnValue({
+                toArray: jest.fn().mockResolvedValue(mockArticles)
+              })
+            })
+          })
+        };
+        mongoService.db.collection.mockReturnValue(articlesCollection);
+
+        const result = await mongoService.getRecentArticleSummaries(7);
+
+        expect(mongoService.db.collection).toHaveBeenCalledWith('articles');
+        expect(result).toEqual(mockArticles);
+        expect(articlesCollection.find).toHaveBeenCalledWith(
+          expect.objectContaining({
+            createdAt: expect.objectContaining({ $gte: expect.any(Date) })
+          })
+        );
+      });
+
+      it('should return empty array if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.getRecentArticleSummaries(7);
+        expect(result).toEqual([]);
+      });
+    });
+
+    describe('recordUserActivity', () => {
+      it('should upsert user activity record', async () => {
+        const activityCollection = {
+          updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 })
+        };
+        mongoService.db.collection.mockReturnValue(activityCollection);
+
+        await mongoService.recordUserActivity('user123', 'guild456', 'channel789');
+
+        expect(mongoService.db.collection).toHaveBeenCalledWith('user_activity');
+        expect(activityCollection.updateOne).toHaveBeenCalledWith(
+          { userId: 'user123', guildId: 'guild456' },
+          expect.objectContaining({
+            $set: expect.objectContaining({
+              userId: 'user123',
+              guildId: 'guild456',
+              lastSeenAt: expect.any(Date)
+            }),
+            $addToSet: { activeChannels: 'channel789' }
+          }),
+          { upsert: true }
+        );
+      });
+
+      it('should not throw if db is not connected', async () => {
+        mongoService.db = null;
+        await expect(mongoService.recordUserActivity('user123', 'guild456', 'channel789')).resolves.not.toThrow();
+      });
+    });
+
+    describe('getUserLastSeen', () => {
+      it('should return user activity record', async () => {
+        const mockActivity = {
+          userId: 'user123',
+          guildId: 'guild456',
+          lastSeenAt: new Date('2026-04-09'),
+          activeChannels: ['channel1', 'channel2']
+        };
+
+        const activityCollection = {
+          findOne: jest.fn().mockResolvedValue(mockActivity)
+        };
+        mongoService.db.collection.mockReturnValue(activityCollection);
+
+        const result = await mongoService.getUserLastSeen('user123', 'guild456');
+
+        expect(result).toEqual(mockActivity);
+        expect(activityCollection.findOne).toHaveBeenCalledWith({
+          userId: 'user123',
+          guildId: 'guild456'
+        });
+      });
+
+      it('should return null if no record exists', async () => {
+        const activityCollection = {
+          findOne: jest.fn().mockResolvedValue(null)
+        };
+        mongoService.db.collection.mockReturnValue(activityCollection);
+
+        const result = await mongoService.getUserLastSeen('newuser', 'guild456');
+        expect(result).toBeNull();
+      });
+
+      it('should return null if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.getUserLastSeen('user123', 'guild456');
+        expect(result).toBeNull();
+      });
+    });
+  });
 });

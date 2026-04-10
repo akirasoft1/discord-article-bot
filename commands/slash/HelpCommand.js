@@ -41,12 +41,12 @@ class HelpSlashCommand extends BaseSlashCommand {
     embed.addFields({
       name: 'Chat',
       value: [
-        '`/chat` - Chat with an AI personality',
+        '`/chat` - Chat with the bot',
         '`/chatthread` - Start a dedicated conversation thread',
-        '`/personalities` - List available personalities',
         '`/chatlist` - View your resumable conversations',
         '`/chatresume` - Resume an expired conversation',
-        '`/chatreset` - Reset a conversation (admin)'
+        '`/chatreset` - Reset conversation history (admin)',
+        '`/catchmeup` - Get a DM summary of what you missed'
       ].join('\n'),
       inline: false
     });
@@ -115,15 +115,15 @@ class HelpSlashCommand extends BaseSlashCommand {
     const helpTexts = {
       chat: {
         title: '/chat',
-        description: 'Chat with an AI personality',
-        usage: '/chat message:<your message> [personality:<name>] [image:<file>]',
-        details: 'Start a conversation with one of several AI personalities. The personality defaults to Clair if not specified. You can attach an image to include in the conversation.'
+        description: 'Chat with the bot',
+        usage: '/chat message:<your message> [image:<file>]',
+        details: 'Start a conversation with the bot. You can attach an image to include in the conversation.'
       },
       chatthread: {
         title: '/chatthread',
         description: 'Start a dedicated thread for extended conversations',
-        usage: '/chatthread message:<your message> [personality:<name>]',
-        details: 'Creates a private thread for an ongoing conversation. All messages in the thread are automatically directed to the personality - no commands needed.'
+        usage: '/chatthread message:<your message>',
+        details: 'Creates a private thread for an ongoing conversation. All messages in the thread are automatically directed to the bot - no commands needed.'
       },
       summarize: {
         title: '/summarize',

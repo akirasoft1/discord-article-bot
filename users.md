@@ -56,6 +56,7 @@ Just type `/chat message:Hello!` to start chatting.
 | `/chatlist` | List your resumable conversations |
 | `/chatresume message:<text>` | Resume an expired conversation |
 | `/chatreset` | Reset conversation history (admin only) |
+| `/catchmeup` | Get a DM summary of what you missed |
 
 ### Conversation Memory
 
@@ -182,6 +183,7 @@ React to a bot's summary message with the 📚 (books) emoji to mark that articl
 | `/chatlist` | List resumable conversations |
 | `/chatresume message:<msg>` | Resume expired conversation |
 | `/chatreset` | Reset conversation (admin) |
+| `/catchmeup` | DM summary of what you missed |
 | `/imagine prompt:<text>` | Generate an image |
 | `/videogen prompt:<text>` | Generate a video |
 | `/memories` | View your memories |

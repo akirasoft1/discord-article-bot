@@ -5,7 +5,6 @@ module.exports = {
   // Chat commands
   ChatSlashCommand: require('./ChatCommand'),
   ChatThreadSlashCommand: require('./ChatThreadCommand'),
-  PersonalitiesSlashCommand: require('./PersonalitiesCommand'),
   ChatResetSlashCommand: require('./ChatResetCommand'),
   ChatResumeSlashCommand: require('./ChatResumeCommand'),
   ChatListSlashCommand: require('./ChatListCommand'),
@@ -27,6 +26,9 @@ module.exports = {
   RecallSlashCommand: require('./RecallCommand'),
   HistorySlashCommand: require('./HistoryCommand'),
   ThrowbackSlashCommand: require('./ThrowbackCommand'),
+
+  // Activity commands
+  CatchMeUpSlashCommand: require('./CatchMeUpCommand'),
 
   // Utility commands
   HelpSlashCommand: require('./HelpCommand'),

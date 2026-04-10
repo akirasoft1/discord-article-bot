@@ -63,70 +63,51 @@ class ImageRetryHandler {
         };
       });
 
-      // Format the analysis as an embed
-      const embedData = this.analyzerService.formatAnalysisForEmbed(analysis);
-      const embed = new EmbedBuilder()
-        .setTitle(embedData.title)
-        .setDescription(embedData.description)
-        .setColor(embedData.color)
-        .setFooter(embedData.footer);
+      // Auto-retry: if enabled, not a safety block, and we have suggestions, try once automatically
+      const autoRetryEnabled = this.config.imagen?.autoRetry !== false; // default true
+      const isSafetyBlock = failureContext.type === 'safety';
+      const hasSuggestions = analysis.suggestedPrompts?.length > 0;
 
-      for (const field of embedData.fields || []) {
-        embed.addFields(field);
-      }
+      if (autoRetryEnabled && !isSafetyBlock && hasSuggestions) {
+        const retryPrompt = analysis.suggestedPrompts[0];
+        logger.info(`Auto-retrying image generation with simplified prompt: "${retryPrompt}"`);
 
-      // Send the embed
-      const embedMessage = await message.channel.send({
-        embeds: [embed]
-      });
+        await message.channel.send({
+          content: `Image generation failed — automatically retrying with a simplified prompt...`
+        });
 
-      // Add reaction buttons for each suggested prompt
-      const numSuggestions = Math.min(analysis.suggestedPrompts?.length || 0, 3);
-      for (let i = 0; i < numSuggestions; i++) {
-        await embedMessage.react(NUMBER_EMOJIS[i]);
-      }
-      await embedMessage.react(DISMISS_EMOJI);
+        const isAdmin = this.config.discord?.adminUserIds?.includes(user.id) || false;
+        const retryResult = await this.imagenService.generateImage(retryPrompt, { isAdmin }, user);
 
-      // Record the analysis in the database
-      const recordResult = await this.analyzerService.recordFailureAnalysis(
-        originalPrompt,
-        analysis,
-        user.id,
-        message.channel.id,
-        {
-          guildId: message.guild?.id,
-          username: user.username
+        if (retryResult.success) {
+          logger.info(`Auto-retry succeeded for user ${user.username}`);
+          const attachment = new AttachmentBuilder(retryResult.buffer, {
+            name: `generated_${Date.now()}.png`
+          });
+          await message.channel.send({
+            content: `**Prompt:** ${retryPrompt}`,
+            files: [attachment]
+          });
+
+          // Record the successful auto-retry
+          const recordResult = await this.analyzerService.recordFailureAnalysis(
+            originalPrompt, analysis, user.id, message.channel.id,
+            { guildId: message.guild?.id, username: user.username }
+          );
+          if (recordResult.id) {
+            await this.analyzerService.updateRetryAttempt(recordResult.id, retryPrompt, true);
+          }
+          return;
         }
-      );
 
-      // Store pending retry data
-      const pendingData = {
-        userId: user.id,
-        originalPrompt,
-        suggestedPrompts: analysis.suggestedPrompts || [],
-        channelId: message.channel.id,
-        messageId: embedMessage.id,
-        analysisId: recordResult.id || null,
-        createdAt: Date.now()
-      };
+        logger.info(`Auto-retry also failed for user ${user.username}, falling back to interactive suggestions`);
+      }
 
-      this.pendingRetries.set(embedMessage.id, pendingData);
-      logger.info(`Stored pending retry for embed message ${embedMessage.id}, total pending: ${this.pendingRetries.size}`);
-
-      // Set timeout to clean up
-      const timeout = setTimeout(() => {
-        this.pendingRetries.delete(embedMessage.id);
-        logger.debug(`Cleaned up expired pending retry: ${embedMessage.id}`);
-      }, RETRY_TIMEOUT_MS);
-
-      // Store timeout reference for cleanup
-      pendingData.timeout = timeout;
-
-      logger.info(`Handled failed generation for user ${user.username}, offered ${numSuggestions} alternatives, embedMessageId: ${embedMessage.id}`);
+      // Interactive fallback: send embed with suggestions and reaction buttons
+      await this._sendInteractiveEmbed(message, originalPrompt, failureContext, analysis, user);
 
     } catch (error) {
       logger.error(`Error handling failed generation: ${error.message}`);
-      // Try to send a simple error message as fallback
       try {
         await message.channel.send({
           content: `Image generation failed. Please try a different prompt.`
@@ -135,6 +116,74 @@ class ImageRetryHandler {
         logger.error(`Failed to send fallback error message: ${e.message}`);
       }
     }
+  }
+
+  /**
+   * Send interactive embed with suggestions and reaction buttons
+   * @param {Message} message - Discord message
+   * @param {string} originalPrompt - Original prompt that failed
+   * @param {Object} failureContext - Failure context
+   * @param {Object} analysis - Analysis result from analyzer service
+   * @param {Object} user - Discord user
+   * @private
+   */
+  async _sendInteractiveEmbed(message, originalPrompt, failureContext, analysis, user) {
+    const embedData = this.analyzerService.formatAnalysisForEmbed(analysis);
+    const embed = new EmbedBuilder()
+      .setTitle(embedData.title)
+      .setDescription(embedData.description)
+      .setColor(embedData.color)
+      .setFooter(embedData.footer);
+
+    for (const field of embedData.fields || []) {
+      embed.addFields(field);
+    }
+
+    const embedMessage = await message.channel.send({
+      embeds: [embed]
+    });
+
+    // Add reaction buttons for each suggested prompt
+    const numSuggestions = Math.min(analysis.suggestedPrompts?.length || 0, 3);
+    for (let i = 0; i < numSuggestions; i++) {
+      await embedMessage.react(NUMBER_EMOJIS[i]);
+    }
+    await embedMessage.react(DISMISS_EMOJI);
+
+    // Record the analysis in the database
+    const recordResult = await this.analyzerService.recordFailureAnalysis(
+      originalPrompt,
+      analysis,
+      user.id,
+      message.channel.id,
+      {
+        guildId: message.guild?.id,
+        username: user.username
+      }
+    );
+
+    // Store pending retry data
+    const pendingData = {
+      userId: user.id,
+      originalPrompt,
+      suggestedPrompts: analysis.suggestedPrompts || [],
+      channelId: message.channel.id,
+      messageId: embedMessage.id,
+      analysisId: recordResult.id || null,
+      createdAt: Date.now()
+    };
+
+    this.pendingRetries.set(embedMessage.id, pendingData);
+    logger.info(`Stored pending retry for embed message ${embedMessage.id}, total pending: ${this.pendingRetries.size}`);
+
+    // Set timeout to clean up
+    const timeout = setTimeout(() => {
+      this.pendingRetries.delete(embedMessage.id);
+      logger.debug(`Cleaned up expired pending retry: ${embedMessage.id}`);
+    }, RETRY_TIMEOUT_MS);
+
+    pendingData.timeout = timeout;
+    logger.info(`Handled failed generation for user ${user.username}, offered ${numSuggestions} alternatives, embedMessageId: ${embedMessage.id}`);
   }
 
   /**

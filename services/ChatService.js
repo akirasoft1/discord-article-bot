@@ -395,12 +395,9 @@ ${context}`;
    * @param {string} channelId - Discord channel ID
    * @param {string} guildId - Discord guild ID
    * @param {string|null} imageUrl - Optional image URL for vision
-   * @param {Object} options - Additional options
-   * @param {boolean} options.useUncensored - Use local LLM for uncensored response
    * @returns {Object} Response with message and token usage
    */
-  async chat(personalityId, userMessage, user, channelId = null, guildId = null, imageUrl = null, options = {}) {
-    const { useUncensored = false } = options;
+  async chat(personalityId, userMessage, user, channelId = null, guildId = null, imageUrl = null) {
     const personality = personalityManager.get(personalityId);
 
     if (!personality) {
@@ -414,7 +411,7 @@ ${context}`;
           const fallbackPersonality = personalityManager.get(fallbackId);
           if (fallbackPersonality) {
             logger.warn(`Personality ${personalityId} unavailable (circuit open), falling back to ${fallbackId}`);
-            const result = await this.chat(fallbackId, userMessage, user, channelId, guildId, imageUrl, options);
+            const result = await this.chat(fallbackId, userMessage, user, channelId, guildId, imageUrl);
             if (result.success) {
               result.fallback = {
                 occurred: true,
@@ -432,13 +429,12 @@ ${context}`;
       }
       return {
         success: false,
-        error: `Unknown personality: ${personalityId}`,
-        availablePersonalities: personalityManager.list()
+        error: `Unknown personality: ${personalityId}`
       };
     }
 
-    // Check if personality requires local LLM (or user explicitly requested uncensored)
-    const shouldUseLocalLlm = useUncensored || personality.useLocalLlm;
+    // Check if personality requires local LLM
+    const shouldUseLocalLlm = personality.useLocalLlm;
 
     // If no channelId provided, fall back to stateless mode (backwards compatibility)
     if (!channelId || !this.mongoService) {
@@ -853,8 +849,7 @@ ${context}`;
     if (!personality) {
       return {
         success: false,
-        error: `Unknown personality: ${personalityId}`,
-        availablePersonalities: personalityManager.list()
+        error: `Unknown personality: ${personalityId}`
       };
     }
 

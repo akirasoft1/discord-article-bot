@@ -364,6 +364,182 @@ describe('ImageRetryHandler', () => {
     });
   });
 
+  describe('auto-retry on failure', () => {
+    const failureContext = {
+      type: 'no_image',
+      originalPrompt: 'A complex prompt that failed',
+      details: { finishReason: 'NO_IMAGE' }
+    };
+
+    it('should auto-retry with highest-confidence suggestion when enabled', async () => {
+      mockImagePromptAnalyzerService.analyzeFailedPrompt.mockResolvedValue({
+        failureType: 'no_image',
+        analysis: 'Prompt too complex.',
+        suggestedPrompts: ['Simpler prompt A', 'Simpler prompt B'],
+        confidence: 0.85
+      });
+
+      mockImagenService.generateImage.mockResolvedValue({
+        success: true,
+        buffer: Buffer.from('auto-retry-image'),
+        mimeType: 'image/png',
+        prompt: 'Simpler prompt A'
+      });
+
+      await handler.handleFailedGeneration(
+        mockMessage,
+        'A complex prompt that failed',
+        failureContext,
+        mockUser
+      );
+
+      // Should have attempted auto-retry with first suggestion
+      expect(mockImagenService.generateImage).toHaveBeenCalledWith(
+        'Simpler prompt A',
+        expect.objectContaining({ isAdmin: false }),
+        mockUser
+      );
+
+      // Should send the image to the channel
+      expect(mockMessage.channel.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          files: expect.any(Array)
+        })
+      );
+    });
+
+    it('should fall back to interactive embed when auto-retry fails', async () => {
+      mockImagePromptAnalyzerService.analyzeFailedPrompt.mockResolvedValue({
+        failureType: 'no_image',
+        analysis: 'Prompt too complex.',
+        suggestedPrompts: ['Simpler prompt A', 'Simpler prompt B'],
+        confidence: 0.85
+      });
+
+      mockImagenService.generateImage.mockResolvedValue({
+        success: false,
+        error: 'Still failed'
+      });
+
+      await handler.handleFailedGeneration(
+        mockMessage,
+        'A complex prompt that failed',
+        failureContext,
+        mockUser
+      );
+
+      // Should have attempted auto-retry
+      expect(mockImagenService.generateImage).toHaveBeenCalled();
+
+      // Should fall back to sending interactive embed with reactions
+      const sendCalls = mockMessage.channel.send.mock.calls;
+      const embedCall = sendCalls.find(call => call[0]?.embeds);
+      expect(embedCall).toBeDefined();
+    });
+
+    it('should skip auto-retry for safety blocks', async () => {
+      const safetyContext = {
+        type: 'safety',
+        originalPrompt: 'Something blocked',
+        details: { finishReason: 'SAFETY' }
+      };
+
+      mockImagePromptAnalyzerService.analyzeFailedPrompt.mockResolvedValue({
+        failureType: 'safety',
+        analysis: 'Blocked by safety filters.',
+        suggestedPrompts: ['Alternative prompt'],
+        confidence: 0.9
+      });
+
+      await handler.handleFailedGeneration(
+        mockMessage,
+        'Something blocked',
+        safetyContext,
+        mockUser
+      );
+
+      // Should NOT auto-retry for safety blocks
+      expect(mockImagenService.generateImage).not.toHaveBeenCalled();
+
+      // Should go straight to interactive embed
+      const sendCalls = mockMessage.channel.send.mock.calls;
+      const embedCall = sendCalls.find(call => call[0]?.embeds);
+      expect(embedCall).toBeDefined();
+    });
+
+    it('should skip auto-retry when no suggestions available', async () => {
+      mockImagePromptAnalyzerService.analyzeFailedPrompt.mockResolvedValue({
+        failureType: 'no_image',
+        analysis: 'Unable to analyze.',
+        suggestedPrompts: [],
+        confidence: 0
+      });
+
+      await handler.handleFailedGeneration(
+        mockMessage,
+        'Some prompt',
+        failureContext,
+        mockUser
+      );
+
+      expect(mockImagenService.generateImage).not.toHaveBeenCalled();
+    });
+
+    it('should skip auto-retry when config disables it', async () => {
+      const handlerNoAutoRetry = new ImageRetryHandler(
+        mockImagenService,
+        mockImagePromptAnalyzerService,
+        { discord: { adminUserIds: [] }, imagen: { autoRetry: false } }
+      );
+
+      mockImagePromptAnalyzerService.analyzeFailedPrompt.mockResolvedValue({
+        failureType: 'no_image',
+        analysis: 'Prompt too complex.',
+        suggestedPrompts: ['Simpler prompt'],
+        confidence: 0.85
+      });
+
+      await handlerNoAutoRetry.handleFailedGeneration(
+        mockMessage,
+        'A complex prompt',
+        failureContext,
+        mockUser
+      );
+
+      expect(mockImagenService.generateImage).not.toHaveBeenCalled();
+    });
+
+    it('should notify user that auto-retry is in progress', async () => {
+      mockImagePromptAnalyzerService.analyzeFailedPrompt.mockResolvedValue({
+        failureType: 'no_image',
+        analysis: 'Prompt too complex.',
+        suggestedPrompts: ['Simpler prompt'],
+        confidence: 0.85
+      });
+
+      mockImagenService.generateImage.mockResolvedValue({
+        success: true,
+        buffer: Buffer.from('image-data'),
+        mimeType: 'image/png'
+      });
+
+      await handler.handleFailedGeneration(
+        mockMessage,
+        'Complex prompt',
+        failureContext,
+        mockUser
+      );
+
+      // Should have sent a "retrying" message
+      const sendCalls = mockMessage.channel.send.mock.calls;
+      const retryingCall = sendCalls.find(call =>
+        typeof call[0] === 'string' ? call[0].includes('etry') :
+        call[0]?.content?.includes('etry')
+      );
+      expect(retryingCall).toBeDefined();
+    });
+  });
+
   describe('cleanupExpiredRetries', () => {
     it('should remove retries older than timeout', () => {
       const oldTime = Date.now() - 120000; // 2 minutes ago
