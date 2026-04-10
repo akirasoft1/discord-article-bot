@@ -10,10 +10,10 @@ const logger = require('../logger');
 const {
   ChatSlashCommand,
   ChatThreadSlashCommand,
-  PersonalitiesSlashCommand,
   ChatResetSlashCommand,
   ChatResumeSlashCommand,
   ChatListSlashCommand,
+  CatchMeUpSlashCommand,
   SummarizeSlashCommand,
   ResummarizeSlashCommand,
   ImagineSlashCommand,
@@ -48,10 +48,10 @@ async function registerCommands() {
   // Always include these commands
   commands.push(new ChatSlashCommand(null));
   commands.push(new ChatThreadSlashCommand(null));
-  commands.push(new PersonalitiesSlashCommand());
   commands.push(new ChatResetSlashCommand(null));
   commands.push(new ChatResumeSlashCommand(null));
   commands.push(new ChatListSlashCommand(null));
+  commands.push(new CatchMeUpSlashCommand(null));
   commands.push(new SummarizeSlashCommand(null));
   commands.push(new ResummarizeSlashCommand(null));
   commands.push(new HelpSlashCommand());
