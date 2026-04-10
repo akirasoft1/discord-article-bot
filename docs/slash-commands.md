@@ -4,7 +4,7 @@ This document describes the Discord slash commands available in the bot.
 
 ## Overview
 
-As of version 2.0.0, the bot uses Discord's native slash commands (`/command`) instead of prefix-based commands (`!command`). This provides:
+The bot uses Discord's native slash commands (`/command`). This provides:
 
 - **Discoverability**: Commands appear in Discord's autocomplete when you type `/`
 - **Validation**: Discord validates parameters before sending
@@ -31,7 +31,7 @@ After deploying the bot, register the slash commands with Discord:
 npm run register:commands
 ```
 
-**Note:** Global commands can take up to 1 hour to appear. For instant updates during development, set `DISCORD_TEST_GUILD_ID` to a specific guild ID.
+**Note:** Global commands can take up to 1 hour to appear. For instant updates during development, set `DISCORD_TEST_GUILD_ID` to a specific guild ID. CTRL-R in the Discord client forces a refresh of available commands.
 
 ## Available Commands
 
@@ -39,12 +39,13 @@ npm run register:commands
 
 | Command | Description |
 |---------|-------------|
-| `/chat` | Chat with an AI personality |
+| `/chat` | Chat with the bot |
 | `/chatthread` | Start a dedicated conversation thread |
-| `/personalities` | List available personalities |
 | `/chatlist` | View your resumable conversations |
 | `/chatresume` | Resume an expired conversation |
-| `/chatreset` | Reset a conversation (admin only) |
+| `/chatreset` | Reset conversation history (admin only) |
+| `/tldr` | Get a DM summary of what you missed |
+| `/stats` | Show top token consumers |
 
 ### Summarization
 
@@ -86,23 +87,11 @@ npm run register:commands
 
 ## Conversation Continuation
 
-You can still **reply directly to bot messages** to continue conversations - no slash command needed! The bot detects when you're replying to one of its messages and continues the conversation context automatically.
+You can **reply directly to bot messages** to continue conversations - no slash command needed! The bot detects when you're replying to one of its messages and continues the conversation context automatically.
 
 ### Chat Threads
 
 Use `/chatthread` to create a dedicated thread for extended conversations. In the thread, just type your messages normally - no commands required.
-
-```
-/chatthread personality:jack message:Tell me about the case
-
-[Bot creates thread "Chat with Jack Shadows"]
-
-You: What happened next?
-Jack: *responds without needing /chat*
-
-You: Any leads?
-Jack: *continues naturally*
-```
 
 ## Command Parameters
 
@@ -110,21 +99,20 @@ Jack: *continues naturally*
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `message` | Yes | Your message to the personality |
-| `personality` | No | Which personality (default: friendly) |
+| `message` | Yes | Your message |
 | `image` | No | Optional image attachment |
-| `uncensored` | No | Use local LLM for less restricted responses (if enabled) |
 
-**Uncensored Mode:**
+### `/tldr`
 
-When `uncensored:true` is specified and a local LLM (Ollama) is configured, the bot routes the request to the local model instead of OpenAI. This allows for less restricted responses while keeping the same personality.
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `days` | No | Number of days to look back (default: auto-detect from last activity) |
 
-Requirements:
-- Local LLM must be enabled via `LOCAL_LLM_ENABLED=true`
-- User must have access (configurable via allowed channels/users)
-- If `UNCENSORED_REQUIRE_NSFW=true`, only works in NSFW channels
+### `/stats`
 
-Visual indicator: Responses include a 🔓 emoji when uncensored mode is active.
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `days` | No | Number of days to look back (default: today) |
 
 ### `/summarize`
 
@@ -157,11 +145,4 @@ Visual indicator: Responses include a 🔓 emoji when uncensored mode is active.
 2. Run `npm run register:commands`
 3. Wait up to 1 hour for global commands to propagate
 4. For faster testing, set `DISCORD_TEST_GUILD_ID`
-
-### "Unknown Command" errors
-
-The bot needs to be restarted after code changes. Ensure the latest version is deployed.
-
-### Permission issues
-
-Some commands require administrator permissions. Check that bot admins are configured in `BOT_ADMIN_USER_IDS`.
+5. CTRL-R in Discord client forces a refresh

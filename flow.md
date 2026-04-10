@@ -1,6 +1,6 @@
 # Bot Logic Flow
 
-This document outlines the overall logic and operational flow of the Discord Article Bot, detailing how it processes URLs, generates summaries, handles personality chat, and integrates various features.
+This document outlines the overall logic and operational flow of the Discord Article Bot, detailing how it processes URLs, generates summaries, handles chat, and integrates various features.
 
 ## 1. Bot Initialization (`bot.js`)
 
@@ -16,8 +16,9 @@ Upon startup, the `bot.js` file serves as the main entry point. It performs the 
     - `RssService`: Handles fetching and processing RSS feeds. Receives MongoService, SummarizationService, and the Discord client.
     - `FollowUpService`: Manages tracking and notifying users about updates to previously summarized articles.
     - `Mem0Service`: (If enabled) AI-powered long-term memory using Qdrant vector database. Receives config.
-    - `ChatService`: Personality-based chat with conversation memory. Receives OpenAI client, config, MongoService, and Mem0Service.
-    - `ReplyHandler`: Handles replies to bot messages (chat continuation, article follow-ups, image regeneration). Receives ChatService, SummarizationService, OpenAI client, and config.
+    - `ChatService`: Chat with conversation memory. Receives OpenAI client, config, MongoService, Mem0Service, ChannelContextService, VoiceProfileService, and QdrantService via constructor.
+    - `CatchMeUpService`: Synthesizes catch-up summaries from MongoDB message history. Receives MongoService, VoiceProfileService, OpenAI client, and config.
+    - `ReplyHandler`: Handles replies to bot messages (article follow-ups, image regeneration). Receives ChatService, SummarizationService, OpenAI client, config, and ImagenService via constructor.
     - `LinkwardenService`: (If enabled) API communication with Linkwarden for article archiving.
     - `LinkwardenPollingService`: (If enabled) Polls Linkwarden at regular intervals to detect new archived articles.
     - `ImagenService`: (If enabled) Google Gemini-powered image generation. Receives config and MongoService.
@@ -26,9 +27,10 @@ Upon startup, the `bot.js` file serves as the main entry point. It performs the 
     - `VeoService`: (If enabled) Google Vertex AI video generation. Receives config and MongoService.
     - `QdrantService`: (If enabled) IRC history vector search via Qdrant. Receives OpenAI client and config.
     - `NickMappingService`: (If enabled) Maps Discord users to their historical IRC nicknames.
-    - `ChannelContextService`: (If enabled) Passive conversation tracking for opt-in channels. Receives config, OpenAI client, MongoService, and Mem0Service. Wired into ChatService for context injection.
-    - `LocalLlmService`: (If enabled) Ollama integration for uncensored chat mode. Initialized asynchronously with health check.
-- **Personality Manager Setup**: Loads all personality definitions from `personalities/` directory. Wires up LocalLlmService so local-LLM-only personalities are filtered appropriately.
+    - `ChannelContextService`: (If enabled) Passive conversation tracking for opt-in channels. Receives config, OpenAI client, MongoService, and Mem0Service.
+    - `VoiceProfileService`: (If enabled) Dynamic voice profile learning from IRC history and Discord messages.
+    - `LocalLlmService`: (If enabled) Ollama integration for local LLM. Initialized asynchronously with health check.
+- **Personality Manager Setup**: Loads personality definitions from `personalities/` directory (channel-voice only).
 - **Slash Command Handler Setup**: Initializes the `SlashCommandHandler` and registers all available slash commands through `registerSlashCommands()`. Commands are registered conditionally based on which services are enabled.
 - **Health Server**: Starts HTTP health check server for Kubernetes liveness (`/healthz`) and readiness (`/readyz`) probes.
 - **Event Handlers Setup**: Registers listeners for Discord events: `ready`, `messageReactionAdd`, `messageCreate`, `interactionCreate`.
@@ -58,7 +60,7 @@ The bot uses Discord's native slash command system exclusively (prefix commands 
 
 Commands are organized into logical categories in `commands/slash/`:
 
-- **Chat/Personality Commands**: `/chat`, `/chatthread`, `/personalities`, `/chatreset`, `/chatresume`, `/chatlist`
+- **Chat Commands**: `/chat`, `/chatthread`, `/chatreset`, `/chatresume`, `/chatlist`, `/tldr`, `/stats`
 - **Summarization Commands**: `/summarize`, `/resummarize`
 - **Media Generation**: `/imagine` (images), `/videogen` (videos)
 - **Memory Commands**: `/memories`, `/remember`, `/forget`
@@ -107,13 +109,13 @@ Commands are registered based on service availability:
 ### 3.5. Reply Handling (`ReplyHandler.js`)
 
 When a user replies to a bot message, the `ReplyHandler` determines the type:
-- **Personality chat reply**: Continues the conversation with the same personality
+- **Image regeneration reply**: Enhances and regenerates an image with user feedback
 - **Article summary reply**: Answers follow-up questions about the summarized article
 - **Image reply**: Regenerates an image with the user's feedback as enhancement
 
 ### 3.6. @Mention Handling
 
-- Mentioning the bot (`@BotName`) starts a conversation with the default `friendly` personality.
+- Mentioning the bot (`@BotName`) starts a conversation using channel-voice.
 - The mention is stripped from the message content and passed to ChatService.
 
 ### 3.7. Passive Channel Context Recording
@@ -144,22 +146,22 @@ The `processUrl` method orchestrates article processing and summarization:
 14. **Send Response**: Replies with the formatted summary.
 15. **Follow-up Check**: Notifies users who requested follow-ups on related topics.
 
-## 5. Personality Chat Workflow (`ChatService.js`)
+## 5. Chat Workflow (`ChatService.js`)
 
-The `chat` method handles personality-based conversations:
+The `chat` method handles conversations:
 
-1. **Personality Resolution**: Looks up the requested personality, defaults to `friendly-assistant`.
-2. **Local LLM Routing**: Determines if the request should use the local LLM (uncensored mode or personality requires it).
+1. **Personality Resolution**: Uses channel-voice personality.
+2. **Local LLM Routing**: Determines if the request should use the local LLM (if configured).
 3. **Conversation Management**: Retrieves or creates a channel-scoped conversation from MongoDB.
 4. **Conversation Limit Checks**: Enforces message count (100), token count (150k), and idle timeout (30 min) limits.
-5. **Memory Retrieval**: If Mem0 is enabled, performs 3-way parallel memory search (personality-scoped, explicit, shared channel).
+5. **Memory Retrieval**: If Mem0 is enabled, performs parallel memory search (explicit and shared channel).
 6. **Channel Context Injection**: If ChannelContextService is available, injects recent channel context into the system prompt.
 7. **Participant Tracking**: Updates the active participants list (30-minute window) for multiplayer awareness.
-8. **System Prompt Construction**: Builds the system prompt with personality definition, active participants, relevant memories, and channel context.
+8. **System Prompt Construction**: Builds the system prompt with voice profile, active participants, relevant memories, and channel context.
 9. **LLM Call**: Sends the conversation to OpenAI or local Ollama, including image attachments if present.
 10. **Response Processing**: For local LLM responses, strips DeepSeek-R1 thinking tokens and enforces `maxResponseLength`.
 11. **Memory Storage**: Asynchronously extracts and stores new memories via Mem0.
-12. **Response Delivery**: Returns the formatted response with personality metadata.
+12. **Response Delivery**: Returns the formatted response.
 
 ## 6. Background Tasks
 
@@ -191,7 +193,9 @@ The `chat` method handles personality-based conversations:
 `MongoService` interacts with MongoDB to store and retrieve:
 
 - **Articles Collection**: URL, user, tokens, costs, topic, sentiment, bias, reactions, follow-up status.
-- **Conversations Collection**: Channel-scoped personality conversations with message history.
+- **Conversations Collection**: Channel-scoped conversations with message history.
+- **Channel Messages Collection**: All channel messages for catch-me-up and historical queries.
+- **User Activity Collection**: Per-user last-seen timestamps and active channel tracking.
 - **Image Generations Collection**: Prompt, user, timestamp, success/failure, retry attempts.
 - **Video Generations Collection**: Prompt, user, timestamp, generation parameters.
 - **Token Usage**: Per-user token consumption tracking.
@@ -211,7 +215,7 @@ All configurable parameters are managed through `config.js` and environment vari
 - **Mem0**: AI memory with Qdrant vector database
 - **Qdrant**: IRC history search
 - **Channel Context**: Passive conversation tracking (tiers, retention, search thresholds)
-- **Local LLM**: Ollama integration for uncensored mode (model, temperature, response limits, access controls)
+- **Local LLM**: Ollama integration (model, temperature, response limits)
 - **Health**: Kubernetes probe endpoints
 
 ## 9. Architecture Benefits

@@ -1,37 +1,20 @@
 # Discord Article Bot
 
-A Discord bot that monitors for article links, archives them using Linkwarden (self-hosted), and uses OpenAI-compatible APIs to automatically generate summaries. Features personality-based chat for fun interactions.
+A Discord bot with AI chat (channel-voice personality), image/video generation, IRC history search, and article summarization.
 
 ## Features
 
-### Core Features
+### Chat
 
-- **Article Summarization**: Summarize articles via command or reaction
-- **Linkwarden Integration**: Self-hosted archiving with paywall bypass via browser extension
-- **AI-Powered Summaries**: Uses OpenAI-compatible APIs (including Ollama) for concise summaries
-- **Duplicate Detection**: Notifies if an article was already shared
-- **Source Credibility**: Rates sources with star ratings
-- **Token Usage Tracking**: Per-user token consumption tracking
-
-### Personality Chat
-
-- **Character Conversations**: Chat with unique AI personalities
-- **6 Built-in Personalities**:
-  - 😊 **Friendly Assistant** - Helpful, informal assistant for casual chat and questions (default)
-  - 📚 **Professor Grimsworth** - Grumpy historian who relates everything to obscure historical events
-  - 🕵️ **Jack Shadows** - Hardboiled 1940s detective with noir prose
-  - 🤔 **Erik the Existentialist** - Philosophy grad student who spirals into existential questions
-  - 💾 **x0r_kid** - 90s IRC gamer kid with leet speak and old-school internet vibes
-  - 🔓 **Uncensored** - Enhanced personality that defaults to local LLM for less restricted responses
-- **Default Personality**: Just use `/chat <message>` - defaults to friendly assistant
-- **Image Vision**: Attach images to chat messages for the bot to analyze and discuss
-- **Web Search**: Bot can search the web for current information when needed
-- **Extensible**: Add new personalities by dropping a `.js` file in `personalities/`
-- **Channel-Scoped Memory**: All users in a channel share a conversation with each personality
-- **Reply to Continue**: Reply directly to bot messages to continue conversations naturally
+- **Channel Voice**: Bot uses a dynamically learned group communication style as its voice
+- **Simple Interface**: `/chat <message>` — no personality picker needed
+- **TLDR**: `/tldr` sends a DM summary of what you missed while away
+- **Stats**: `/stats` shows top token consumers
+- **Image Vision**: Attach images to chat messages for analysis and discussion
+- **Channel-Scoped Memory**: Conversation history per channel
+- **Reply to Continue**: Reply directly to bot messages to continue conversations
 - **Conversation Limits**: 100 messages, 150k tokens, or 30 min idle timeout
-- **Resume/Reset/List**: Continue expired conversations, reset them, or list your resumable chats
-- **Uncensored Mode**: Opt-in per-request routing to local LLM for less restricted responses
+- **Resume/Reset/List**: Continue expired conversations, reset them, or list resumable chats
 
 ### AI Memory (Mem0)
 
@@ -49,9 +32,9 @@ A Discord bot that monitors for article links, archives them using Linkwarden (s
 
 - **Participant Awareness**: Bot tracks who's active in each channel (30-minute window)
 - **Multi-User Context**: System prompt includes list of active participants
-- **@Mention Entry**: Mention the bot to start a conversation with the default personality
+- **@Mention Entry**: Mention the bot to start a conversation
 - **Seamless Replies**: Reply to any bot message to continue conversations naturally
-- **Shared Context**: All users in a channel see the same conversation history per personality
+- **Shared Context**: All users in a channel share conversation history
 
 ### Image Generation (Nano Banana)
 
@@ -155,10 +138,11 @@ discord-article-bot/
 │       ├── index.js              # Command exports
 │       ├── ChatCommand.js        # /chat
 │       ├── ChatThreadCommand.js  # /chatthread
-│       ├── PersonalitiesCommand.js # /personalities
 │       ├── ChatResetCommand.js   # /chatreset (admin)
 │       ├── ChatResumeCommand.js  # /chatresume
 │       ├── ChatListCommand.js    # /chatlist
+│       ├── CatchMeUpCommand.js   # /tldr
+│       ├── StatsCommand.js       # /stats
 │       ├── SummarizeCommand.js   # /summarize
 │       ├── ResummarizeCommand.js # /resummarize
 │       ├── ImagineCommand.js     # /imagine
@@ -178,16 +162,13 @@ discord-article-bot/
 │   └── ReplyHandler.js           # Reply handling for chats and summaries
 ├── personalities/                # Personality definitions
 │   ├── index.js                  # Personality manager
-│   ├── friendly-assistant.js     # Default friendly personality
-│   ├── grumpy-historian.js
-│   ├── noir-detective.js
-│   ├── existential-philosopher.js
-│   ├── irc-gamer.js
-│   └── uncensored.js             # Local LLM uncensored personality
+│   └── channel-voice.js          # Dynamic group voice personality
 ├── services/
-│   ├── SummarizationService.js   # Main summarization logic
-│   ├── ChatService.js            # Personality chat handling
-│   ├── LocalLlmService.js        # Local LLM (Ollama) for uncensored mode
+│   ├── MongoService.js            # MongoDB operations (messages, activity, stats)
+│   ├── SummarizationService.js   # Article summarization logic
+│   ├── ChatService.js            # Chat conversation handling
+│   ├── CatchMeUpService.js       # /tldr catch-me-up synthesis
+│   ├── LocalLlmService.js        # Local LLM (Ollama) integration
 │   ├── Mem0Service.js            # AI memory management (Mem0 SDK)
 │   ├── QdrantService.js          # IRC history vector search
 │   ├── NickMappingService.js     # Discord-to-IRC nick mapping
