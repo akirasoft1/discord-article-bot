@@ -9,7 +9,7 @@ class CatchMeUpSlashCommand extends BaseSlashCommand {
   constructor(catchMeUpService) {
     super({
       data: new SlashCommandBuilder()
-        .setName('catchmeup')
+        .setName('tldr')
         .setDescription('Get a DM summary of what you missed while you were away')
         .addIntegerOption(option =>
           option.setName('days')

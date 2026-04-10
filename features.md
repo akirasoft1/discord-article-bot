@@ -27,7 +27,7 @@
 - **Image Vision**: Attach images to chat messages for analysis and discussion
 - **Web Search**: Bot can search the web for current information when needed
 - **Per-user Token Tracking**: Usage recorded per user
-- **Catch Me Up**: `/catchmeup` sends a DM summarizing what happened while you were away — articles, trends, and chat highlights from channels you've been active in, styled in the group's voice
+- **Catch Me Up**: `/tldr` sends a DM summarizing what happened while you were away — articles, trends, and chat highlights from channels you've been active in, styled in the group's voice
 
 ### Conversation Memory
 - **Channel-Scoped Memory**: All users in a channel share a conversation with each personality
