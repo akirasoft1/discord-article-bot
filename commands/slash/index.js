@@ -29,6 +29,7 @@ module.exports = {
 
   // Activity commands
   CatchMeUpSlashCommand: require('./CatchMeUpCommand'),
+  StatsSlashCommand: require('./StatsCommand'),
 
   // Utility commands
   HelpSlashCommand: require('./HelpCommand'),

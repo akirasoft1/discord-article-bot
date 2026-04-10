@@ -53,6 +53,7 @@ const {
   HistorySlashCommand,
   ThrowbackSlashCommand,
   CatchMeUpSlashCommand,
+  StatsSlashCommand,
   HelpSlashCommand,
   ContextSlashCommand,
   ChannelTrackSlashCommand
@@ -379,6 +380,7 @@ class DiscordBot {
 
     // Register catch-me-up command
     this.slashCommandHandler.register(new CatchMeUpSlashCommand(this.catchMeUpService));
+    this.slashCommandHandler.register(new StatsSlashCommand(this.summarizationService.mongoService));
 
     logger.info(`Registered ${this.slashCommandHandler.size} slash commands`);
   }
