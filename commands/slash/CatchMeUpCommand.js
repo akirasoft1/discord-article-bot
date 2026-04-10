@@ -43,9 +43,14 @@ class CatchMeUpSlashCommand extends BaseSlashCommand {
       return;
     }
 
+    // Split long messages into Discord-safe chunks
+    const chunks = this.splitMessage(result.message, 2000);
+
     // Send catch-up via DM
     try {
-      await interaction.user.send(result.message);
+      for (const chunk of chunks) {
+        await interaction.user.send(chunk);
+      }
 
       await this.sendReply(interaction, {
         content: "I've sent you a DM with your catch-up summary!",
@@ -58,11 +63,13 @@ class CatchMeUpSlashCommand extends BaseSlashCommand {
         ephemeral: true
       });
 
-      // Fall back to ephemeral reply in channel
-      await interaction.followUp({
-        content: result.message,
-        ephemeral: true
-      });
+      // Fall back to ephemeral replies in channel
+      for (const chunk of chunks) {
+        await interaction.followUp({
+          content: chunk,
+          ephemeral: true
+        });
+      }
     }
   }
 }

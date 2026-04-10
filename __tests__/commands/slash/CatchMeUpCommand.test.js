@@ -97,6 +97,23 @@ describe('CatchMeUpSlashCommand', () => {
       );
     });
 
+    it('should split long messages into chunks for DM', async () => {
+      const longMessage = 'A'.repeat(3000);
+      mockCatchMeUpService.generateCatchUp.mockResolvedValue({
+        success: true,
+        message: longMessage
+      });
+
+      await command.execute(mockInteraction, {});
+
+      // Should have sent multiple DMs
+      expect(mockInteraction.user.send).toHaveBeenCalledTimes(2);
+      // Each chunk should be <= 2000 chars
+      mockInteraction.user.send.mock.calls.forEach(call => {
+        expect(call[0].length).toBeLessThanOrEqual(2000);
+      });
+    });
+
     it('should handle service errors gracefully', async () => {
       mockCatchMeUpService.generateCatchUp.mockResolvedValue({
         success: false,
