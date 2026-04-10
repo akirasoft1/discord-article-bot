@@ -10,7 +10,13 @@ class CatchMeUpSlashCommand extends BaseSlashCommand {
     super({
       data: new SlashCommandBuilder()
         .setName('catchmeup')
-        .setDescription('Get a DM summary of what you missed while you were away'),
+        .setDescription('Get a DM summary of what you missed while you were away')
+        .addIntegerOption(option =>
+          option.setName('days')
+            .setDescription('Number of days to look back (default: auto-detect from last activity)')
+            .setRequired(false)
+            .setMinValue(1)
+            .setMaxValue(30)),
       deferReply: true,
       ephemeral: true, // All responses are ephemeral — actual content goes via DM
       cooldown: 60 // 1 minute cooldown to prevent spam
@@ -24,8 +30,9 @@ class CatchMeUpSlashCommand extends BaseSlashCommand {
 
     const userId = interaction.user.id;
     const guildId = interaction.guild?.id || null;
+    const days = interaction.options.getInteger('days') || null;
 
-    const result = await this.catchMeUpService.generateCatchUp(userId, guildId);
+    const result = await this.catchMeUpService.generateCatchUp(userId, guildId, { days });
 
     if (!result.success) {
       await this.sendReply(interaction, {

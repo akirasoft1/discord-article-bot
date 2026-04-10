@@ -31,6 +31,9 @@ describe('CatchMeUpSlashCommand', () => {
         send: jest.fn().mockResolvedValue({})
       },
       guild: { id: 'guild456' },
+      options: {
+        getInteger: jest.fn().mockReturnValue(null)
+      },
       editReply: jest.fn().mockResolvedValue({}),
       deferReply: jest.fn().mockResolvedValue({}),
       reply: jest.fn().mockResolvedValue({}),
@@ -46,7 +49,7 @@ describe('CatchMeUpSlashCommand', () => {
     it('should call generateCatchUp with user and guild IDs', async () => {
       await command.execute(mockInteraction, {});
 
-      expect(mockCatchMeUpService.generateCatchUp).toHaveBeenCalledWith('user123', 'guild456');
+      expect(mockCatchMeUpService.generateCatchUp).toHaveBeenCalledWith('user123', 'guild456', { days: null });
     });
 
     it('should send catch-up via DM', async () => {
@@ -112,6 +115,24 @@ describe('CatchMeUpSlashCommand', () => {
       mockInteraction.user.send.mock.calls.forEach(call => {
         expect(call[0].length).toBeLessThanOrEqual(2000);
       });
+    });
+
+    it('should pass days parameter when specified', async () => {
+      mockInteraction.options.getInteger.mockReturnValue(7);
+
+      await command.execute(mockInteraction, {});
+
+      expect(mockCatchMeUpService.generateCatchUp).toHaveBeenCalledWith(
+        'user123', 'guild456', { days: 7 }
+      );
+    });
+
+    it('should pass null days when not specified', async () => {
+      await command.execute(mockInteraction, {});
+
+      expect(mockCatchMeUpService.generateCatchUp).toHaveBeenCalledWith(
+        'user123', 'guild456', { days: null }
+      );
     });
 
     it('should handle service errors gracefully', async () => {

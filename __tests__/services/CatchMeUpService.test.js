@@ -125,6 +125,30 @@ describe('CatchMeUpService', () => {
       expect(callArgs.input).toContain('DevOps');
     });
 
+    it('should use explicit days parameter when provided', async () => {
+      await service.generateCatchUp('user123', 'guild456', { days: 7 });
+
+      expect(mockMongoService.getRecentArticleSummaries).toHaveBeenCalledWith(7);
+      expect(mockMongoService.getArticleTrends).toHaveBeenCalledWith(7);
+    });
+
+    it('should calculate fractional day lookback for short absences', async () => {
+      // User was last seen 3 hours ago
+      mockMongoService.getUserLastSeen.mockResolvedValue({
+        userId: 'user123',
+        guildId: 'guild456',
+        lastSeenAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
+        activeChannels: ['channel1']
+      });
+
+      await service.generateCatchUp('user123', 'guild456');
+
+      // Should use fractional days (3 hours ≈ 0.125 days)
+      const calledDays = mockMongoService.getRecentArticleSummaries.mock.calls[0][0];
+      expect(calledDays).toBeLessThan(1);
+      expect(calledDays).toBeGreaterThan(0);
+    });
+
     it('should handle errors gracefully', async () => {
       mockOpenAIClient.responses.create.mockRejectedValue(new Error('API Error'));
 
