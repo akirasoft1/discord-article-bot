@@ -26,14 +26,13 @@ describe('CatchMeUpService', () => {
         guildId: 'guild456',
         lastSeenAt: new Date('2026-04-08T00:00:00Z'),
         activeChannels: ['channel1', 'channel2']
-      })
-    };
-
-    mockChannelContextService = {
-      getRecentContext: jest.fn().mockReturnValue(
-        '[Alice]: Just deployed the new feature\n[Bob]: Nice, tests passing?'
-      ),
-      isChannelTracked: jest.fn().mockReturnValue(true)
+      }),
+      getChannelMessages: jest.fn().mockResolvedValue([
+        { authorName: 'Alice', content: 'Just deployed the new feature', timestamp: new Date() },
+        { authorName: 'Bob', content: 'Nice, tests passing?', timestamp: new Date() },
+        { authorName: 'Alice', content: 'All green', timestamp: new Date() },
+        { authorName: 'Charlie', content: 'Ship it', timestamp: new Date() }
+      ])
     };
 
     mockVoiceProfileService = {
@@ -59,7 +58,6 @@ describe('CatchMeUpService', () => {
 
     service = new CatchMeUpService(
       mockMongoService,
-      mockChannelContextService,
       mockVoiceProfileService,
       mockOpenAIClient,
       mockConfig
@@ -102,14 +100,20 @@ describe('CatchMeUpService', () => {
       expect(result.nothingNew).toBe(true);
     });
 
-    it('should include recent messages from active channels', async () => {
+    it('should fetch messages from MongoDB for active channels', async () => {
       await service.generateCatchUp('user123', 'guild456');
 
-      expect(mockChannelContextService.getRecentContext).toHaveBeenCalled();
+      expect(mockMongoService.getChannelMessages).toHaveBeenCalledWith(
+        ['channel1', 'channel2'],
+        expect.any(Date),
+        200
+      );
     });
 
     it('should skip LLM call when context is too thin', async () => {
-      mockChannelContextService.getRecentContext.mockReturnValue('[Alice]: hi');
+      mockMongoService.getChannelMessages.mockResolvedValue([
+        { authorName: 'Alice', content: 'hi', timestamp: new Date() }
+      ]);
 
       const result = await service.generateCatchUp('user123', 'guild456');
 
@@ -134,8 +138,8 @@ describe('CatchMeUpService', () => {
       expect(result.error).toContain('error');
     });
 
-    it('should return nothing new when no chat context available', async () => {
-      mockChannelContextService.getRecentContext.mockReturnValue('');
+    it('should return nothing new when no messages in MongoDB', async () => {
+      mockMongoService.getChannelMessages.mockResolvedValue([]);
 
       const result = await service.generateCatchUp('user123', 'guild456');
 

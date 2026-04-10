@@ -886,5 +886,96 @@ describe('MongoService', () => {
         expect(result).toBeNull();
       });
     });
+
+    describe('recordChannelMessage', () => {
+      it('should insert a message document', async () => {
+        const msgCollection = {
+          insertOne: jest.fn().mockResolvedValue({ insertedId: 'msg-id' })
+        };
+        mongoService.db.collection.mockReturnValue(msgCollection);
+
+        await mongoService.recordChannelMessage({
+          messageId: 'msg123',
+          channelId: 'channel456',
+          guildId: 'guild789',
+          authorId: 'user123',
+          authorName: 'Alice',
+          content: 'Hello world',
+          timestamp: new Date()
+        });
+
+        expect(mongoService.db.collection).toHaveBeenCalledWith('channel_messages');
+        expect(msgCollection.insertOne).toHaveBeenCalledWith(
+          expect.objectContaining({
+            messageId: 'msg123',
+            channelId: 'channel456',
+            authorName: 'Alice',
+            content: 'Hello world'
+          })
+        );
+      });
+
+      it('should not throw if db is not connected', async () => {
+        mongoService.db = null;
+        await expect(mongoService.recordChannelMessage({ messageId: 'x' })).resolves.not.toThrow();
+      });
+    });
+
+    describe('getChannelMessages', () => {
+      it('should return messages for a channel since a given time', async () => {
+        const mockMessages = [
+          { authorName: 'Alice', content: 'Hello', timestamp: new Date() },
+          { authorName: 'Bob', content: 'Hi there', timestamp: new Date() }
+        ];
+
+        const msgCollection = {
+          find: jest.fn().mockReturnValue({
+            sort: jest.fn().mockReturnValue({
+              limit: jest.fn().mockReturnValue({
+                toArray: jest.fn().mockResolvedValue(mockMessages)
+              })
+            })
+          })
+        };
+        mongoService.db.collection.mockReturnValue(msgCollection);
+
+        const since = new Date('2026-04-10T00:00:00Z');
+        const result = await mongoService.getChannelMessages('channel456', since, 50);
+
+        expect(mongoService.db.collection).toHaveBeenCalledWith('channel_messages');
+        expect(msgCollection.find).toHaveBeenCalledWith({
+          channelId: 'channel456',
+          timestamp: { $gte: since }
+        });
+        expect(result).toEqual(mockMessages);
+      });
+
+      it('should query multiple channels when array is provided', async () => {
+        const msgCollection = {
+          find: jest.fn().mockReturnValue({
+            sort: jest.fn().mockReturnValue({
+              limit: jest.fn().mockReturnValue({
+                toArray: jest.fn().mockResolvedValue([])
+              })
+            })
+          })
+        };
+        mongoService.db.collection.mockReturnValue(msgCollection);
+
+        await mongoService.getChannelMessages(['ch1', 'ch2'], new Date());
+
+        expect(msgCollection.find).toHaveBeenCalledWith(
+          expect.objectContaining({
+            channelId: { $in: ['ch1', 'ch2'] }
+          })
+        );
+      });
+
+      it('should return empty array if db is not connected', async () => {
+        mongoService.db = null;
+        const result = await mongoService.getChannelMessages('ch1', new Date());
+        expect(result).toEqual([]);
+      });
+    });
   });
 });

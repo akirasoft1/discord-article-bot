@@ -10,15 +10,13 @@ const MIN_LOOKBACK_HOURS = 1;
 
 class CatchMeUpService {
   /**
-   * @param {Object} mongoService - MongoService for articles, trends, user activity
-   * @param {Object} channelContextService - ChannelContextService for recent Discord messages
+   * @param {Object} mongoService - MongoService for messages, user activity
    * @param {Object} voiceProfileService - VoiceProfileService for channel voice styling
    * @param {Object} openaiClient - OpenAI client for synthesis
    * @param {Object} config - Bot configuration
    */
-  constructor(mongoService, channelContextService, voiceProfileService, openaiClient, config) {
+  constructor(mongoService, voiceProfileService, openaiClient, config) {
     this.mongoService = mongoService;
-    this.channelContextService = channelContextService;
     this.voiceProfileService = voiceProfileService;
     this.openaiClient = openaiClient;
     this.config = config;
@@ -59,13 +57,22 @@ class CatchMeUpService {
       // 2. Gather data in parallel
       const voiceProfile = await (this.voiceProfileService?.getProfile().catch(() => null) || Promise.resolve(null));
 
-      // 3. Gather recent messages from active channels
+      // 3. Gather recent messages from MongoDB (persists across restarts)
+      const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
       const channelContexts = [];
-      for (const channelId of activeChannels.slice(0, 5)) { // Cap at 5 channels
-        if (this.channelContextService?.isChannelTracked(channelId)) {
-          const context = this.channelContextService.getRecentContext(channelId, 15);
+
+      if (activeChannels.length > 0) {
+        const messages = await this.mongoService.getChannelMessages(
+          activeChannels.slice(0, 5), since, 200
+        );
+
+        if (messages.length > 0) {
+          const context = messages
+            .filter(m => m.content && m.content.trim())
+            .map(m => `[${m.authorName}]: ${m.content}`)
+            .join('\n');
           if (context) {
-            channelContexts.push({ channelId, context });
+            channelContexts.push({ context });
           }
         }
       }

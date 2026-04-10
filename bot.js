@@ -240,8 +240,7 @@ class DiscordBot {
 
     // Initialize catch-me-up service
     this.catchMeUpService = new CatchMeUpService(
-      this.mongoService, this.channelContextService, this.voiceProfileService,
-      this.openaiClient, config
+      this.mongoService, this.voiceProfileService, this.openaiClient, config
     );
 
     // Initialize slash command handler
@@ -473,14 +472,24 @@ class DiscordBot {
     this.client.on('messageCreate', async message => {
       if (message.author.bot) return;
 
-      // Track user activity for catch-me-up (non-blocking)
+      // Track user activity and persist message for catch-me-up (non-blocking)
       if (message.guild && this.mongoService) {
         this.mongoService.recordUserActivity(
           message.author.id, message.guild.id, message.channel.id
         ).catch(err => logger.debug(`User activity tracking failed: ${err.message}`));
+
+        this.mongoService.recordChannelMessage({
+          messageId: message.id,
+          channelId: message.channel.id,
+          guildId: message.guild.id,
+          authorId: message.author.id,
+          authorName: message.author.username,
+          content: message.content,
+          timestamp: new Date()
+        }).catch(err => logger.debug(`Channel message recording failed: ${err.message}`));
       }
 
-      // Passive channel context recording (non-blocking)
+      // Passive channel context recording for semantic search (non-blocking, writes to Qdrant)
       if (this.channelContextService?.isChannelTracked(message.channel.id)) {
         this.channelContextService.recordMessage(message).catch(err =>
           logger.debug(`Channel context record failed: ${err.message}`)

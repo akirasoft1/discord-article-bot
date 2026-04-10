@@ -582,6 +582,46 @@ class ChannelContextService {
   }
 
   /**
+   * Get recent messages from Qdrant for a channel within a time range
+   * Unlike getRecentContext (in-memory), this survives pod restarts
+   * @param {string} channelId - Channel ID
+   * @param {Date} since - Start of time range
+   * @param {number} limit - Max messages to return
+   * @returns {Promise<Array<{authorName: string, content: string, timestamp: string}>>}
+   */
+  async getRecentMessagesFromStore(channelId, since, limit = 50) {
+    if (!this._enabled || !this.qdrantClient) return [];
+
+    try {
+      const results = await this.qdrantClient.scroll(this.config.qdrantCollection, {
+        filter: {
+          must: [
+            { key: 'channelId', match: { value: channelId } },
+            { key: 'timestamp', range: { gte: since.toISOString() } }
+          ]
+        },
+        limit,
+        with_payload: true,
+        with_vector: false
+      });
+
+      // Sort by timestamp ascending and format
+      const messages = (results.points || [])
+        .sort((a, b) => new Date(a.payload.timestamp) - new Date(b.payload.timestamp))
+        .map(p => ({
+          authorName: p.payload.authorName,
+          content: p.payload.content,
+          timestamp: p.payload.timestamp
+        }));
+
+      return messages;
+    } catch (error) {
+      logger.error(`Error fetching recent messages from store: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
    * Cleanup expired messages from Qdrant
    */
   async _cleanupExpiredMessages() {

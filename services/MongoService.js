@@ -53,6 +53,11 @@ class MongoService {
             await this.client.connect();
             this.db = this.client.db('discord');
             logger.info('Successfully connected to MongoDB.');
+
+            // Ensure indexes for time-range queries
+            this.db.collection('channel_messages').createIndex(
+              { channelId: 1, timestamp: 1 }
+            ).catch(err => logger.debug(`Index creation (channel_messages): ${err.message}`));
         } catch (error) {
             logger.error('Error connecting to MongoDB:', error);
         }
@@ -1298,6 +1303,47 @@ class MongoService {
         } catch (error) {
             logger.error(`Error getting user last seen: ${error.message}`);
             return null;
+        }
+    }
+
+    // ==================== CHANNEL MESSAGES ====================
+
+    /**
+     * Record a channel message for historical retrieval
+     * @param {Object} message - Message data
+     */
+    async recordChannelMessage(message) {
+        if (!this.db) return;
+        try {
+            const collection = this.db.collection('channel_messages');
+            await collection.insertOne(message);
+        } catch (error) {
+            logger.error(`Error recording channel message: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get channel messages since a given time
+     * @param {string|string[]} channelIds - Single channel ID or array of channel IDs
+     * @param {Date} since - Start of time range
+     * @param {number} limit - Max messages to return
+     * @returns {Promise<Array>} Messages sorted by timestamp ascending
+     */
+    async getChannelMessages(channelIds, since, limit = 200) {
+        if (!this.db) return [];
+        try {
+            const collection = this.db.collection('channel_messages');
+            const channelFilter = Array.isArray(channelIds)
+                ? { $in: channelIds }
+                : channelIds;
+
+            return await collection.find({
+                channelId: channelFilter,
+                timestamp: { $gte: since }
+            }).sort({ timestamp: 1 }).limit(limit).toArray();
+        } catch (error) {
+            logger.error(`Error getting channel messages: ${error.message}`);
+            return [];
         }
     }
 }
