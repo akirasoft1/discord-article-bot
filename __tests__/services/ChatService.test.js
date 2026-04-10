@@ -1163,8 +1163,8 @@ describe('ChatService', () => {
         ])
       };
 
-      chatService.setVoiceProfileService(mockVoiceProfileService);
-      chatService.setQdrantService(mockQdrantService);
+      chatService.voiceProfileService = mockVoiceProfileService;
+      chatService.qdrantService = mockQdrantService;
     });
 
     describe('_buildGroupSystemPrompt with voice context', () => {
@@ -1269,20 +1269,5 @@ describe('ChatService', () => {
       });
     });
 
-    describe('setVoiceProfileService', () => {
-      it('should store the service reference', () => {
-        const svc = { getProfile: jest.fn() };
-        chatService.setVoiceProfileService(svc);
-        expect(chatService.voiceProfileService).toBe(svc);
-      });
-    });
-
-    describe('setQdrantService', () => {
-      it('should store the service reference', () => {
-        const svc = { search: jest.fn() };
-        chatService.setQdrantService(svc);
-        expect(chatService.qdrantService).toBe(svc);
-      });
-    });
   });
 });

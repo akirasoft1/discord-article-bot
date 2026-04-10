@@ -11,14 +11,14 @@ const SourceCredibilityService = require('./SourceCredibilityService');
 const { withSpan, addSpanEvent, setSpanAttributes } = require('../tracing');
 
 class SummarizationService {
-  constructor(openaiClient, config, discordClient, messageService = null) {
+  constructor(openaiClient, config, discordClient, messageService = null, mongoService = null) {
     this.openaiClient = openaiClient;
     this.config = config;
     this.discordClient = discordClient;
     this.messageService = messageService;
     this.systemPrompt = null;
     this.isProcessing = false;
-    this.mongoService = new MongoService(config.mongo.uri);
+    this.mongoService = mongoService || new MongoService(config.mongo.uri);
     this.sourceCredibilityService = new SourceCredibilityService(config);
     
     // Initialize services
