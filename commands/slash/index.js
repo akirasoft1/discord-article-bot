@@ -27,6 +27,9 @@ module.exports = {
   HistorySlashCommand: require('./HistoryCommand'),
   ThrowbackSlashCommand: require('./ThrowbackCommand'),
 
+  // Activity commands
+  CatchMeUpSlashCommand: require('./CatchMeUpCommand'),
+
   // Utility commands
   HelpSlashCommand: require('./HelpCommand'),
   ContextSlashCommand: require('./ContextCommand'),
