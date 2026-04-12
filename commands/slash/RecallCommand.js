@@ -1,12 +1,12 @@
 // commands/slash/RecallCommand.js
-// Slash command for semantic search through IRC history
+// Slash command for semantic search through IRC history with optional voice-styled synthesis
 
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const BaseSlashCommand = require('../base/BaseSlashCommand');
 const logger = require('../../logger');
 
 class RecallSlashCommand extends BaseSlashCommand {
-  constructor(qdrantService, nickMappingService) {
+  constructor(qdrantService, nickMappingService, voiceSearchService = null) {
     super({
       data: new SlashCommandBuilder()
         .setName('recall')
@@ -16,6 +16,10 @@ class RecallSlashCommand extends BaseSlashCommand {
             .setDescription('What to search for')
             .setRequired(true)
             .setMaxLength(500))
+        .addBooleanOption(option =>
+          option.setName('summarize')
+            .setDescription('Get a voice-styled narrative summary instead of raw logs')
+            .setRequired(false))
         .addBooleanOption(option =>
           option.setName('my_messages')
             .setDescription('Only show your own messages')
@@ -32,16 +36,18 @@ class RecallSlashCommand extends BaseSlashCommand {
 
     this.qdrantService = qdrantService;
     this.nickMappingService = nickMappingService;
+    this.voiceSearchService = voiceSearchService;
   }
 
   async execute(interaction, context) {
     const query = interaction.options.getString('query');
+    const summarize = interaction.options.getBoolean('summarize') || false;
     const myMessages = interaction.options.getBoolean('my_messages') || false;
     const year = interaction.options.getInteger('year');
 
-    this.logExecution(interaction, `query="${query}", myMessages=${myMessages}, year=${year || 'any'}`);
+    this.logExecution(interaction, `query="${query}", summarize=${summarize}, myMessages=${myMessages}, year=${year || 'any'}`);
 
-    // Build search options object
+    // Build search options
     const searchOptions = { limit: 5 };
 
     if (year) {
@@ -49,7 +55,6 @@ class RecallSlashCommand extends BaseSlashCommand {
     }
 
     if (myMessages && this.nickMappingService) {
-      // Get user's IRC nicks
       const ircNicks = this.nickMappingService.getIrcNicks(interaction.user.id);
       if (ircNicks && ircNicks.length > 0) {
         searchOptions.participants = ircNicks;
@@ -62,8 +67,13 @@ class RecallSlashCommand extends BaseSlashCommand {
       }
     }
 
-    // Use correct signature: search(query, options)
-    const results = await this.qdrantService.search(query, searchOptions);
+    // Use voice-informed search (with query expansion) or plain search
+    let results;
+    if (this.voiceSearchService) {
+      results = await this.voiceSearchService.searchWithExpansion(query, searchOptions);
+    } else {
+      results = await this.qdrantService.search(query, searchOptions);
+    }
 
     if (!results || results.length === 0) {
       await this.sendReply(interaction, {
@@ -73,6 +83,22 @@ class RecallSlashCommand extends BaseSlashCommand {
       return;
     }
 
+    // Summarize mode: voice-styled narrative
+    if (summarize && this.voiceSearchService) {
+      const summary = await this.voiceSearchService.synthesizeResults(query, results);
+      if (summary) {
+        const chunks = this.splitMessage(summary, 2000);
+        await this.sendReply(interaction, chunks[0]);
+        for (let i = 1; i < chunks.length; i++) {
+          await interaction.followUp(chunks[i]);
+        }
+        return;
+      }
+      // Fall through to raw results if synthesis fails
+      logger.warn('Voice synthesis failed, falling back to raw results');
+    }
+
+    // Default: raw results as embed
     const embed = new EmbedBuilder()
       .setTitle(`IRC History Search`)
       .setDescription(`Results for: **${query}**${year ? ` (${year})` : ''}`)
@@ -86,7 +112,6 @@ class RecallSlashCommand extends BaseSlashCommand {
       const text = payload.text || payload.message || payload.content || 'No content';
       const score = result.score ? ` (${Math.round(result.score * 100)}% match)` : '';
 
-      // Format date like the service does
       let dateStr = '';
       if (payload.start_time) {
         try {

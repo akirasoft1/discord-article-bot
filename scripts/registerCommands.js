@@ -79,7 +79,7 @@ async function registerCommands() {
   }
 
   if (config.qdrant?.enabled) {
-    commands.push(new RecallSlashCommand(null, null));
+    commands.push(new RecallSlashCommand(null, null, null));
     commands.push(new HistorySlashCommand(null, null));
     commands.push(new ThrowbackSlashCommand(null));
     console.log('Including IRC history commands (qdrant enabled)');
