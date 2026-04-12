@@ -62,12 +62,13 @@ A Discord bot with AI chat (channel-voice personality), image/video generation, 
 
 ### IRC History Search
 
-- **Semantic Search**: Search through archived IRC conversations using natural language
+- **Voice-Informed Search**: Query expansion using the group's vocabulary — searches for how the group actually talked, not just what you typed
+- **Narrative Summaries**: `/recall query:"topic" summarize:true` returns a voice-styled narrative instead of raw logs
+- **Semantic Search**: Vector similarity search through archived IRC conversations
 - **Discord-to-IRC Mapping**: Links Discord users to their historical IRC nicknames
-- **Personal History**: Filter searches to your own conversations with `--me` flag
-- **Time-Based Filtering**: Filter by year or decade
+- **Personal History**: Filter searches to your own conversations
+- **Time-Based Filtering**: Filter by year
 - **Throwback Feature**: Random conversations from "this day in history"
-- **Graceful Degradation**: Commands hidden when Qdrant service unavailable
 
 ### Additional Features
 

@@ -27,6 +27,7 @@ const NickMappingService = require('./services/NickMappingService');
 const ChannelContextService = require('./services/ChannelContextService');
 const ImagePromptAnalyzerService = require('./services/ImagePromptAnalyzerService');
 const CatchMeUpService = require('./services/CatchMeUpService');
+const VoiceSearchService = require('./services/VoiceSearchService');
 const MongoService = require('./services/MongoService');
 const ImageRetryHandler = require('./handlers/ImageRetryHandler');
 const TextUtils = require('./utils/textUtils');
@@ -239,6 +240,15 @@ class DiscordBot {
     }
 
     // Initialize catch-me-up service
+    // Initialize voice-informed search (requires Qdrant + voice profile)
+    this.voiceSearchService = null;
+    if (this.qdrantService && this.voiceProfileService) {
+      this.voiceSearchService = new VoiceSearchService(
+        this.qdrantService, this.voiceProfileService, this.openaiClient, config
+      );
+      logger.info('Voice search service initialized');
+    }
+
     this.catchMeUpService = new CatchMeUpService(
       this.mongoService, this.voiceProfileService, this.openaiClient, config
     );
@@ -363,7 +373,7 @@ class DiscordBot {
 
     // Register IRC history slash commands
     if (this.qdrantService) {
-      this.slashCommandHandler.register(new RecallSlashCommand(this.qdrantService, this.nickMappingService));
+      this.slashCommandHandler.register(new RecallSlashCommand(this.qdrantService, this.nickMappingService, this.voiceSearchService));
       this.slashCommandHandler.register(new HistorySlashCommand(this.qdrantService, this.nickMappingService));
       this.slashCommandHandler.register(new ThrowbackSlashCommand(this.qdrantService));
       logger.info('IRC history slash commands registered');

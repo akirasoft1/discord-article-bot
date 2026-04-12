@@ -134,6 +134,7 @@ Use `/chatthread` to create a dedicated thread for extended conversations. In th
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `query` | Yes | Search terms |
+| `summarize` | No | Get a voice-styled narrative summary instead of raw logs |
 | `my_messages` | No | Only show your messages |
 | `year` | No | Filter by year (1999-2024) |
 
