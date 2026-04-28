@@ -182,6 +182,14 @@ describe('ReplyHandler', () => {
 
       expect(result).toBe(false);
     });
+
+    it('should return false for channel-voice / personality-formatted bot replies (handled by mention-chat fall-through in bot.js)', async () => {
+      mockReferencedMessage.content = '🗣️ **Channel Voice**\n\nHey, what\'s up? Glad you asked.';
+
+      const result = await replyHandler.handleReply(mockMessage, mockReferencedMessage);
+
+      expect(result).toBe(false);
+    });
   });
 
   describe('handleSummarizationReply', () => {

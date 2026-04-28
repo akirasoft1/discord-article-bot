@@ -518,16 +518,22 @@ class DiscordBot {
           const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
           if (referencedMessage && referencedMessage.author.id === this.client.user.id) {
             // Wrap reply handling in a trace
-            await withRootSpan('discord.reply', {
+            const handled = await withRootSpan('discord.reply', {
               'discord.channel.id': message.channel.id,
               'discord.user.id': message.author.id,
               'discord.user.tag': message.author.tag,
               'discord.message.id': message.id,
             }, async () => {
-              const handled = await this.replyHandler.handleReply(message, referencedMessage);
-              return handled;
+              return await this.replyHandler.handleReply(message, referencedMessage);
             });
-            return; // Reply was handled, don't process as command
+
+            if (handled) {
+              return;
+            }
+            // ReplyHandler didn't claim this (not summarization, not imagegen).
+            // Fall through to mention-chat so the bot continues the conversation.
+            await this._handleMentionChat(message);
+            return;
           }
         } catch (error) {
           logger.error(`Error fetching referenced message: ${error.message}`);
