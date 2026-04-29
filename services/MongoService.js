@@ -1309,7 +1309,10 @@ class MongoService {
     // ==================== CHANNEL MESSAGES ====================
 
     /**
-     * Record a channel message for historical retrieval
+     * Record a channel message for historical retrieval.
+     * Optional message.executionIds array is persisted when present so the
+     * sandbox reaction-reveal handler can look up which executions belong
+     * to a given bot reply.
      * @param {Object} message - Message data
      */
     async recordChannelMessage(message) {
@@ -1319,6 +1322,25 @@ class MongoService {
             await collection.insertOne(message);
         } catch (error) {
             logger.error(`Error recording channel message: ${error.message}`);
+        }
+    }
+
+    /**
+     * Look up the execution_ids attached to a bot reply message id.
+     * Returns an empty array when the message is unknown or has no
+     * sandbox executions associated with it.
+     * @param {string} messageId
+     * @returns {Promise<string[]>}
+     */
+    async getMessageExecutionIds(messageId) {
+        if (!this.db || !messageId) return [];
+        try {
+            const collection = this.db.collection('channel_messages');
+            const doc = await collection.findOne({ messageId });
+            return (doc && Array.isArray(doc.executionIds)) ? doc.executionIds : [];
+        } catch (error) {
+            logger.error(`Error reading executionIds for message ${messageId}: ${error.message}`);
+            return [];
         }
     }
 

@@ -20,6 +20,7 @@ const LinkwardenService = require('./services/LinkwardenService');
 const LinkwardenPollingService = require('./services/LinkwardenPollingService');
 const ChatService = require('./services/ChatService');
 const AgentClient = require('./services/AgentClient');
+const SandboxTraceService = require('./services/SandboxTraceService');
 const ImagenService = require('./services/ImagenService');
 const VeoService = require('./services/VeoService');
 const Mem0Service = require('./services/Mem0Service');
@@ -90,7 +91,14 @@ class DiscordBot {
     this.mongoService = new MongoService(config.mongo.uri);
     this.messageService = new MessageService(this.openaiClient);
     this.summarizationService = new SummarizationService(this.openaiClient, config, this.client, this.messageService, this.mongoService);
-    this.reactionHandler = new ReactionHandler(this.summarizationService, this.mongoService);
+    // SandboxTraceService is initialized lazily after Mongo connects (this.mongoService.db
+    // is null until then). The first reaction reveal will fetch traces directly from Mongo.
+    this.sandboxTraceService = null;
+    this.reactionHandler = new ReactionHandler(
+      this.summarizationService,
+      this.mongoService,
+      null, // wired after Mongo connects, see _ensureSandboxTraceService
+    );
     this.rssService = new RssService(this.mongoService, this.summarizationService, this.client);
     this.followUpService = new FollowUpService(this.mongoService, this.summarizationService, this.client);
 
@@ -471,6 +479,8 @@ class DiscordBot {
           'discord.message.id': reaction.message.id,
         }, async () => {
           await this.reactionHandler.handleNewsReaction(reaction, user);
+          this._ensureSandboxTraceService();
+          await this.reactionHandler.handleSandboxRevealReaction(reaction, user);
 
           // Handle follow-up reaction
           if (reaction.emoji.name === '📚') {
@@ -697,27 +707,76 @@ class DiscordBot {
       // Convert any generated images to Discord attachments
       const imageAttachments = this._createImageAttachments(result.images);
 
-      // Split if too long for Discord (2000 char limit)
+      // Split if too long for Discord (2000 char limit). Capture the last sent
+      // message so we can record sandbox executionIds against it for the
+      // reaction-reveal feature.
+      const executionIds = result.executionSummary?.executionIds || [];
+      let lastReply = null;
       if (response.length > 2000) {
         const chunks = this._splitMessage(response, 2000);
-        for (const chunk of chunks) {
-          await message.channel.send(chunk);
+        for (let i = 0; i < chunks.length; i++) {
+          lastReply = await message.channel.send(chunks[i]);
         }
-        // Send images after text chunks
         if (imageAttachments.length > 0) {
           await message.channel.send({ files: imageAttachments });
         }
       } else {
-        await message.reply({
+        lastReply = await message.reply({
           content: response,
           allowedMentions: { repliedUser: false }
         });
-        // Send images as follow-up
         if (imageAttachments.length > 0) {
           await message.channel.send({ files: imageAttachments });
         }
       }
+
+      // Persist the executionIds attached to this reply so 🔍/📜/🐛 can resolve.
+      if (executionIds.length > 0) {
+        await this._recordBotReplyExecutions(lastReply, response, executionIds);
+      }
     });
+  }
+
+  /**
+   * Lazy-init the SandboxTraceService once Mongo has connected. The Mongo
+   * client connects asynchronously after construction, so this.mongoService.db
+   * is null at bot-construction time but available by the time reactions fire.
+   * @private
+   */
+  _ensureSandboxTraceService() {
+    if (this.sandboxTraceService || !this.mongoService || !this.mongoService.db) return;
+    try {
+      const collection = this.mongoService.db.collection('sandbox_executions');
+      this.sandboxTraceService = new SandboxTraceService({ collection });
+      this.reactionHandler.sandboxTraceService = this.sandboxTraceService;
+      logger.info('SandboxTraceService initialized (sandbox_executions collection)');
+    } catch (e) {
+      logger.warn(`Failed to init SandboxTraceService: ${e.message}`);
+    }
+  }
+
+  /**
+   * Persist the bot's own reply when it has sandbox executionIds attached, so
+   * future 🔍/📜/🐛 reactions on that reply can look up the executions.
+   * @private
+   */
+  async _recordBotReplyExecutions(reply, content, executionIds) {
+    if (!reply || !reply.id || !executionIds || executionIds.length === 0) return;
+    if (!this.mongoService) return;
+    try {
+      await this.mongoService.recordChannelMessage({
+        messageId: reply.id,
+        channelId: reply.channel?.id || null,
+        guildId: reply.guild?.id || null,
+        authorId: this.client.user?.id || null,
+        authorName: this.client.user?.username || 'bot',
+        content,
+        timestamp: new Date(),
+        executionIds,
+      });
+    } catch (e) {
+      logger.warn(`Failed to record executionIds on bot reply ${reply.id}: ${e.message}`);
+    }
   }
 
   /**
