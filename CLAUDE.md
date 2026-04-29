@@ -167,7 +167,9 @@ The `channel-voice` personality dynamically learns the group's communication sty
 
 ## Agentic Sandbox
 
-When `AGENT_ENABLED=true`, channel-voice chats are routed through the Python agent sidecar (`discord-article-bot-agent`). The sidecar is an ADK Agent with one tool — `run_in_sandbox` — that spawns ephemeral gVisor pods per execution and returns `{exit_code, stdout, stderr, duration_ms, egress_events, gvisor_events}` to the model. Other personalities are unaffected.
+When `AGENT_ENABLED=true`, channel-voice chats are routed through the Python agent sidecar (`discord-article-bot-agent`). The sidecar is an ADK Agent with one tool — `run_in_sandbox` — that spawns ephemeral pods per execution and returns `{exit_code, stdout, stderr, duration_ms, egress_events, runtime_events}` to the model. Other personalities are unaffected.
+
+**Sandbox isolation:** Kata Containers (`runtimeClassName: kata-qemu`). Each `run_in_sandbox` call lands in its own tiny QEMU/KVM guest — the host kernel never executes the workload's syscalls. Originally specified for gVisor, but switched to Kata on 2026-04-29 because Harvester's immutable SLE Micro host OS makes installing `runsc` impractical, and KubeVirt-on-bare-metal is already the platform's native model. See `k8s/sandbox/README.md` for the rationale and the `kata-deploy` DaemonSet install flow. Cold start adds ~1.5–3s per call (VM boot); the agent prompt is aware of this so the model doesn't think the call hung.
 
 **Toggle:** `AGENT_ENABLED=false` reverts channel-voice to direct OpenAI immediately. The `AgentClient` health-polls every 5s and considers the sidecar unhealthy after 30s without a successful Health response, falling through to direct OpenAI when the sidecar is gone.
 
@@ -177,9 +179,9 @@ When `AGENT_ENABLED=true`, channel-voice chats are routed through the Python age
 
 **Reaction reveal:** on a bot reply that ran code, react with 🔍 (source code), 📜 (stdout + stderr if non-empty), or 🐛 (stderr only) to get the artifact attached.
 
-**Trace storage:** MongoDB `sandbox_executions` (one doc per call). The retention loop in the sidecar demotes >N (default 50) traces per user — older docs keep `exit_code`/`stdout`/`stderr`/`duration_ms` but null out `code`, `stdin`, `env_keys`, `egress_events`, `gvisor_events`, `agent_rationale`.
+**Trace storage:** MongoDB `sandbox_executions` (one doc per call). The retention loop in the sidecar demotes >N (default 50) traces per user — older docs keep `exit_code`/`stdout`/`stderr`/`duration_ms` but null out `code`, `stdin`, `env_keys`, `egress_events`, `runtime_events`, `agent_rationale`. The `runtime_events` field is empty by default under Kata (no built-in syscall-deny telemetry); the field is reserved for future `auditd`-in-guest signals.
 
-**Manifests:** `k8s/sandbox/` (tracked) — see its README for apply order and the two small edits the bot Deployment + NetworkPolicy need.
+**Manifests:** `k8s/sandbox/` (tracked) — see its README for the kata-deploy prereq, apply order, and the two small edits the bot Deployment + NetworkPolicy need.
 
 ## Embedding Data Quality Validation
 

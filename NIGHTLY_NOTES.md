@@ -61,9 +61,25 @@
 
 These steps cannot run from this session; they need cluster + registry access.
 
-1. **Prereq — install runsc on each Harvester worker node** (gVisor runtime). The `gvisor` RuntimeClass will exist once `runtimeclass-gvisor.yaml` is applied, but Pods will fail to start until `runsc` is on every node that might host them.
+> Runtime note: the sandbox uses **Kata Containers**, not gVisor. The original
+> spec called for gVisor + `runsc` per node, but Harvester's immutable SLE
+> Micro hosts make that fragile. Kata's pod-as-tiny-VM model is a stronger
+> isolation boundary AND a natural fit for KubeVirt-on-bare-metal — see the
+> rationale in `k8s/sandbox/README.md`.
 
-2. **Prereq — fill in pod and service CIDRs in `k8s/overlays/deployed/sandbox-networkpolicy.yaml`** (and re-copy from `k8s/sandbox/sandbox-networkpolicy.yaml`). Discover via:
+1. **Prereq — install Kata Containers on each Harvester worker node via `kata-deploy`** (upstream DaemonSet). Brief flow:
+   ```bash
+   kubectl label nodes <worker> katacontainers.io/kata-runtime=true
+   kubectl apply -f https://raw.githubusercontent.com/kata-containers/kata-containers/<TAG>/tools/packaging/kata-deploy/kata-deploy/base/kata-deploy.yaml
+   kubectl rollout status -n kube-system ds/kata-deploy --timeout=300s
+   # Smoke test:
+   kubectl run kata-smoke --rm -it --image=busybox \
+     --overrides='{"spec":{"runtimeClassName":"kata-qemu"}}' \
+     --restart=Never -- sh -c 'uname -a'
+   ```
+   Replace `<TAG>` with the latest [`kata-containers`](https://github.com/kata-containers/kata-containers/releases) release. See `k8s/sandbox/README.md` for the full play-by-play.
+
+2. **Prereq — verify pod and service CIDRs in `k8s/sandbox/sandbox-networkpolicy.yaml`.** Currently pinned to this Harvester cluster's RKE2 defaults (10.52.0.0/16 pod, 10.53.0.0/16 service). Confirm with:
    ```bash
    kubectl get pods -n kube-system -l component=kube-controller-manager -o yaml | grep -E "cluster-cidr|service-cluster-ip-range"
    ```
@@ -84,14 +100,15 @@ These steps cannot run from this session; they need cluster + registry access.
 
 4. **Apply manifests (Task 9.2):**
    ```bash
-   kubectl apply -f k8s/sandbox/runtimeclass-gvisor.yaml
-   kubectl apply -f k8s/sandbox/sandbox-serviceaccount.yaml \
+   kubectl apply -f k8s/sandbox/runtimeclass-kata.yaml
+   kubectl apply -n discord-article-bot \
+                  -f k8s/sandbox/sandbox-serviceaccount.yaml \
                   -f k8s/sandbox/agent-serviceaccount.yaml \
                   -f k8s/sandbox/agent-role.yaml \
                   -f k8s/sandbox/agent-rolebinding.yaml \
                   -f k8s/sandbox/configmap-sandbox.yaml \
                   -f k8s/sandbox/agent-networkpolicy.yaml \
-                  -f k8s/overlays/deployed/sandbox-networkpolicy.yaml \
+                  -f k8s/sandbox/sandbox-networkpolicy.yaml \
                   -f k8s/overlays/deployed/networkpolicy.yaml \
                   -f k8s/overlays/deployed/deployment.yaml \
                   -f k8s/sandbox/agent-service.yaml \

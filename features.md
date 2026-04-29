@@ -103,7 +103,7 @@
 
 ### Agentic Sandbox (channel-voice + run_in_sandbox)
 - **ADK Agent Sidecar**: Channel-voice chats route through a Python sidecar that wraps a `google-adk` Agent. The agent has one tool (`run_in_sandbox`) for autonomous code execution.
-- **Ephemeral gVisor Pods**: Each `run_in_sandbox` call spawns a fresh K8s Job under the `gvisor` RuntimeClass — 2 vCPU, 2 Gi RAM, 256 Mi tmpfs, 300 s wall-clock.
+- **Ephemeral Kata Pods**: Each `run_in_sandbox` call spawns a fresh K8s Job under the `kata-qemu` RuntimeClass — every sandbox pod gets its own tiny QEMU/KVM guest with 2 vCPU, 2 Gi RAM, 256 Mi tmpfs, 300 s wall-clock. The host kernel never executes the workload's syscalls.
 - **Multi-language**: Sandbox base image ships python, node, dotnet, go, rust, ollama plus common build/network tools.
 - **Egress Policy**: Public internet open; RFC1918, link-local, CGNAT, cluster pod/service CIDRs and the K8s API are denied at the NetworkPolicy layer. Optional Calico flow-log scraping records denied egress events on each trace.
 - **Concurrency Caps**: 2 simultaneous executions per user, 15 cluster-wide; over-limit calls return immediately with a typed reason.
