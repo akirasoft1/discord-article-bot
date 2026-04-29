@@ -71,15 +71,19 @@ def serve() -> None:
     # K8s, orchestrator, and agent assembly happen here. Imported lazily so unit
     # tests that import server.py don't pull google-adk or kubernetes.
     from kubernetes import config as kube_config, client as kube_client
+    from pymongo import MongoClient
     from .agent import ChannelVoiceAgent
     from .concurrency import ConcurrencyGate
     from .egress_scraper import NoopEgressScraper
     from .k8s_client import LiveK8sClient
     from .orchestrator import SandboxOrchestrator
+    from .retention import demote_old_traces
 
     kube_config.load_incluster_config()
     k8s_batch = kube_client.BatchV1Api()
     k8s_core = kube_client.CoreV1Api()
+    mongo = MongoClient(config.mongo_uri)
+    db = mongo.get_default_database()
 
     gate = ConcurrencyGate(
         per_user=config.sandbox_per_user_concurrency,
@@ -101,6 +105,24 @@ def serve() -> None:
         config=config, orchestrator=orch, base_system_prompt=_load_base_prompt(),
     )
 
+    async def _retention_loop(stop_event: asyncio.Event) -> None:
+        # Run once at startup so freshly-deployed sidecars catch up immediately,
+        # then every 24h. Wrapped in try/except so a single bad iteration cannot
+        # tear down the gRPC server.
+        while not stop_event.is_set():
+            try:
+                demoted = demote_old_traces(
+                    db, retention_per_user=config.sandbox_trace_retention_per_user,
+                )
+                if demoted:
+                    log.info("retention pass demoted %d traces", demoted)
+            except Exception:  # noqa: BLE001
+                log.exception("retention loop iteration failed")
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=24 * 3600)
+            except asyncio.TimeoutError:
+                continue
+
     async def _run() -> None:
         server = grpc.aio.server()
         agent_pb2_grpc.add_AgentServicer_to_server(AgentServicer(agent), server)
@@ -110,6 +132,7 @@ def serve() -> None:
 
         loop = asyncio.get_running_loop()
         stop_event = asyncio.Event()
+        retention_task = asyncio.create_task(_retention_loop(stop_event))
 
         def _request_stop(signum: int) -> None:
             log.info("shutting down (signal %s)", signum)
@@ -118,8 +141,15 @@ def serve() -> None:
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, _request_stop, sig)
 
-        await stop_event.wait()
-        await server.stop(grace=10)
+        try:
+            await stop_event.wait()
+        finally:
+            retention_task.cancel()
+            try:
+                await retention_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+            await server.stop(grace=10)
 
     asyncio.run(_run())
 
