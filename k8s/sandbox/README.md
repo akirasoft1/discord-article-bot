@@ -80,35 +80,39 @@ Append an egress rule allowing the bot to reach the agent sidecar's gRPC port:
           port: 50051
 ```
 
-## Prereq: install Kata via `kata-deploy`
+## Prereq: install Kata via the upstream Helm chart
 
-`kata-deploy` is the upstream DaemonSet that drops the Kata runtime binaries
-and the QEMU shim into `/opt/kata/` on each node and patches the
-containerd/CRI-O config to expose the `kata`, `kata-qemu`, and `kata-clh`
-handlers. On RKE2 (Harvester's K8s distro) the containerd config drop-in
-path is writable even on the immutable host because RKE2 needs to manage
-it itself.
-
-The exact upstream apply URL changes per release; check
-[`kata-containers/kata-containers`](https://github.com/kata-containers/kata-containers/tree/main/tools/packaging/kata-deploy)
-for the current `kata-deploy.yaml`. Typical flow:
+Upstream's preferred install path is the `kata-deploy` Helm chart, published
+as an OCI artifact at `oci://ghcr.io/kata-containers/kata-deploy-charts/kata-deploy`.
+The chart deploys the kata-deploy DaemonSet (which drops Kata binaries and
+the QEMU shim into `/opt/kata/` on each labeled node and patches the
+containerd config) AND installs the standard Kata `RuntimeClass`es
+(`kata`, `kata-qemu`, `kata-clh`, `kata-fc`). On RKE2 (Harvester's K8s
+distro) the containerd config drop-in path under `/var/lib/rancher/rke2/`
+is writable even on SLE Micro's immutable root because RKE2 needs to
+manage it itself.
 
 ```bash
-# Label the worker nodes that should host sandboxes.
-kubectl label nodes <worker> katacontainers.io/kata-runtime=true
+# Pin to the latest stable Kata release.
+export KATA_VERSION=$(curl -sSL https://api.github.com/repos/kata-containers/kata-containers/releases/latest | jq -r .tag_name)
+export KATA_CHART="oci://ghcr.io/kata-containers/kata-deploy-charts/kata-deploy"
+echo "kata version: $KATA_VERSION"
 
-# Apply the kata-deploy DaemonSet (URL: replace with the latest release).
-kubectl apply -f https://raw.githubusercontent.com/kata-containers/kata-containers/<TAG>/tools/packaging/kata-deploy/kata-deploy/base/kata-deploy.yaml
+# (Optional) inspect what's configurable for this release before installing.
+helm show values "$KATA_CHART" --version "$KATA_VERSION"
 
-# Wait for it to settle on every labeled node.
-kubectl rollout status -n kube-system ds/kata-deploy --timeout=300s
+# Install. The chart creates kata-deploy in kube-system by default and
+# installs the kata, kata-qemu, kata-clh, kata-fc RuntimeClasses for you.
+helm install kata-deploy "$KATA_CHART" --version "$KATA_VERSION" -n kube-system
 
-# Confirm the RuntimeClasses landed (kata-deploy ships its own; we
-# additionally apply our own kata-qemu one so the manifest is self-contained).
+# Wait for the DaemonSet to settle on every node it targets.
+kubectl rollout status -n kube-system ds/kata-deploy --timeout=600s
+
+# Confirm the kata-qemu RuntimeClass is present.
 kubectl get runtimeclass kata-qemu
 ```
 
-Smoke-test with a throwaway pod:
+Smoke-test with a throwaway pod that selects the runtime class:
 
 ```bash
 kubectl run kata-smoke --rm -it --image=busybox \
@@ -120,13 +124,18 @@ You should see a kernel version that is *not* the host's, plus the
 QEMU-style virtual CPU model — confirmation that the workload ran inside
 the guest VM and not on the host kernel.
 
+> **About `runtimeclass-kata.yaml` in this directory.** The Helm chart
+> already creates the `kata-qemu` RuntimeClass, so this manifest is
+> **not** part of the apply order below. It's kept in the repo as an
+> explicit, in-version-control declaration of the RuntimeClass we depend
+> on (and as a fallback if Kata is ever installed by some other path
+> that doesn't ship the RuntimeClass for us).
+
 ## Apply order (after kata-deploy is healthy)
 
 ```bash
-# 1. Cluster-wide RuntimeClass (idempotent)
-kubectl apply -f runtimeclass-kata.yaml
-
-# 2. Namespace-scoped resources
+# All resources are namespace-scoped; the Helm chart already created the
+# RuntimeClass so we don't need to apply runtimeclass-kata.yaml here.
 kubectl apply -n discord-article-bot \
   -f agent-serviceaccount.yaml \
   -f sandbox-serviceaccount.yaml \
@@ -141,7 +150,7 @@ kubectl apply -n discord-article-bot \
 
 ## Pre-apply checklist
 
-- [ ] `kata-deploy` DaemonSet healthy on every worker node that should host sandboxes
+- [ ] `helm list -n kube-system` shows `kata-deploy` deployed; the DaemonSet is healthy on every worker node
 - [ ] `sandbox-networkpolicy.yaml`'s pod/service CIDRs match this cluster (default: 10.52.0.0/16 and 10.53.0.0/16)
 - [ ] `mvilliger/discord-article-bot-agent:<TAG>` and `mvilliger/sandbox-base:<TAG>` pushed (Task 9.1)
 - [ ] Bot deployment + bot networkpolicy updates merged (see above)

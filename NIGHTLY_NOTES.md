@@ -109,17 +109,18 @@ These steps cannot run from this session; they need cluster + registry access.
 > isolation boundary AND a natural fit for KubeVirt-on-bare-metal — see the
 > rationale in `k8s/sandbox/README.md`.
 
-1. **Prereq — install Kata Containers on each Harvester worker node via `kata-deploy`** (upstream DaemonSet). Brief flow:
+1. **Prereq — install Kata Containers via the upstream Helm chart.** This is the upstream-recommended path; the chart deploys both the kata-deploy DaemonSet and the standard `kata-qemu` / `kata-clh` / `kata-fc` RuntimeClasses for us:
    ```bash
-   kubectl label nodes <worker> katacontainers.io/kata-runtime=true
-   kubectl apply -f https://raw.githubusercontent.com/kata-containers/kata-containers/<TAG>/tools/packaging/kata-deploy/kata-deploy/base/kata-deploy.yaml
-   kubectl rollout status -n kube-system ds/kata-deploy --timeout=300s
+   export KATA_VERSION=$(curl -sSL https://api.github.com/repos/kata-containers/kata-containers/releases/latest | jq -r .tag_name)
+   export KATA_CHART="oci://ghcr.io/kata-containers/kata-deploy-charts/kata-deploy"
+   helm install kata-deploy "$KATA_CHART" --version "$KATA_VERSION" -n kube-system
+   kubectl rollout status -n kube-system ds/kata-deploy --timeout=600s
    # Smoke test:
    kubectl run kata-smoke --rm -it --image=busybox \
      --overrides='{"spec":{"runtimeClassName":"kata-qemu"}}' \
      --restart=Never -- sh -c 'uname -a'
    ```
-   Replace `<TAG>` with the latest [`kata-containers`](https://github.com/kata-containers/kata-containers/releases) release. See `k8s/sandbox/README.md` for the full play-by-play.
+   See `k8s/sandbox/README.md` for the full play-by-play including how to inspect the Helm values before install and what the smoke-test output should look like.
 
 2. **Prereq — verify pod and service CIDRs in `k8s/sandbox/sandbox-networkpolicy.yaml`.** Currently pinned to this Harvester cluster's RKE2 defaults (10.52.0.0/16 pod, 10.53.0.0/16 service). Confirm with:
    ```bash
@@ -140,9 +141,8 @@ These steps cannot run from this session; they need cluster + registry access.
    ```
    The sandbox image is large (~8Gi); first push will take a while.
 
-4. **Apply manifests (Task 9.2):**
+4. **Apply manifests (Task 9.2).** RuntimeClass already exists thanks to the Helm chart, so we don't apply `runtimeclass-kata.yaml` (it's kept in the repo as documentation only):
    ```bash
-   kubectl apply -f k8s/sandbox/runtimeclass-kata.yaml
    kubectl apply -n discord-article-bot \
                   -f k8s/sandbox/sandbox-serviceaccount.yaml \
                   -f k8s/sandbox/agent-serviceaccount.yaml \
