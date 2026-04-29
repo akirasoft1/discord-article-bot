@@ -6,6 +6,40 @@
 - **Author**: Michael Villiger + Claude Opus 4.7 (1M context)
 - **Audience**: ~5 long-tenured technologists, several with offensive-security backgrounds, who are the only users of this Discord bot and who explicitly want a playground.
 
+## Addendum (2026-04-29): Runtime swapped from gVisor to Kata Containers
+
+This spec was originally written assuming gVisor (`runsc`) as the sandbox
+runtime. After spec review, while planning the Phase 9 cluster rollout, it
+became clear that:
+
+1. The cluster runs on Harvester (immutable SLE Micro host OS, KubeVirt for
+   VM workloads). Installing `runsc` into the host filesystem on each
+   worker node is fragile under SLE Micro's transactional update model —
+   the install either fails outright or gets wiped on the next OS update.
+2. Kata Containers (`runtimeClassName: kata-qemu`) puts each sandbox pod in
+   its own QEMU/KVM guest with a fresh kernel. The host kernel never
+   executes the workload's syscalls. That's a stronger isolation boundary
+   than gVisor's ptrace-style filtering and a natural fit for a cluster
+   that already runs KubeVirt for "real" VMs.
+
+The body of this spec has been updated in place to refer to Kata throughout.
+The few user-visible consequences:
+
+- **Cold start per call:** ~1.5–3 s (VM boot) vs. gVisor's ~200–500 ms.
+  Acceptable in a Discord conversational context; the agent prompt is
+  aware of it so the model doesn't think the call has hung.
+- **No syscall-deny telemetry.** What was the `gvisor_events` field on
+  each trace is now a runtime-neutral `runtime_events` and stays empty
+  under Kata by default. (Reserved for future `auditd`-in-guest signals
+  if we decide we want them.)
+- **Host-side memory overhead** per pod: ~50–100 MiB higher (guest kernel
+  + Kata agent). Stays within the existing per-execution limits.
+- **Install path:** the `kata-deploy` DaemonSet replaces the per-node
+  `runsc` install. See `k8s/sandbox/README.md`.
+
+Everything else — NetworkPolicy, RBAC, sandbox image, agent architecture,
+trace schema, retention model — is unchanged.
+
 ## Mandate
 
 Quoted verbatim from the channel, 2026-04-28:
@@ -18,7 +52,7 @@ This spec exists to step it up.
 
 ### 1.1 What this is
 
-An agentic sandbox skills runtime that lets the bot execute arbitrary user-prompted code inside an isolated, network-egress-permitted gVisor pod, autonomously, in response to natural-language requests in `/chat` and `@mention` flows.
+An agentic sandbox skills runtime that lets the bot execute arbitrary user-prompted code inside an isolated, network-egress-permitted Kata Containers pod, autonomously, in response to natural-language requests in `/chat` and `@mention` flows.
 
 The bot stops being "a chat bot pushing prompts to the LLM and nothing more." It becomes a chat bot that, when the agent decides code execution is the right answer, writes code, runs it in a sealed-from-cluster but internet-reachable Linux environment, observes the result, iterates if needed, and reports back.
 
@@ -26,7 +60,7 @@ The bot stops being "a chat bot pushing prompts to the LLM and nothing more." It
 
 The users explicitly want a playground they can attempt to break. **Big attack surface is a feature.** The system must:
 
-- **Withstand** the friend group's escape attempts long enough to be entertaining (gVisor escapes are real CVEs; the system isn't claiming "unbreakable," it's claiming "interesting to break").
+- **Withstand** the friend group's escape attempts long enough to be entertaining (Kata escapes via VM/hypervisor bugs are real CVEs; the system isn't claiming "unbreakable," it's claiming "interesting to break").
 - **Contain** any successful escape so it stays inside the sandbox tier and does not reach the bot's data, the cluster's other workloads, or the home network behind the cluster.
 - **Log** escape attempts for postmortem fun (this is part of the value, not just incident response).
 
@@ -39,13 +73,13 @@ It explicitly does *not* try to defend against:
 
 **In:**
 - ADK-backed agent runtime (Python sidecar pod) reachable from the Node bot via gRPC.
-- Single agent tool: `run_in_sandbox(language, code, stdin?, env?)`. Spawns one gVisor pod, executes, returns structured result.
+- Single agent tool: `run_in_sandbox(language, code, stdin?, env?)`. Spawns one Kata-isolated pod (own QEMU/KVM guest), executes, returns structured result.
 - Autonomous routing: the existing `/chat` and `@mention` paths flow through the agent, which decides when to call the tool.
-- Sandbox: gVisor `runsc` runtime class, fresh pod per execution, 2 vCPU / 2Gi / 256Mi tmpfs / 300s wall-clock.
+- Sandbox: Kata Containers `kata-qemu` runtime class, fresh pod per execution, 2 vCPU / 2Gi / 256Mi tmpfs / 300s wall-clock.
 - Network: open public internet, blocked from RFC1918 + cluster CIDR + K8s API + Harvester subnets.
 - Concurrency: 2 per user, 15 cluster-wide.
 - Rendering: minimal narrative replies; code revealed by 🔍 reaction; full output by 📜; stderr-only by 🐛.
-- Storage: outputs forever; full traces (code, stdin, stdout, stderr, exit, timing, egress destinations, gVisor flags) for last 50 executions per user.
+- Storage: outputs forever; full traces (code, stdin, stdout, stderr, exit, timing, egress destinations, runtime events) for last 50 executions per user.
 - No bot keys in sandbox. BYO-key supported and documented.
 
 **Out (explicitly deferred — these are *future specs*, not TODOs):**
@@ -107,7 +141,7 @@ It explicitly does *not* try to defend against:
                                      │ creates/deletes Jobs
                                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Sandbox pod  (NEW, ephemeral, runtimeClass: gvisor)             │
+│  Sandbox pod  (NEW, ephemeral, runtimeClass: kata-qemu)             │
 │  - One per execution                                             │
 │  - Image: discord-article-bot/sandbox-base:<tag>                 │
 │  - 2 vCPU / 2Gi / 256Mi tmpfs                                    │
@@ -131,7 +165,7 @@ Thin gRPC client used by `ChatService.chat()` when personality is `channel-voice
 
 **(3) SandboxOrchestrator (Python, in sidecar pod, in-process)** — *new module*
 - Concurrency: per-user + global `asyncio.Semaphore`. Single sidecar replica means no distributed coordination in v1. **Documented constraint: do not scale the sidecar past 1 replica without revisiting concurrency.**
-- Pod template: K8s Job with `runtimeClassName: gvisor`, `activeDeadlineSeconds: 300`, `automountServiceAccountToken: false`, resource limits, no env vars beyond what the user/agent supplied, name pattern `sandbox-<userid-short>-<uuid>`.
+- Pod template: K8s Job with `runtimeClassName: kata-qemu`, `activeDeadlineSeconds: 300`, `automountServiceAccountToken: false`, resource limits, no env vars beyond what the user/agent supplied, name pattern `sandbox-<userid-short>-<uuid>`.
 - Lifecycle: create Job → wait Ready (max 30s) → push code via stdin → wait completion or deadline → tail logs → fetch egress events → delete Job (foreground propagation).
 - Failure modes: pod unschedulable, image pull failure, OOM, deadline-exceeded, K8s API transient errors (retry once with exponential backoff, then give up).
 
@@ -162,7 +196,7 @@ Thin gRPC client used by `ChatService.chat()` when personality is `channel-voice
    ├─ Stream code to executor; wait completion (≤300s)
    ├─ Capture stdout/stderr; capture exit; capture egress events
    ├─ Delete Job; release semaphores
-   └─ Return ToolResult{exit, stdout, stderr, duration_ms, egress[], gvisor_events[]}
+   └─ Return ToolResult{exit, stdout, stderr, duration_ms, egress[], runtime_events[]}
 6. Agent continues loop (may call run_in_sandbox up to 8x per turn)
 7. Sidecar writes trace doc to Mongo
 8. Sidecar returns ChatResponse to bot
@@ -231,7 +265,7 @@ One document per `run_in_sandbox` tool call. Linked to the originating Discord t
       reason: "string|null"                  // e.g. "matched RFC1918 deny"
     }
   ],
-  gvisor_events: [
+  runtime_events: [
     {
       timestamp: ISODate,
       kind: "string",                        // e.g. "syscall_blocked", "seccomp_violation"
@@ -267,7 +301,7 @@ Last index supports the future "where has user X's code been calling out to" inf
 Implementation: traces stay full forever by default; a daily cron job (running in the sidecar pod for proximity to Mongo) demotes old traces in-place by stripping high-cost fields once a user has more than 50 documents.
 
 **Demotion preserves**: `user_id`, `parent_interaction_id`, `language`, `exit_code`, `stdout`, `stderr`, `duration_ms`, `created_at`, `demoted_at`.
-**Demotion strips**: `code`, `stdin`, `env_keys`, `egress_events`, `gvisor_events`, `agent_rationale`, `resource_usage`.
+**Demotion strips**: `code`, `stdin`, `env_keys`, `egress_events`, `runtime_events`, `agent_rationale`, `resource_usage`.
 
 Demotion is irreversible. Documented as such.
 
@@ -366,18 +400,18 @@ Everything in existing `discord-article-bot` namespace. Three pod kinds (steady 
 ```
 discord-article-bot         (existing — Node bot)
 discord-article-bot-agent   (NEW — Python ADK sidecar)
-sandbox-<userid>-<uuid>     (NEW, ephemeral — gVisor pods, 0..15 concurrent)
+sandbox-<userid>-<uuid>     (NEW, ephemeral — Kata pods, 0..15 concurrent)
 ```
 
 ```yaml
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
-  name: gvisor
-handler: runsc
+  name: kata-qemu
+handler: kata
 ```
 
-**Prerequisite**: each Harvester worker node needs `runsc` installed and registered with containerd. One-time per-node setup; deployment prereq, not a K8s manifest. If gVisor nodes don't exist yet, install via Harvester node bootstrap or DaemonSet.
+**Prerequisite**: each Harvester worker node needs Kata installed via the upstream `kata-deploy` DaemonSet. One-time per-node setup; deployment prereq, not a K8s manifest. If Kata is not installed yet, apply `kata-deploy` (see `k8s/sandbox/README.md`).
 
 ### 4.2 ServiceAccounts & RBAC
 
@@ -472,7 +506,7 @@ spec:
         app.kubernetes.io/component: sandbox
         sandbox.execution-id: "<uuid>"
     spec:
-      runtimeClassName: gvisor
+      runtimeClassName: kata-qemu
       automountServiceAccountToken: false
       serviceAccountName: sandbox-sa
       restartPolicy: Never
@@ -654,7 +688,7 @@ v1.1 candidate: migrate to Dynatrace OneAgent network flow data (Bindplane integ
 Rolling release order (avoids bootstrap deadlock):
 
 1. Apply RuntimeClass cluster-wide (one-time).
-2. Apply gVisor node setup (one-time, per-node).
+2. Apply `kata-deploy` (DaemonSet, one-time).
 3. Build & push `sandbox-base:<tag>`. Pre-pull on all nodes.
 4. Apply sandbox NetworkPolicy + sandbox-sa.
 5. Apply agent-sa, agent Role, agent NetworkPolicy.
@@ -675,11 +709,11 @@ System prompt = existing channel-voice prompt material (`prompt.txt` + dynamic v
 
 ```
 You have access to a sandboxed Linux environment via the run_in_sandbox tool.
-The sandbox runs in gVisor with 2 vCPU, 2Gi RAM, 256Mi tmpfs, 300s wall clock.
+Each call lands in a fresh, lightweight Kata VM with 2 vCPU, 2Gi RAM, 256Mi tmpfs, 300s wall clock.
 It has internet access (RFC1918 blocked) and ships with python, node, dotnet,
 go, rust, ollama, common build/network tools. You cannot persist state between
 calls — each invocation is a fresh pod. You receive {exit_code, stdout, stderr,
-duration_ms, egress_events, gvisor_events} back. You may call the tool zero or
+duration_ms, egress_events, runtime_events} back. You may call the tool zero or
 more times per turn. You may chain calls (run, observe, run again) up to a
 budget of 8 calls per turn.
 
@@ -718,7 +752,7 @@ def run_in_sandbox(
     stdin: Optional[str] = None,
     env: Optional[dict[str, str]] = None,
 ) -> SandboxResult:
-    """Execute code in the gVisor sandbox.
+    """Execute code in the Kata sandbox.
 
     Args:
       language: which runtime to use. 'raw' runs `code` as a literal sh -c command.
@@ -730,7 +764,7 @@ def run_in_sandbox(
 
     Returns:
       SandboxResult with exit_code, stdout, stderr, duration_ms,
-      egress_events, gvisor_events, and a stable execution_id.
+      egress_events, runtime_events, and a stable execution_id.
     """
 ```
 
@@ -775,7 +809,7 @@ If we observe systematic miscalibration, we tighten the prompt. **We do not add 
 - Concurrency-gate tests (per-user + global semaphore behavior).
 - Job-template generation tests (verify NetworkPolicy labels, runtimeClass, no SA token, env-var passthrough rules).
 
-**Integration tests** (real gVisor required, manual before cuts, NOT in normal CI):
+**Integration tests** (real Kata-enabled cluster required, manual before cuts, NOT in normal CI):
 - End-to-end "hello world" per language.
 - Wall-clock timeout: `sleep 400` → `timed_out: true`.
 - OOM: `python -c 'a=" "*10**10'` → `oom_killed: true`.
@@ -787,7 +821,7 @@ If we observe systematic miscalibration, we tighten the prompt. **We do not add 
 - Concurrency cap: 3 simultaneous from same user → 3rd returns `user_concurrency_cap` immediately.
 - Sidecar-down fallback: kill sidecar, send `/chat hello`, bot replies normally without sandbox.
 
-**Adversarial tests**: run by friend group as part of v1 launch. Findings (gVisor escapes, env leaks, RFC1918 reachability, concurrency cap bypass) get filed upstream where applicable and tightened where we control.
+**Adversarial tests**: run by friend group as part of v1 launch. Findings (Kata/VMM escapes, env leaks, RFC1918 reachability, concurrency cap bypass) get filed upstream where applicable and tightened where we control.
 
 ### 5.6 v1 acceptance checklist
 
@@ -795,7 +829,7 @@ The PR landing v1 must pass all of these before merge:
 
 - [ ] All Jest tests pass (existing 697 + new ~30).
 - [ ] All pytest tests pass in the sidecar.
-- [ ] Manual integration test list (§5.5) passes against a real gVisor-enabled cluster.
+- [ ] Manual integration test list (§5.5) passes against a real Kata-enabled cluster.
 - [ ] `kubectl get networkpolicy -n discord-article-bot` shows new sandbox + agent policies; bot policy unchanged.
 - [ ] `kubectl auth can-i --as=system:serviceaccount:discord-article-bot:sandbox-sa get pods -n discord-article-bot` returns `no`.
 - [ ] `kubectl auth can-i --as=system:serviceaccount:discord-article-bot:agent-sa create jobs -n discord-article-bot` returns `yes`; same SA `get nodes` returns `no`.
@@ -818,7 +852,7 @@ Captured from brainstorming so future-us doesn't reinvent:
 
 - **Per-user authored skills** (B from the original brainstorm): users register named skills with their own prompts and scoped tools. v1's runtime is the substrate.
 - **A2A protocol exposure**: this bot's agent becomes addressable by other ADK agents over A2A. Falls out of having an ADK agent at all; mostly a matter of exposing the right port and identity.
-- **Trace inference skill**: built-in skill that takes user_id (or "everyone") + time range and runs LLM analysis over the execution corpus. "What's user X been trying to break this week," "find any syscalls flagged by gVisor," "summarize all DNS-touching runs."
+- **Trace inference skill**: built-in skill that takes user_id (or "everyone") + time range and runs LLM analysis over the execution corpus. "What's user X been trying to break this week," "find any unusual runtime events," "summarize all DNS-touching runs."
 - **δ context bridge** (rainy day): per-execution opt-in for the agent to feed selected channel/Mem0 context into the sandbox env. Interesting precisely because of the emergent channel-memory behavior the group already likes.
 - **Admin-only KubeVirt long-running shell**: DM-only; gated on `config.discord.adminUserIds`; full VM via existing Harvester KubeVirt; LAN-reachable; for "interact with a shell in a VM" use cases.
 - **Egress observation via Dynatrace**: replace CNI-flow-log scraping with Dynatrace OneAgent network flow data, post-Bindplane integration.

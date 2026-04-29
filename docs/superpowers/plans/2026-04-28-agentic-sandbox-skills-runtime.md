@@ -2,11 +2,23 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an ADK-backed agent sidecar with a single `run_in_sandbox` tool that lets the Discord bot autonomously execute user-prompted code in ephemeral gVisor pods, with reaction-based output reveal in Discord.
+> **Addendum (2026-04-29):** The sandbox runtime was swapped from gVisor to
+> Kata Containers (`runtimeClassName: kata-qemu`) before any of Phase 9 ran.
+> Reason: Harvester's immutable host OS makes per-node `runsc` install
+> fragile, and Kata's pod-as-tiny-VM model fits KubeVirt-on-bare-metal
+> natively. Code, manifests, and tests have been updated in place; the
+> trace field `gvisor_events` is now `runtime_events` (runtime-neutral
+> name). See the spec's addendum for the full rationale and trade-offs,
+> and `k8s/sandbox/README.md` for the `kata-deploy` install flow that
+> replaces the per-node `runsc` prereq. The body of this plan still
+> contains some historical "gVisor" wording in the as-shipped task
+> snippets — treat those as historical context, not as instructions.
 
-**Architecture:** Node bot calls a new Python sidecar pod over gRPC. The sidecar hosts a `google-adk` Agent that, on its own initiative, calls `run_in_sandbox`, which the sidecar's in-process `SandboxOrchestrator` translates into a fresh K8s Job with `runtimeClassName: gvisor`. The sandbox pod has open public-internet egress but is denied RFC1918 + cluster CIDR + K8s API by NetworkPolicy. Per-execution traces persist to a new MongoDB collection. Bot UX is unchanged on the surface — `/chat`, `@mention`, and reply still work the same; reaction emojis (🔍 🐛 📜) on the bot's reply reveal full code/output as Discord attachments.
+**Goal:** Add an ADK-backed agent sidecar with a single `run_in_sandbox` tool that lets the Discord bot autonomously execute user-prompted code in ephemeral Kata-isolated pods, with reaction-based output reveal in Discord.
 
-**Tech Stack:** Node 20, Python 3.12, `google-adk`, `grpcio` / `@grpc/grpc-js`, MongoDB, Kubernetes (Harvester), gVisor (`runsc`), Calico CNI, Debian-based sandbox image, Jest + pytest, OpenTelemetry → Dynatrace.
+**Architecture:** Node bot calls a new Python sidecar pod over gRPC. The sidecar hosts a `google-adk` Agent that, on its own initiative, calls `run_in_sandbox`, which the sidecar's in-process `SandboxOrchestrator` translates into a fresh K8s Job with `runtimeClassName: kata-qemu`. The sandbox pod has open public-internet egress but is denied RFC1918 + cluster CIDR + K8s API by NetworkPolicy. Per-execution traces persist to a new MongoDB collection. Bot UX is unchanged on the surface — `/chat`, `@mention`, and reply still work the same; reaction emojis (🔍 🐛 📜) on the bot's reply reveal full code/output as Discord attachments.
+
+**Tech Stack:** Node 20, Python 3.12, `google-adk`, `grpcio` / `@grpc/grpc-js`, MongoDB, Kubernetes (Harvester / RKE2), Kata Containers (`kata-qemu`), Calico CNI, Debian-based sandbox image, Jest + pytest, OpenTelemetry → Dynatrace.
 
 **Spec:** `docs/superpowers/specs/2026-04-28-agentic-sandbox-skills-runtime-design.md` — read this before starting.
 
