@@ -1,7 +1,8 @@
 """gRPC server entrypoint for the agent sidecar."""
+import asyncio
 import logging
+import os
 import signal
-from concurrent import futures
 
 import grpc
 
@@ -11,38 +12,116 @@ from .tracing import setup as setup_tracing
 
 log = logging.getLogger(__name__)
 
+_BASE_PROMPT_PATH = "/app/prompt/base.txt"
+_DEFAULT_BASE_PROMPT = "You are a helpful assistant."
+
 
 class AgentServicer(agent_pb2_grpc.AgentServicer):
-    def __init__(self) -> None:
-        pass
+    """gRPC servicer. Health stays sync (no I/O); Chat is async and delegates
+    to the injected ChannelVoiceAgent. The agent dependency is optional so the
+    Health endpoint can be served before agent assembly is wired in."""
 
-    def Health(self, request: agent_pb2.HealthRequest, context):  # noqa: N802
+    def __init__(self, channel_voice_agent=None) -> None:
+        self._agent = channel_voice_agent
+
+    async def Health(self, request, context):  # noqa: N802
         return agent_pb2.HealthResponse(healthy=True)
 
-    def Chat(self, request: agent_pb2.ChatRequest, context):  # noqa: N802
-        # Wired in Phase 4.
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Chat not yet implemented")
-        return agent_pb2.ChatResponse()
+    async def Chat(self, request, context):  # noqa: N802
+        if self._agent is None:
+            await context.abort(grpc.StatusCode.UNIMPLEMENTED, "Chat agent not configured")
+            return agent_pb2.ChatResponse()
+        try:
+            result = await self._agent.process_chat(
+                user_id=request.user_id,
+                user_message=request.user_message,
+            )
+        except Exception as e:  # noqa: BLE001
+            log.exception("Chat handler failed")
+            await context.abort(grpc.StatusCode.INTERNAL, str(e))
+            return agent_pb2.ChatResponse()
+
+        summary = agent_pb2.ExecutionSummary(
+            execution_count=len(result.execution_ids),
+            any_failed=result.any_failed,
+            execution_ids=result.execution_ids,
+        )
+        return agent_pb2.ChatResponse(
+            message_text=result.message_text,
+            summary=summary,
+            fallback_occurred=False,
+        )
+
+
+def _load_base_prompt() -> str:
+    if os.path.exists(_BASE_PROMPT_PATH):
+        try:
+            with open(_BASE_PROMPT_PATH, "r", encoding="utf-8") as f:
+                return f.read()
+        except OSError:
+            log.warning("failed to read %s; using default base prompt", _BASE_PROMPT_PATH)
+    return _DEFAULT_BASE_PROMPT
 
 
 def serve() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config = load_config()
     setup_tracing(config)
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=16))
-    agent_pb2_grpc.add_AgentServicer_to_server(AgentServicer(), server)
-    server.add_insecure_port(config.grpc_listen_addr)
-    server.start()
-    log.info(f"agent sidecar listening on {config.grpc_listen_addr}")
 
-    def handle_term(signum, frame):
-        log.info("shutting down (signal %s)", signum)
-        server.stop(grace=10)
+    # K8s, orchestrator, and agent assembly happen here. Imported lazily so unit
+    # tests that import server.py don't pull google-adk or kubernetes.
+    from kubernetes import config as kube_config, client as kube_client
+    from .agent import ChannelVoiceAgent
+    from .concurrency import ConcurrencyGate
+    from .egress_scraper import NoopEgressScraper
+    from .k8s_client import LiveK8sClient
+    from .orchestrator import SandboxOrchestrator
 
-    signal.signal(signal.SIGTERM, handle_term)
-    signal.signal(signal.SIGINT, handle_term)
-    server.wait_for_termination()
+    kube_config.load_incluster_config()
+    k8s_batch = kube_client.BatchV1Api()
+    k8s_core = kube_client.CoreV1Api()
+
+    gate = ConcurrencyGate(
+        per_user=config.sandbox_per_user_concurrency,
+        global_=config.sandbox_global_concurrency,
+    )
+    k8s = LiveK8sClient(batch=k8s_batch, core=k8s_core, namespace=config.k8s_namespace)
+    orch = SandboxOrchestrator(
+        k8s=k8s,
+        gate=gate,
+        egress=NoopEgressScraper(),
+        namespace=config.k8s_namespace,
+        sandbox_image=config.sandbox_base_image,
+        wall_clock_seconds=config.sandbox_wall_clock_seconds,
+        cpu_limit=config.sandbox_cpu_limit,
+        memory_limit=config.sandbox_memory_limit,
+    )
+
+    agent = ChannelVoiceAgent(
+        config=config, orchestrator=orch, base_system_prompt=_load_base_prompt(),
+    )
+
+    async def _run() -> None:
+        server = grpc.aio.server()
+        agent_pb2_grpc.add_AgentServicer_to_server(AgentServicer(agent), server)
+        server.add_insecure_port(config.grpc_listen_addr)
+        await server.start()
+        log.info("agent sidecar listening on %s", config.grpc_listen_addr)
+
+        loop = asyncio.get_running_loop()
+        stop_event = asyncio.Event()
+
+        def _request_stop(signum: int) -> None:
+            log.info("shutting down (signal %s)", signum)
+            stop_event.set()
+
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, _request_stop, sig)
+
+        await stop_event.wait()
+        await server.stop(grace=10)
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":
