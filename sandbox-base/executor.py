@@ -45,12 +45,18 @@ def main() -> None:
             proc_argv,
             input=stdin_data,
             text=True,
-            capture_output=False,
+            capture_output=True,
             timeout=None,
         )
+        if result.stdout:
+            sys.stdout.write(result.stdout)
+        if result.stderr:
+            for line in result.stderr.splitlines():
+                sys.stdout.write(f"__SBSTDERR__:{line}\n")
+        sys.stdout.flush()
         sys.exit(result.returncode)
     except FileNotFoundError as e:
-        print(f"runtime missing: {e}", file=sys.stderr)
+        sys.stdout.write(f"__SBSTDERR__:runtime missing: {e}\n")
         sys.exit(127)
 
 
