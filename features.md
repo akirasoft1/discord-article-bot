@@ -101,6 +101,17 @@
 - **A/B Logging**: Optional side-by-side comparison logging of styled vs. unstyled responses
 - **Default Personality**: Channel Voice becomes the default when enabled, cascading to Uncensored then Friendly
 
+### Agentic Sandbox (channel-voice + run_in_sandbox)
+- **ADK Agent Sidecar**: Channel-voice chats route through a Python sidecar that wraps a `google-adk` Agent. The agent has one tool (`run_in_sandbox`) for autonomous code execution.
+- **Ephemeral gVisor Pods**: Each `run_in_sandbox` call spawns a fresh K8s Job under the `gvisor` RuntimeClass — 2 vCPU, 2 Gi RAM, 256 Mi tmpfs, 300 s wall-clock.
+- **Multi-language**: Sandbox base image ships python, node, dotnet, go, rust, ollama plus common build/network tools.
+- **Egress Policy**: Public internet open; RFC1918, link-local, CGNAT, cluster pod/service CIDRs and the K8s API are denied at the NetworkPolicy layer. Optional Calico flow-log scraping records denied egress events on each trace.
+- **Concurrency Caps**: 2 simultaneous executions per user, 15 cluster-wide; over-limit calls return immediately with a typed reason.
+- **Per-Turn Tool Budget**: Configurable cap on `run_in_sandbox` calls per agent turn (default 8) so a single message cannot loop infinitely.
+- **Reaction Reveal**: React to a bot reply with 🔍 / 📜 / 🐛 to attach the source code, stdout (+stderr if non-empty), or stderr-only of the latest sandbox call.
+- **Trace Storage**: Every execution lands in MongoDB `sandbox_executions` with full code/stdout/stderr/egress events. Retention loop demotes traces older than the most recent N per user (default 50) to a thin audit-only form.
+- **Graceful Fallback**: When the sidecar is unhealthy or `AGENT_ENABLED=false`, the bot transparently uses the existing direct-OpenAI path. No restart needed to flip.
+
 ### Monitoring & Observability
 - **OpenTelemetry Tracing**: Distributed tracing for Dynatrace
 - **OpenLLMetry Integration**: Captures full LLM request/response content in traces via `gen_ai.*` attributes
