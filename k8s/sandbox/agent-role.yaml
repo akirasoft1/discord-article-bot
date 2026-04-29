@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-sandbox-orchestrator
+  namespace: discord-article-bot
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "delete", "watch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/attach"]
+    verbs: ["get", "list", "watch", "create"]

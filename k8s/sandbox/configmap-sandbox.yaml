@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sandbox-config
+  namespace: discord-article-bot
+data:
+  SANDBOX_INLINE_OUTPUT_CHARS: "750"
+  SANDBOX_WALL_CLOCK_SECONDS: "300"
+  SANDBOX_PER_USER_CONCURRENCY: "2"
+  SANDBOX_GLOBAL_CONCURRENCY: "15"
+  SANDBOX_MEMORY_LIMIT: "2Gi"
+  SANDBOX_CPU_LIMIT: "2"
+  SANDBOX_TRACE_RETENTION_PER_USER: "50"
+  SANDBOX_AGENT_TURN_CALL_BUDGET: "8"
+  AGENT_ENABLED: "true"
+  AGENT_GRPC_ADDR: "discord-article-bot-agent.discord-article-bot.svc.cluster.local:50051"

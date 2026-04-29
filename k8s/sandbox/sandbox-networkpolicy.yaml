@@ -1,0 +1,41 @@
+# NOTE: <CLUSTER_POD_CIDR> and <CLUSTER_SERVICE_CIDR> below are PLACEHOLDERS.
+# Before applying, replace them with the cluster's pod and service CIDRs.
+# Discover with one of:
+#   kubectl cluster-info dump | grep -E "cluster-cidr|service-cluster-ip-range" | head
+#   kubectl get pods -n kube-system -l component=kube-controller-manager -o yaml \
+#     | grep -E "cluster-cidr|service-cluster-ip-range"
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-egress
+  namespace: discord-article-bot
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: sandbox
+  policyTypes: ["Egress", "Ingress"]
+  ingress: []
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 100.64.0.0/10
+              - <CLUSTER_POD_CIDR>      # replace with actual pod CIDR
+              - <CLUSTER_SERVICE_CIDR>  # replace with actual service CIDR
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
