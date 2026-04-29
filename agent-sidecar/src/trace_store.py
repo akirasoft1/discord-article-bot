@@ -29,7 +29,12 @@ class ExecutionRecord:
     oom_killed: bool
     orchestrator_error: str | None
     egress_events: list[dict[str, Any]]
-    gvisor_events: list[dict[str, Any]]
+    # Generic "interesting runtime events" bucket. Under gVisor this would
+    # have held syscall denials; under Kata it stays empty by default (the
+    # guest kernel handles syscalls, no host-level interception). Kept under
+    # a runtime-neutral name so a future runtime swap doesn't churn the
+    # trace schema.
+    runtime_events: list[dict[str, Any]]
     resource_usage: dict[str, Any]
     pod_name: str
     node_name: str | None

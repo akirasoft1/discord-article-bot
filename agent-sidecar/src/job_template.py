@@ -15,8 +15,12 @@ def build_job_spec(
 ) -> dict[str, Any]:
     """Build a K8s Job spec for a single sandbox execution.
 
-    The Job runs one Pod with one container under runtimeClassName: gvisor.
-    Returns a plain dict suitable for kubernetes BatchV1Api.create_namespaced_job.
+    The Job runs one Pod with one container under runtimeClassName:
+    kata-qemu. Each invocation lands in a fresh tiny VM (Kata Containers /
+    QEMU shim) — a stronger isolation boundary than syscall interception
+    and a natural fit for Harvester clusters where KubeVirt is already in
+    use. Returns a plain dict suitable for kubernetes
+    BatchV1Api.create_namespaced_job.
     """
     user_short = user_id[:8] if user_id else "anon"
     return {
@@ -44,7 +48,7 @@ def build_job_spec(
                     },
                 },
                 "spec": {
-                    "runtimeClassName": "gvisor",
+                    "runtimeClassName": "kata-qemu",
                     "automountServiceAccountToken": False,
                     "serviceAccountName": "sandbox-sa",
                     "restartPolicy": "Never",

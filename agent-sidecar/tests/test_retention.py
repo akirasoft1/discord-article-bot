@@ -22,7 +22,7 @@ def _make_doc(user_id: str, n: int) -> dict:
         "stdout": str(n),
         "stderr": "",
         "egress_events": [{"dst_ip": "1.1.1.1"}],
-        "gvisor_events": [],
+        "runtime_events": [],
         "agent_rationale": "test",
         "resource_usage": {},
         "exit_code": 0,

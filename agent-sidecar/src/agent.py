@@ -22,11 +22,13 @@ _APP_NAME = "discord-article-bot"
 
 TOOL_AVAILABILITY_PREAMBLE = """
 You have access to a sandboxed Linux environment via the run_in_sandbox tool.
-The sandbox runs in gVisor with 2 vCPU, 2Gi RAM, 256Mi tmpfs, 300s wall clock.
-It has internet access (RFC1918 blocked) and ships with python, node, dotnet,
-go, rust, ollama, common build/network tools. You cannot persist state between
-calls — each invocation is a fresh pod. You receive {exit_code, stdout, stderr,
-duration_ms, egress_events, gvisor_events} back.
+Each call lands in a fresh, lightweight Kata VM with 2 vCPU, 2Gi RAM, 256Mi
+tmpfs, and a 300s wall clock. The first call in a turn typically takes a
+couple of extra seconds for VM startup; that's normal, not a hang. The
+sandbox has internet access (RFC1918 blocked) and ships with python, node,
+dotnet, go, rust, ollama, and common build/network tools. You cannot persist
+state between calls — each invocation is a fresh pod. You receive {exit_code,
+stdout, stderr, duration_ms, egress_events, runtime_events} back.
 
 Use the sandbox WHEN:
   - The user asked you to run, build, compile, scan, fetch, or test something.
@@ -80,7 +82,7 @@ class ChannelVoiceAgent:
             stdin: str | None = None,
             env: dict[str, str] | None = None,
         ) -> dict:
-            """Execute code in the gVisor sandbox.
+            """Execute code in the Kata sandbox.
 
             Args:
               language: one of 'bash', 'python', 'node', 'csharp', 'go', 'rust', 'raw'.

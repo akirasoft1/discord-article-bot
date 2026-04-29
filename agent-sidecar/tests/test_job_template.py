@@ -1,7 +1,7 @@
 from src.job_template import build_job_spec
 
 
-def test_runtime_class_is_gvisor():
+def test_runtime_class_is_kata():
     spec = build_job_spec(
         execution_id="abc-1234",
         user_id="discord-user-1",
@@ -12,7 +12,7 @@ def test_runtime_class_is_gvisor():
         env={},
         namespace="discord-article-bot",
     )
-    assert spec["spec"]["template"]["spec"]["runtimeClassName"] == "gvisor"
+    assert spec["spec"]["template"]["spec"]["runtimeClassName"] == "kata-qemu"
 
 
 def test_no_sa_token_mounted():

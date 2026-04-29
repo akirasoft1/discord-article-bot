@@ -2,11 +2,11 @@
 
 Per-user, the most recent N (config.sandbox_trace_retention_per_user) full
 traces are kept. Older traces are demoted in place: code, stdin, env_keys,
-egress_events, gvisor_events, agent_rationale, and resource_usage are nulled
-out, while exit_code, stdout, stderr, duration_ms, timed_out, oom_killed are
-retained as a thin audit trail. The demoted_at timestamp is set on update,
-which also makes idempotent reruns cheap (already-demoted docs match the
-filter only once).
+egress_events, runtime_events, agent_rationale, and resource_usage are
+nulled out, while exit_code, stdout, stderr, duration_ms, timed_out,
+oom_killed are retained as a thin audit trail. The demoted_at timestamp
+is set on update, which also makes idempotent reruns cheap (already-
+demoted docs match the filter only once).
 """
 from datetime import datetime, timezone
 import logging
@@ -41,7 +41,7 @@ def demote_old_traces(db, *, retention_per_user: int) -> int:
                     "stdin": None,
                     "env_keys": None,
                     "egress_events": None,
-                    "gvisor_events": None,
+                    "runtime_events": None,
                     "agent_rationale": None,
                     "resource_usage": None,
                     "demoted_at": datetime.now(tz=timezone.utc),
