@@ -1,80 +1,122 @@
-# Overnight Run — Pause Snapshot
+# Overnight Run — Resume Status
 
-**Paused:** 2026-04-29 (mid-Phase 4) — user paused execution to switch into auto-accept mode.
+**Last update:** 2026-04-29 (Phases 4–8 + docs done in single auto-accept session).
 
-**Branch:** `feat/agentic-sandbox-skills-runtime` (synced to origin, all commits pushed).
+**Branch:** `feat/agentic-sandbox-skills-runtime`. All committed locally; not yet pushed (let the user push when ready).
 
 ## Where we are
 
-**Completed:** Phases 0–3 fully + Task 4.1.
+**Completed:** Phases 0–8 + docs.
 
 | Task | Status | Commit |
 |---|---|---|
-| 1.1 executor.py | ✅ done | a0bb42b |
-| 1.2 Sandbox Dockerfile + README | ✅ done | b4e45db, e5865d0 (+size correction) |
-| 2.1 gRPC proto contract | ✅ done | 22cf9de |
-| 2.2 Python project skeleton | ✅ done | b854f6c |
-| 2.3 Generate Python gRPC stubs | ✅ done | 0e25762 |
-| 2.4 gRPC server (Health-only) | ✅ done | ab36dd8 |
-| 2.5 Sidecar Dockerfile | ✅ done | 828e281 |
-| 3.1 Concurrency gate | ✅ done | dcde491 |
-| 3.2 K8s Job template generator | ✅ done | 33912b8 |
-| 3.3 Log partitioning | ✅ done | 810d92e |
-| 3.4 Trace store | ✅ done | bb22bcc |
-| 3.5 Egress scraper | ✅ done | 245a77a |
-| 3.6 Sandbox orchestrator | ✅ done | 01b11ad |
-| 4.1 run_in_sandbox tool | ✅ done | 08c1495 |
-| 4.2 ADK agent + Chat handler | ⏸️ paused — about to start | — |
-| 4.3 Live K8s client adapter | ⏸️ pending | — |
-| 4.4 Phase 4 sanity check | ⏸️ pending | — |
-| 5.1–8.8 | ⏸️ pending | — |
+| 1.1 executor.py | done | a0bb42b |
+| 1.2 Sandbox Dockerfile + README | done | b4e45db, e5865d0 |
+| 2.1 gRPC proto contract | done | 22cf9de |
+| 2.2 Python project skeleton | done | b854f6c |
+| 2.3 Generate Python gRPC stubs | done | 0e25762 |
+| 2.4 gRPC server (Health-only) | done | ab36dd8 |
+| 2.5 Sidecar Dockerfile | done | 828e281 |
+| 3.1 Concurrency gate | done | dcde491 |
+| 3.2 K8s Job template generator | done | 33912b8 |
+| 3.3 Log partitioning | done | 810d92e |
+| 3.4 Trace store | done | bb22bcc |
+| 3.5 Egress scraper | done | 245a77a |
+| 3.6 Sandbox orchestrator | done | 01b11ad |
+| 4.1 run_in_sandbox tool | done | 08c1495 |
+| 4.2 ADK Agent + Chat handler | done | 926e8bf |
+| 4.3 Live K8s client adapter | done | b524630 |
+| 4.4 Phase 4 sanity check | done | (no commit needed) |
+| 5.1 Node gRPC client deps | done | ce928f7 |
+| 5.2 AgentClient w/ fallback | done | 69011bc |
+| 5.3 ChatService routes channel-voice | done | 9ab3af1 |
+| 5.4 Wire AgentClient into bot.js | done | 45cdd4b |
+| 6.1 SandboxTraceService | done | 946aa77 |
+| 6.2 Reaction reveal | done | 2ae2434 |
+| 7.1 Retention demotion job | done | eaf8d6f |
+| 8.1–8.8 K8s manifests | done | 31e364d |
+| Docs (CLAUDE.md + features.md) | done | 9a80ed6 |
+| 9.1–9.6 Cluster-side acceptance | **pending** (user task) | — |
 
-**All sidecar tests passing:** 39/39 at last run (`cd agent-sidecar && . .venv/bin/activate && make test`).
+## Test status
 
-## State of the working tree
+- Node: **720/720 passing** (`npx jest`).
+- Python sidecar: **45/45 passing** (`cd agent-sidecar && . .venv/bin/activate && make test`).
 
-Clean. Everything committed. Origin in sync. No uncommitted edits anywhere.
+## Notable adaptations made during this run
 
-## What's tracked in TaskList
+1. **`google-adk` 1.31.1 vs the plan's 0.5.0**: probed the API first, then adapted `agent.py` accordingly — uses `LiteLlm("openai/<model>")` for OpenAI (requires `google-adk[extensions]`, which is now in `requirements.txt`), explicit `runner.session_service.create_session(...)` per turn, and wraps the user message in `google.genai.types.Content/Part`. Public `process_chat()` shape kept exactly as the plan calls for so the gRPC server didn't change shape.
 
-32 tasks created (IDs 1–32). Tasks 1–14 marked completed. Task 15 (Task 4.2 ADK agent) marked in_progress when execution paused.
+2. **`grpc.aio.server()` everywhere in the sidecar**: the Chat handler is async (must `await self._agent.process_chat`), so the test fixture and `serve()` both moved to aio. Health stays simple.
 
-## Notable findings (read these before resuming)
+3. **`k8s/overlays/deployed/` is gitignored** — the plan assumed manifests committed there would be tracked. Source-of-truth manifests now live in **`k8s/sandbox/`** (tracked) with a README. Working copies remain in `deployed/` for the user's local apply workflow. The two small edits to existing bot manifests (`deployment.yaml` envFrom, `networkpolicy.yaml` egress) were applied in `deployed/` for the user but are documented as patches in `k8s/sandbox/README.md` since the originals are untracked.
 
-1. **`google-adk` landed at 1.31.1** in the venv (plan was written assuming `>=0.5.0`). The plan explicitly anticipated this and said "exact API may shift between versions; adapt agent.py while keeping process_chat() shape." The Task 4.2 implementer needs to probe the installed API first (`from google.adk.agents import Agent; inspect.signature(Agent.__init__)`) and adapt the import paths/argument shape if needed, OR fall back to a stub `process_chat()` that returns `agent integration pending` so phases 5–8 stay unblocked.
+4. **`zstd` in sandbox Dockerfile** — kept (Ollama installer requires it on Debian 12 slim; spec was wrong).
 
-2. **`zstd` was missing from the sandbox Dockerfile** (Task 1.2). Implementer added it because Ollama's installer requires it on Debian 12 slim. Spec was wrong. Real fix, kept.
+5. **Sandbox image is ~8Gi** (not the spec's 3–4Gi) — README was corrected earlier.
 
-3. **Sandbox image is ~8Gi, not 3–4Gi** as spec/plan estimated. README updated to reflect reality (commit e5865d0). Plan ahead for ~8Gi node pull time on first deployment.
+6. **`enableServiceLinks: false`** on the sandbox Job template — confirmed in tests; without it K8s would inject `MONGODB_PORT_27017_TCP_*` env vars into the sandbox env.
 
-4. **Sidecar Dockerfile uses `PYTHONPATH=/app:/app/src`** (not just `/app` as the plan said). Why: protoc-generated `agent_pb2_grpc.py` uses bare `import agent_pb2`, which only resolves with `/app/src` on the path. The fix is correct and necessary.
+## What the user has to do (Phase 9, all cluster-side)
 
-5. **`enableServiceLinks: false`** in the sandbox Job template — confirmed in tests. Without this, K8s would inject env vars for every Service in the namespace (e.g. `MONGODB_PORT_27017_TCP_ADDR`), leaking RFC1918 reachability paths into the sandbox env. Critical security control.
+These steps cannot run from this session; they need cluster + registry access.
 
-6. **Task 3.6 had a silent failure mode the first time** — the implementer agent created the orchestrator files but never committed/pushed. The retry caught it (files existed; just needed to add+commit+push). Worth watching for similar mode in remaining tasks: always verify `git log` after each task.
+1. **Prereq — install runsc on each Harvester worker node** (gVisor runtime). The `gvisor` RuntimeClass will exist once `runtimeclass-gvisor.yaml` is applied, but Pods will fail to start until `runsc` is on every node that might host them.
 
-7. **Phase 9 prerequisites the user must handle**:
-   - Install `runsc` on each Harvester worker node (gVisor runtime).
-   - Decide on Calico flow log enablement (egress observation depends on it; falls back to Noop if not).
-   - Discover and fill `<CLUSTER_POD_CIDR>` and `<CLUSTER_SERVICE_CIDR>` in `k8s/overlays/deployed/sandbox-networkpolicy.yaml` (Task 8.3) — these are gitignored placeholder slots in the deployed overlay anyway.
+2. **Prereq — fill in pod and service CIDRs in `k8s/overlays/deployed/sandbox-networkpolicy.yaml`** (and re-copy from `k8s/sandbox/sandbox-networkpolicy.yaml`). Discover via:
+   ```bash
+   kubectl get pods -n kube-system -l component=kube-controller-manager -o yaml | grep -E "cluster-cidr|service-cluster-ip-range"
+   ```
 
-## Resuming
+3. **Build + push images (Task 9.1):**
+   ```bash
+   TAG=$(git rev-parse --short HEAD)
+   docker build -t mvilliger/sandbox-base:$TAG sandbox-base/
+   docker tag  mvilliger/sandbox-base:$TAG mvilliger/sandbox-base:latest
+   docker push mvilliger/sandbox-base:$TAG
+   docker push mvilliger/sandbox-base:latest
+   docker build -t mvilliger/discord-article-bot-agent:$TAG agent-sidecar/
+   docker tag  mvilliger/discord-article-bot-agent:$TAG mvilliger/discord-article-bot-agent:latest
+   docker push mvilliger/discord-article-bot-agent:$TAG
+   docker push mvilliger/discord-article-bot-agent:latest
+   ```
+   The sandbox image is large (~8Gi); first push will take a while.
 
-When you're back, you can either:
+4. **Apply manifests (Task 9.2):**
+   ```bash
+   kubectl apply -f k8s/sandbox/runtimeclass-gvisor.yaml
+   kubectl apply -f k8s/sandbox/sandbox-serviceaccount.yaml \
+                  -f k8s/sandbox/agent-serviceaccount.yaml \
+                  -f k8s/sandbox/agent-role.yaml \
+                  -f k8s/sandbox/agent-rolebinding.yaml \
+                  -f k8s/sandbox/configmap-sandbox.yaml \
+                  -f k8s/sandbox/agent-networkpolicy.yaml \
+                  -f k8s/overlays/deployed/sandbox-networkpolicy.yaml \
+                  -f k8s/overlays/deployed/networkpolicy.yaml \
+                  -f k8s/overlays/deployed/deployment.yaml \
+                  -f k8s/sandbox/agent-service.yaml \
+                  -f k8s/overlays/deployed/agent-deployment.yaml
+   kubectl rollout status deployment/discord-article-bot-agent -n discord-article-bot --timeout=120s
+   ```
 
-- **(A)** Tell Claude to continue from Task 4.2 in the same conversation.
-- **(B)** Start a new session with auto-accept enabled and say something like "continue executing the agentic sandbox plan starting from Task 4.2 — see `docs/superpowers/plans/2026-04-28-agentic-sandbox-skills-runtime.md`, the spec at `docs/superpowers/specs/2026-04-28-agentic-sandbox-skills-runtime-design.md`, and `NIGHTLY_NOTES.md` for state." The fresh session can pick up the TaskList and dispatch Task 4.2 directly.
+5. **RBAC verification (Task 9.3):**
+   ```bash
+   kubectl auth can-i --as=system:serviceaccount:discord-article-bot:sandbox-sa get pods -n discord-article-bot   # expect "no"
+   kubectl auth can-i --as=system:serviceaccount:discord-article-bot:agent-sa create jobs -n discord-article-bot  # expect "yes"
+   kubectl auth can-i --as=system:serviceaccount:discord-article-bot:agent-sa get nodes                            # expect "no"
+   ```
 
-Either way, Task 4.2's prompt was already drafted (look back in transcript for the prompt that was rejected — it's complete and ready to dispatch). The implementer's first instruction is: "probe ADK 1.31.1 API before coding."
+6. **Manual integration tests (Task 9.4):** see the bullet list in the plan — each is an `@bot <prompt>` in Discord (or a `grpcurl` against the agent service from a debug pod). Cover: hello-world per language, wall-clock timeout, OOM, RFC1918 deny, public allow, DNS, no service-link env leak, no SA token, per-user cap, sidecar-down fallback, reaction reveal.
 
-## Verification command
+7. **Acceptance gate (Task 9.6):** bump version (`npm version minor --no-git-tag-version`), build/push the bot image, `kubectl set image`, then `git push -u origin feat/agentic-sandbox-skills-runtime` and open the PR.
 
-To confirm state on resume:
+## Verification on resume
 
 ```bash
 cd /home/ubuntu/workspace/discord-article-bot
 git log --oneline main..HEAD | head
+npx jest
 cd agent-sidecar && . .venv/bin/activate && make test
 ```
 
-Expected: 17 commits ahead of main, 39/39 sidecar tests passing.
+Expected: 28 commits ahead of main, 720 Node tests green, 45 Python tests green.
