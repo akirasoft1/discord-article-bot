@@ -15,7 +15,7 @@ const LIMITS = {
 };
 
 class ChatService {
-  constructor(openaiClient, config, mongoService, mem0Service = null, channelContextService = null, voiceProfileService = null, qdrantService = null) {
+  constructor(openaiClient, config, mongoService, mem0Service = null, channelContextService = null, voiceProfileService = null, qdrantService = null, agentClient = null) {
     this.openaiClient = openaiClient;
     this.config = config;
     this.mongoService = mongoService;
@@ -23,6 +23,7 @@ class ChatService {
     this.channelContextService = channelContextService;
     this.voiceProfileService = voiceProfileService;
     this.qdrantService = qdrantService;
+    this.agentClient = agentClient;
   }
 
   /**
@@ -374,6 +375,47 @@ ${context}`;
    * @returns {Object} Response with message and token usage
    */
   async chat(personalityId, userMessage, user, channelId = null, guildId = null, imageUrl = null) {
+    // Route channel-voice through the agent sidecar when available and healthy.
+    // On agent failure or unhealthy state, fall through to the existing direct
+    // OpenAI path so the bot keeps working when the sidecar is down.
+    if (
+      personalityId === 'channel-voice'
+      && this.agentClient
+      && this.agentClient.isHealthy()
+      && process.env.AGENT_ENABLED !== 'false'
+    ) {
+      try {
+        const agentResp = await this.agentClient.chat({
+          userId: user.id,
+          userTag: user.tag || user.username || '',
+          channelId: channelId || '',
+          guildId: guildId || '',
+          interactionId: user.interactionId || '',
+          userMessage,
+          imageUrl: imageUrl || '',
+        });
+        const cvPersonality = personalityManager.get('channel-voice') || {
+          id: 'channel-voice',
+          name: 'Channel Voice',
+          emoji: '🗣️',
+        };
+        return {
+          success: true,
+          message: agentResp.messageText,
+          personality: {
+            id: cvPersonality.id,
+            name: cvPersonality.name,
+            emoji: cvPersonality.emoji,
+          },
+          tokens: { input: 0, output: 0, total: 0 },
+          executionSummary: agentResp.summary,
+          fallback: agentResp.fallbackOccurred ? { occurred: true, reason: 'agent fallback' } : undefined,
+        };
+      } catch (err) {
+        logger.warn(`Agent call failed; falling through to direct-OpenAI: ${err.message}`);
+      }
+    }
+
     const personality = personalityManager.get(personalityId);
 
     if (!personality) {
