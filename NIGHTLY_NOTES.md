@@ -1,12 +1,16 @@
 # Overnight Run — Resume Status
 
-**Last update:** 2026-04-29 (Phases 4–8 + docs done in single auto-accept session).
+**Last update:** 2026-04-29 — Phases 4–8 implemented, then sandbox runtime swapped from gVisor to Kata Containers in a follow-up pass (same day, different conversation).
 
 **Branch:** `feat/agentic-sandbox-skills-runtime`. All committed locally; not yet pushed (let the user push when ready).
 
+## Why Kata, not gVisor
+
+The cluster runs on Harvester (immutable SLE Micro host OS, KubeVirt for VM workloads). Installing `runsc` per-node is fragile under SLE Micro's transactional updates, and Kata's pod-as-tiny-VM model is both a stronger isolation boundary AND a natural fit for KubeVirt-on-bare-metal. Trade-offs: ~1.5–3 s extra cold start per call (VM boot — agent prompt is aware of it), no syscall-deny telemetry (the trace field is now `runtime_events`, empty by default under Kata). See the spec/plan addendums and `k8s/sandbox/README.md` for the full rationale.
+
 ## Where we are
 
-**Completed:** Phases 0–8 + docs.
+**Completed:** Phases 0–8 (sandbox now Kata-native) + docs.
 
 | Task | Status | Commit |
 |---|---|---|
@@ -35,7 +39,11 @@
 | 6.2 Reaction reveal | done | 2ae2434 |
 | 7.1 Retention demotion job | done | eaf8d6f |
 | 8.1–8.8 K8s manifests | done | 31e364d |
-| Docs (CLAUDE.md + features.md) | done | 9a80ed6 |
+| Docs v1 (CLAUDE.md + features.md) | done | 9a80ed6 |
+| **Kata migration: code (gvisor → kata, gvisor_events → runtime_events)** | done | d42d589 |
+| **Kata migration: manifests + sandbox-base README** | done | c77220b |
+| **Kata migration: top-level docs** | done | a48a30e |
+| **Kata migration: spec + plan addendums** | done | ab522db |
 | 9.1–9.6 Cluster-side acceptance | **pending** (user task) | — |
 
 ## Test status
