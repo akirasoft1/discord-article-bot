@@ -19,6 +19,7 @@ const MessageService = require('./services/MessageService');
 const LinkwardenService = require('./services/LinkwardenService');
 const LinkwardenPollingService = require('./services/LinkwardenPollingService');
 const ChatService = require('./services/ChatService');
+const AgentClient = require('./services/AgentClient');
 const ImagenService = require('./services/ImagenService');
 const VeoService = require('./services/VeoService');
 const Mem0Service = require('./services/Mem0Service');
@@ -159,10 +160,30 @@ class DiscordBot {
       logger.warn('Voice profile requires both Qdrant and Channel Context services enabled');
     }
 
+    // AgentClient - gRPC stub for the Python agent sidecar. When the sidecar
+    // is unreachable or AGENT_ENABLED=false, ChatService falls through to the
+    // existing direct-OpenAI path so the bot keeps working.
+    this.agentClient = null;
+    if (config.agent && config.agent.enabled) {
+      try {
+        this.agentClient = new AgentClient({
+          address: config.agent.address,
+          protoPath: require('path').join(__dirname, 'proto', 'agent.proto'),
+          healthIntervalMs: config.agent.healthIntervalMs,
+          unhealthyThresholdMs: config.agent.unhealthyThresholdMs,
+        });
+        logger.info(`AgentClient initialized -> ${config.agent.address}`);
+      } catch (e) {
+        logger.warn(`AgentClient init failed (continuing without sidecar): ${e.message}`);
+        this.agentClient = null;
+      }
+    }
+
     // ChatService - all dependencies injected via constructor
     this.chatService = new ChatService(
       this.openaiClient, config, this.mongoService, this.mem0Service,
-      this.channelContextService, this.voiceProfileService, this.qdrantService
+      this.channelContextService, this.voiceProfileService, this.qdrantService,
+      this.agentClient
     );
 
     // Initialize Imagen (image generation) service
