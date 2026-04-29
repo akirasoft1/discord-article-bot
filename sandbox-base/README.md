@@ -34,7 +34,7 @@ Expected: HTML doctype line, exit 0.
 - nmap, dig, nc
 - ollama (binary only; pull models at runtime via `ollama pull <model>`)
 
-The image is ~3-4Gi. Pulled once per K8s node and cached.
+The image is ~8Gi. Pulled once per K8s node and cached. Plan node-pull time accordingly on first deployment.
 
 ## Security properties
 
