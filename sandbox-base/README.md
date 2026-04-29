@@ -41,5 +41,5 @@ The image is ~8Gi. Pulled once per K8s node and cached. Plan node-pull time acco
 - Runs as uid 65534 (nobody).
 - No shell-escape pre-baked configuration. The `executor` is the only entrypoint.
 - Image is consumed only by sandbox K8s pods that disable SA token automount,
-  drop all capabilities, and run with `readOnlyRootFilesystem: true` plus
-  `runtimeClassName: gvisor`.
+  drop all capabilities, run with `readOnlyRootFilesystem: true`, and select
+  `runtimeClassName: kata-qemu` (each pod lands in its own tiny VM).

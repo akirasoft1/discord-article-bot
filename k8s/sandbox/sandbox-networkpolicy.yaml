@@ -1,6 +1,6 @@
-# NOTE: <CLUSTER_POD_CIDR> and <CLUSTER_SERVICE_CIDR> below are PLACEHOLDERS.
-# Before applying, replace them with the cluster's pod and service CIDRs.
-# Discover with one of:
+# Pod and service CIDRs below are pinned to the values used by this
+# Harvester cluster's RKE2. To verify (or before reusing on a different
+# cluster) run one of:
 #   kubectl cluster-info dump | grep -E "cluster-cidr|service-cluster-ip-range" | head
 #   kubectl get pods -n kube-system -l component=kube-controller-manager -o yaml \
 #     | grep -E "cluster-cidr|service-cluster-ip-range"
@@ -25,8 +25,8 @@ spec:
               - 192.168.0.0/16
               - 169.254.0.0/16
               - 100.64.0.0/10
-              - <CLUSTER_POD_CIDR>      # replace with actual pod CIDR
-              - <CLUSTER_SERVICE_CIDR>  # replace with actual service CIDR
+              - 10.52.0.0/16      # cluster pod CIDR (RKE2 default)
+              - 10.53.0.0/16      # cluster service CIDR (RKE2 default)
     - to:
         - namespaceSelector:
             matchLabels:
