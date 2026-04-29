@@ -8,6 +8,40 @@
 
 The cluster runs on Harvester (immutable SLE Micro host OS, KubeVirt for VM workloads). Installing `runsc` per-node is fragile under SLE Micro's transactional updates, and Kata's pod-as-tiny-VM model is both a stronger isolation boundary AND a natural fit for KubeVirt-on-bare-metal. Trade-offs: ~1.5–3 s extra cold start per call (VM boot — agent prompt is aware of it), no syscall-deny telemetry (the trace field is now `runtime_events`, empty by default under Kata). See the spec/plan addendums and `k8s/sandbox/README.md` for the full rationale.
 
+### Is the cold start a UX problem? (data point)
+
+LLM call durations on `discord-article-bot` over the last 14 days, from
+Dynatrace OpenLLMetry spans (query: `fetch spans | filter
+isNotNull(gen_ai.request.model)`):
+
+| Model | Calls | p50 | p95 | avg |
+|---|---|---|---|---|
+| `gpt-4o-mini` (foreground) | 318 | **1.89 s** | 16.47 s | 4.62 s |
+| `gpt-5-mini` (foreground) | 31 | 16.47 s | 35.91 s | 18.25 s |
+| `gpt-4o-mini` (background) | 20 | 2.26 s | 15.15 s | 5.18 s |
+| Other (image gens) | a few | 19–101 s | — | — |
+
+So the chat hot path is `gpt-4o-mini` at p50 ≈ 1.9 s. Kata's ~2 s cold
+start ~doubles user-visible latency on the *fastest* calls (1.9 s → ~4 s)
+and is rounding error on everything slower. Conclusion: acceptable for a
+Discord conversational UX; users are already accustomed to multi-second
+LLM replies. Recheck if we ever care about sub-second responses.
+
+To re-run the baseline:
+```bash
+dtctl query -f - -o json <<'EOF'
+fetch spans, from:now() - 14d
+| filter isNotNull(gen_ai.request.model)
+| summarize {
+    calls = count(),
+    p50_ms = percentile(duration, 50) / 1000000,
+    p95_ms = percentile(duration, 95) / 1000000,
+    avg_ms = avg(duration) / 1000000
+  }, by: { dt.service.name, gen_ai.request.model }
+| sort calls desc
+EOF
+```
+
 ## Where we are
 
 **Completed:** Phases 0–8 (sandbox now Kata-native) + docs.
