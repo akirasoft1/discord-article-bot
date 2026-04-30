@@ -3,6 +3,19 @@ import os
 from dataclasses import dataclass
 
 
+def _resolve_mongo_uri() -> str:
+    """Resolve MONGO_URI, performing the same `${MONGO_PASSWORD}` substitution
+    the Node bot's config.js does. The deployed Secret stores the URI with a
+    literal `${MONGO_PASSWORD}` placeholder so the password rotates
+    independently of the connection string; without this substitution PyMongo
+    sees the literal placeholder as the password and authentication fails."""
+    uri = os.environ["MONGO_URI"]
+    pw = os.environ.get("MONGO_PASSWORD")
+    if pw and "${MONGO_PASSWORD}" in uri:
+        uri = uri.replace("${MONGO_PASSWORD}", pw)
+    return uri
+
+
 @dataclass(frozen=True)
 class Config:
     # gRPC
@@ -39,7 +52,7 @@ def load() -> Config:
         grpc_listen_addr=os.environ.get("GRPC_LISTEN_ADDR", "0.0.0.0:50051"),
         openai_api_key=os.environ["OPENAI_API_KEY"],
         openai_model=os.environ.get("OPENAI_MODEL", "gpt-5.1"),
-        mongo_uri=os.environ["MONGO_URI"],
+        mongo_uri=_resolve_mongo_uri(),
         sandbox_inline_output_chars=int(os.environ.get("SANDBOX_INLINE_OUTPUT_CHARS", "750")),
         sandbox_wall_clock_seconds=int(os.environ.get("SANDBOX_WALL_CLOCK_SECONDS", "300")),
         sandbox_per_user_concurrency=int(os.environ.get("SANDBOX_PER_USER_CONCURRENCY", "2")),
