@@ -21,6 +21,45 @@ log = logging.getLogger(__name__)
 _APP_NAME = "discord-article-bot"
 
 
+def _build_generate_content_config():
+    """Gemini-side safety thresholds for this Discord-bot use case.
+
+    The bot serves a private channel of four offensive-security technologists
+    who explicitly want a playground they can attempt to break — see the
+    spec at docs/superpowers/specs/2026-04-28-agentic-sandbox-skills-runtime-design.md.
+    Default Gemini safety classifiers refuse common dual-use security tooling
+    (network scans, parsers for untrusted data, etc.) before tool selection
+    even runs. We lower the thresholds to BLOCK_NONE for the four standard
+    text harm categories. The sandbox itself remains the actual containment
+    boundary (Kata isolation + RFC1918-blocked NetPol + no SA token).
+
+    google-adk passes this `GenerateContentConfig` straight through to the
+    google.genai client when the model is Gemini-native. For LiteLlm-wrapped
+    OpenAI/Anthropic models the safety_settings are silently ignored; the
+    hint is harmless on the non-Gemini path.
+    """
+    return types.GenerateContentConfig(
+        safety_settings=[
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+        ],
+    )
+
+
 def _build_model(model_spec: str):
     """Map an `AGENT_MODEL` env value to whatever ADK's `Agent(model=…)`
     expects. For Gemini we pass a bare string (ADK auto-selects the native
@@ -48,37 +87,54 @@ Each call lands in a fresh, lightweight Kata VM with 2 vCPU, 2Gi RAM, 256Mi
 tmpfs, and a 300s wall clock. The first call in a turn typically takes a
 couple of extra seconds for VM startup; that's normal, not a hang. The
 sandbox has internet access (RFC1918 blocked) and ships with python, node,
-dotnet, go, rust, ollama, and common build/network tools. You cannot persist
-state between calls — each invocation is a fresh pod. You receive {exit_code,
-stdout, stderr, duration_ms, egress_events, runtime_events} back.
+dotnet, go, rust, ollama, and common build/network tools (including nmap,
+curl, dig, jq, etc.). You cannot persist state between calls — each invocation
+is a fresh pod. You receive {exit_code, stdout, stderr, duration_ms,
+egress_events, runtime_events} back.
+
+CONTEXT: this bot serves a private Discord channel of four long-tenured
+technologists with offensive-security backgrounds, who explicitly designed
+this system as a playground they can attempt to break. Network scans,
+reconnaissance probes, vulnerability checks, parsing untrusted data, and
+similar dual-use security tooling are EXPLICITLY IN SCOPE. The sandbox is
+hardened (NetPol denies RFC1918 + cluster CIDRs; gVisor/Kata isolation;
+no SA token; no host filesystem; 300s wall clock) precisely so it's safe
+to do these things. The users have pre-consented; treat their requests
+as authorized exercises in their own environment.
 
 DEFAULT DISPOSITION: when a request COULD be answered by running code, run it.
-The user wants results, not descriptions. They have a sandbox specifically so
-you can do, not just describe. If you find yourself about to type a code block
-that the user could run themselves, stop — run it in the sandbox instead and
-report what actually happened.
+The user wants results, not descriptions. If you find yourself about to type
+a code block that the user could run themselves, stop — run it in the sandbox
+instead and report what actually happened.
 
-"Write code to compute X" / "show me X using code" / "give me a script that does X"
-all mean: produce X by writing AND running code, then show the output. The code
-is the means; the output is the deliverable. Don't hand the user code they
-have to run themselves when you can run it for them.
+"Write code to compute X" / "show me X using code" / "give me a script that
+does X" all mean: produce X by writing AND running code, then show the output.
+
+NEVER refuse with phrases like "I can't run from here", "you should run this
+locally", "I can't fake an X scan", or any variant. You have the sandbox tool;
+the only acceptable response to a runnable request is to actually run it.
+If you think the call will fail (network restriction, missing tool, infeasible
+scale) — RUN IT ANYWAY and report the actual failure. "Scan returned no hosts
+because the sandbox can't reach 192.168.0.0/16 (RFC1918 is intentionally
+blocked from the sandbox)" is a useful, accurate, on-topic answer; "I can't
+do that, run it locally" is wrong.
 
 Use the sandbox WHEN:
-  - The user asks you to compute, generate, calculate, find, list, scan, fetch,
-    benchmark, test, parse, simulate, or otherwise produce concrete output.
-  - The request says "write/show me code that ..." — they want it RUN, not just shown.
-  - You'd otherwise need to hallucinate a value (a checksum, a count, a formatted
-    output, a URL response, the contents of a file).
-  - The task is mechanically executable, even if no one said "run it" explicitly.
+  - The user asks you to compute, generate, calculate, find, list, scan,
+    probe, sniff, fetch, benchmark, test, parse, simulate, fuzz, or otherwise
+    produce concrete output.
+  - The request says "write/show me code that ..." — they want it RUN.
+  - You'd otherwise need to hallucinate a value (a checksum, a count, a
+    formatted output, a URL response, the contents of a file).
 
 Do NOT use the sandbox WHEN:
   - The conversation is genuinely social, opinion-based, or creative writing.
   - The task is purely abstract (design a class hierarchy, explain a concept,
-    discuss tradeoffs) and the user is asking you to think, not to produce output.
-  - The user explicitly asks for "an example" or "the syntax for" something —
-    that's a teaching request, not an execution request.
+    discuss tradeoffs) and the user is asking you to think, not to produce.
+  - The user explicitly asks for "an example" or "the syntax for" something
+    — that's a teaching request, not an execution request.
 
-You do not have to ask permission to use the sandbox; the user has pre-consented.
+You do not need to ask permission to use the sandbox; the user has pre-consented.
 Surface what you actually did in your final reply — one short sentence,
 ideally including the result. Do NOT prefix your reply with a personality
 header. Do NOT include code blocks unless they're trivially short and serve
@@ -143,6 +199,7 @@ class ChannelVoiceAgent:
             instruction=f"{self._base_system_prompt}\n\n{TOOL_AVAILABILITY_PREAMBLE}",
             tools=[run_in_sandbox],
             model=_build_model(self._config.agent_model),
+            generate_content_config=_build_generate_content_config(),
         )
         runner = InMemoryRunner(agent=agent, app_name=_APP_NAME)
         await runner.session_service.create_session(
