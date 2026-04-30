@@ -174,22 +174,29 @@ class ChannelVoiceAgent:
         async def run_in_sandbox(
             language: str,
             code: str,
-            stdin: str | None = None,
-            env: dict[str, str] | None = None,
+            stdin: str = "",
         ) -> dict:
             """Execute code in the Kata sandbox.
 
             Args:
               language: one of 'bash', 'python', 'node', 'csharp', 'go', 'rust', 'raw'.
               code: full source or shell command.
-              stdin: optional stdin piped to the process.
-              env: extra environment variables. Use ONLY for user-supplied keys; never invent.
+              stdin: optional stdin piped to the process. Empty string for no stdin.
 
             Returns:
               dict with exit_code, stdout, stderr, duration_ms, egress_events, etc.
+
+            If you need environment variables, prefix them inline in a bash
+            command (e.g. `MY_VAR=foo python script.py`) — env injection via
+            tool args is intentionally not exposed.
             """
             try:
-                return await tool.run(language=language, code=code, stdin=stdin, env=env)
+                return await tool.run(
+                    language=language,
+                    code=code,
+                    stdin=stdin or None,
+                    env=None,
+                )
             except ToolBudgetExceeded:
                 return {"exit_code": -3, "error": "turn_call_budget_exceeded"}
 
