@@ -104,6 +104,7 @@ def serve() -> None:
     agent = ChannelVoiceAgent(
         config=config, orchestrator=orch, base_system_prompt=_load_base_prompt(),
     )
+    log.info("agent LLM resolved: AGENT_MODEL=%s", config.agent_model)
 
     async def _retention_loop(stop_event: asyncio.Event) -> None:
         # Run once at startup so freshly-deployed sidecars catch up immediately,

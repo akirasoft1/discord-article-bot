@@ -21,6 +21,39 @@ log = logging.getLogger(__name__)
 _APP_NAME = "discord-article-bot"
 
 
+class AgentLLMError(RuntimeError):
+    """Raised when the LLM API rejects a Chat call.
+
+    Carries a one-line summary suitable for the gRPC error details field.
+    Distinct from generic RuntimeError so the gRPC servicer / future retry
+    logic can identify model-side failures without string matching."""
+
+
+def _summarize_llm_error(exc: BaseException, model_spec: str) -> str:
+    """Extract the most useful single-line summary from any LLM error.
+
+    Recognized shapes:
+      - google.genai.errors.ClientError (status_code + reason)
+      - LiteLLM/HTTP-shaped errors with .status_code
+      - anything else: fall back to the exception's repr.
+    """
+    # google.genai exceptions carry .code and .status; the message is verbose.
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    status = getattr(exc, "status", None)
+    msg = str(exc)
+    # Trim to the first line and ~200 chars to keep the log line readable.
+    first_line = msg.splitlines()[0] if msg else ""
+    if len(first_line) > 200:
+        first_line = first_line[:197] + "..."
+    parts = [f"model={model_spec}"]
+    if code is not None:
+        parts.append(f"status={code}")
+    if status:
+        parts.append(f"reason={status}")
+    parts.append(f"err={type(exc).__name__}: {first_line}")
+    return " ".join(parts)
+
+
 def _build_generate_content_config():
     """Gemini-side safety thresholds for this Discord-bot use case.
 
@@ -66,12 +99,12 @@ def _build_model(model_spec: str):
     Google genai client); for any other provider we wrap in LiteLlm.
 
     Accepted shapes:
-      "gemini-3-flash"              -> "gemini-3-flash"          (native)
-      "gemini/gemini-3-flash"       -> "gemini-3-flash"          (native)
+      "gemini-3-flash-preview"              -> "gemini-3-flash-preview"          (native)
+      "gemini/gemini-3-flash"       -> "gemini-3-flash-preview"          (native)
       "openai/gpt-5.1"              -> LiteLlm("openai/gpt-5.1")
       "anthropic/claude-opus-4-7"   -> LiteLlm("anthropic/...")
     """
-    spec = (model_spec or "").strip() or "gemini-3-flash"
+    spec = (model_spec or "").strip() or "gemini-3-flash-preview"
     if spec.startswith("gemini/"):
         return spec[len("gemini/"):]
     if spec.startswith("gemini") or "/" not in spec:
@@ -227,6 +260,17 @@ class ChannelVoiceAgent:
                     text = getattr(part, "text", None)
                     if text:
                         message_text = text
+        except Exception as e:  # noqa: BLE001
+            # Translate model API errors (404 model not found, 400 bad
+            # tool schema, 403 quota, 5xx upstream, etc.) into a single
+            # informative AgentLLMError instead of letting tenacity's
+            # 60-line wrapped stack trace barf into the log on every call.
+            # The bot's AgentClient catches this as a gRPC INTERNAL and
+            # falls through to direct OpenAI; we want the agent log to
+            # state the actual cause clearly so future-me doesn't hunt.
+            summary = _summarize_llm_error(e, self._config.agent_model)
+            log.error("Agent LLM call failed: %s", summary)
+            raise AgentLLMError(summary) from e
         finally:
             try:
                 await runner.close()

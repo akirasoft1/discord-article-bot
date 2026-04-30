@@ -40,11 +40,11 @@ def test_resolve_mongo_uri_leaves_placeholder_when_no_password_env(monkeypatch):
     assert "${MONGO_PASSWORD}" in cfg.mongo_uri
 
 
-def test_agent_model_defaults_to_gemini_3_flash(monkeypatch):
+def test_agent_model_defaults_to_gemini_3_flash_preview(monkeypatch):
     monkeypatch.setenv("MONGO_URI", "mongodb://x")
     monkeypatch.delenv("AGENT_MODEL", raising=False)
     cfg = config_mod.load()
-    assert cfg.agent_model == "gemini-3-flash"
+    assert cfg.agent_model == "gemini-3-flash-preview"
 
 
 def test_agent_model_overridable(monkeypatch):

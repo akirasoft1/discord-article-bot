@@ -4,16 +4,16 @@ from src.agent import _build_model
 
 
 def test_native_gemini_returns_string():
-    assert _build_model("gemini-3-flash") == "gemini-3-flash"
+    assert _build_model("gemini-3-flash-preview") == "gemini-3-flash-preview"
 
 
 def test_gemini_prefix_stripped():
-    assert _build_model("gemini/gemini-3-flash") == "gemini-3-flash"
+    assert _build_model("gemini/gemini-3-flash-preview") == "gemini-3-flash-preview"
 
 
 def test_empty_falls_back_to_default():
-    assert _build_model("") == "gemini-3-flash"
-    assert _build_model("   ") == "gemini-3-flash"
+    assert _build_model("") == "gemini-3-flash-preview"
+    assert _build_model("   ") == "gemini-3-flash-preview"
 
 
 def test_bare_model_with_no_slash_treated_as_native():

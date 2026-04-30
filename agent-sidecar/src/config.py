@@ -60,7 +60,7 @@ class Config:
 def load() -> Config:
     return Config(
         grpc_listen_addr=os.environ.get("GRPC_LISTEN_ADDR", "0.0.0.0:50051"),
-        agent_model=os.environ.get("AGENT_MODEL", "gemini-3-flash"),
+        agent_model=os.environ.get("AGENT_MODEL", "gemini-3-flash-preview"),
         openai_api_key=os.environ.get("OPENAI_API_KEY"),
         openai_model=os.environ.get("OPENAI_MODEL", "gpt-5.1"),
         mongo_uri=_resolve_mongo_uri(),
