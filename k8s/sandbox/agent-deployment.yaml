@@ -1,5 +1,10 @@
-# NOTE: image tags below default to :latest. After Phase 9 builds the
-# images, update both tags to the immutable git-sha tag.
+# Image tags are pinned to the git short-SHA at deploy time, never `:latest`.
+# When you build + push a new image pair, bump BOTH tags below in lockstep:
+#   - .spec.template.spec.containers[0].image (the sidecar binary)
+#   - .spec.template.spec.containers[0].env[SANDBOX_BASE_IMAGE] (the image
+#     the agent passes into each ephemeral sandbox Job it spawns)
+# A new commit MUST be made for any tag change so the pinned-vs-deployed
+# state is captured in git history.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -27,7 +32,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: agent
-          image: mvilliger/discord-article-bot-agent:latest
+          image: mvilliger/discord-article-bot-agent:c391d52
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50051
@@ -38,7 +43,7 @@ spec:
             - name: K8S_NAMESPACE
               value: "discord-article-bot"
             - name: SANDBOX_BASE_IMAGE
-              value: "mvilliger/sandbox-base:latest"
+              value: "mvilliger/sandbox-base:c391d52"
           envFrom:
             - configMapRef:
                 name: sandbox-config
