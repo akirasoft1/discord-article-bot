@@ -37,6 +37,8 @@ class AgentClient {
 
     this._healthTimer = setInterval(() => this._healthCheck(), healthIntervalMs);
     if (this._healthTimer.unref) this._healthTimer.unref();
+    // Track previous health state so we can log transitions (not every tick).
+    this._wasHealthy = null; // null = never reported, true/false = last seen
     this._healthCheck();
   }
 
@@ -45,8 +47,20 @@ class AgentClient {
     const deadline = new Date(Date.now() + this.healthDeadlineMs);
     this._stub.Health({}, { deadline }, (err, resp) => {
       if (this._closed) return;
-      if (!err && resp && resp.healthy) {
+      const ok = !err && resp && resp.healthy;
+      if (ok) {
         this._lastHealthyAt = Date.now();
+      }
+      // Log state transitions only — never every tick. Silent steady-state
+      // is the goal; transitions are the signal an operator needs.
+      if (this._wasHealthy === null || this._wasHealthy !== ok) {
+        if (ok) {
+          logger.info(`AgentClient health OK -> ${this.address}`);
+        } else {
+          const reason = err ? `${err.code || ''} ${err.message || err}`.trim() : 'no response';
+          logger.warn(`AgentClient health FAILING -> ${this.address}: ${reason}`);
+        }
+        this._wasHealthy = ok;
       }
     });
   }
