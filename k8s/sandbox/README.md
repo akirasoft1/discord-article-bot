@@ -34,7 +34,7 @@ install pain aside.
 
 | File | Purpose |
 |---|---|
-| `runtimeclass-kata.yaml` | Cluster-wide `kata-qemu` RuntimeClass that uses the `kata` handler. |
+| `runtimeclass-kata.yaml` | Cluster-wide `kata-qemu` RuntimeClass declaration. NOT applied (the Helm chart provides it); kept in-repo as documentation of the RuntimeClass shape we depend on. |
 | `agent-serviceaccount.yaml` | `agent-sa` SA used by the sidecar Deployment. |
 | `agent-role.yaml` | `agent-sandbox-orchestrator` Role: create/get/list/delete Jobs, get/list/watch/create Pods + pods/log + pods/attach. |
 | `agent-rolebinding.yaml` | Binds the role to `agent-sa`. |
@@ -80,56 +80,164 @@ Append an egress rule allowing the bot to reach the agent sidecar's gRPC port:
           port: 50051
 ```
 
-## Prereq: install Kata via the upstream Helm chart
+## Prereq: install Kata on the cluster
 
-Upstream's preferred install path is the `kata-deploy` Helm chart, published
-as an OCI artifact at `oci://ghcr.io/kata-containers/kata-deploy-charts/kata-deploy`.
-The chart deploys the kata-deploy DaemonSet (which drops Kata binaries and
-the QEMU shim into `/opt/kata/` on each labeled node and patches the
-containerd config) AND installs the standard Kata `RuntimeClass`es
-(`kata`, `kata-qemu`, `kata-clh`, `kata-fc`). On RKE2 (Harvester's K8s
-distro) the containerd config drop-in path under `/var/lib/rancher/rke2/`
-is writable even on SLE Micro's immutable root because RKE2 needs to
-manage it itself.
+The install has more moving parts than the upstream "one-helm-install" docs
+suggest, because Harvester's host OS (SLE Micro) is immutable and ships an
+older glibc than upstream Kata's binaries are built against. We hit four
+distinct issues during the first install on this cluster — all are recorded
+below so a future install (here, on another Harvester cluster, or after a
+Kata version bump) doesn't have to rediscover them.
+
+### Step 1 — install the Helm chart
+
+The upstream `kata-deploy` Helm chart is published as an OCI artifact at
+`oci://ghcr.io/kata-containers/kata-deploy-charts/kata-deploy`. It deploys
+a DaemonSet that drops Kata's binaries into `/opt/kata/` on each node, sets
+up containerd drop-in config, and creates the standard Kata RuntimeClasses
+(`kata`, `kata-qemu`, `kata-qemu-runtime-rs`, `kata-clh`, `kata-fc`, …).
 
 ```bash
-# Pin to the latest stable Kata release.
 export KATA_VERSION=$(curl -sSL https://api.github.com/repos/kata-containers/kata-containers/releases/latest | jq -r .tag_name)
 export KATA_CHART="oci://ghcr.io/kata-containers/kata-deploy-charts/kata-deploy"
-echo "kata version: $KATA_VERSION"
 
-# (Optional) inspect what's configurable for this release before installing.
-helm show values "$KATA_CHART" --version "$KATA_VERSION"
+helm install kata-deploy "$KATA_CHART" --version "$KATA_VERSION" \
+  -n kube-system \
+  --set k8sDistribution=rke2
 
-# Install. The chart creates kata-deploy in kube-system by default and
-# installs the kata, kata-qemu, kata-clh, kata-fc RuntimeClasses for you.
-helm install kata-deploy "$KATA_CHART" --version "$KATA_VERSION" -n kube-system
-
-# Wait for the DaemonSet to settle on every node it targets.
 kubectl rollout status -n kube-system ds/kata-deploy --timeout=600s
-
-# Confirm the kata-qemu RuntimeClass is present.
-kubectl get runtimeclass kata-qemu
 ```
 
-Smoke-test with a throwaway pod that selects the runtime class:
+The `k8sDistribution=rke2` value is required — the chart's default
+(`k8sDistribution: k8s`) sets `CONTAINERD_CONF_FILE` to `/etc/containerd/config.toml`
+which doesn't exist as a single rendered file on RKE2.
+
+### Step 2 — patch RKE2's containerd template on every node
+
+After the chart installs, kata-deploy will refuse to finish with:
+
+```
+K3s/RKE2: rendered config at /etc/containerd/config.toml does not import
+the drop-in dir 'config-v3.toml.d'
+```
+
+RKE2 renders its containerd config from a Go template. By default the
+template doesn't include an `imports = [...]` directive, so kata-deploy's
+drop-in files (which it writes into `config-v3.toml.d/`) are never picked
+up. The fix is one file per node, persisted across reboots because
+`/var/lib/rancher/rke2/` is on the writable `/var` overlay:
+
+1. Copy `/var/lib/rancher/rke2/agent/etc/containerd/config.toml` to
+   `/var/lib/rancher/rke2/agent/etc/containerd/config.toml.tmpl` (note the
+   **tmpl** extension, not `tpl`).
+2. Add this single line at the very top of the template:
+   ```toml
+   imports = ["/var/lib/rancher/rke2/agent/etc/containerd/config-v3.toml.d/*.toml"]
+   ```
+3. Restart RKE2 to re-render: `systemctl start rke2-server` (control plane)
+   or `systemctl start rke2-agent` (workers). Use `start`, not `restart` —
+   on busy nodes the stop step can exceed `TimeoutStopSec` and leave the
+   unit `failed`. If that happens, `systemctl reset-failed rke2-server`
+   then `systemctl start rke2-server`. The 810-task `containerd-shim`
+   processes "remaining running after unit stopped" are workload pods —
+   they survive the bounce intentionally; do not kill them.
+4. Verify: `sudo grep -i imports /var/lib/rancher/rke2/agent/etc/containerd/config.toml`
+   should show the `imports = [...]` line in the rendered config.
+
+### Step 3 — disable kvm_amd's SEV advertisement (AMD hosts only)
+
+Kata's runtime-rs probes for AMD SEV memory encryption support on every
+sandbox start. The kvm_amd kernel module advertises SEV as available
+(`/sys/module/kvm_amd/parameters/sev` reports `Y`) whenever the CPU is
+SEV-capable, regardless of whether SEV is actually enabled in BIOS. When
+the runtime then runs `cpuid(0x8000_001f)` to read SEV's runtime state,
+the bit reports unavailable → `Failed to check guest protection: SEV not
+supported` and the sandbox start aborts. This is a runtime-rs fail-closed
+bug; we don't want SEV anyway.
+
+Tell kvm_amd not to advertise SEV. One file per node:
 
 ```bash
-kubectl run kata-smoke --rm -it --image=busybox \
-  --overrides='{"spec":{"runtimeClassName":"kata-qemu"}}' \
-  --restart=Never -- sh -c 'uname -a; cat /proc/cpuinfo | head'
+echo 'options kvm_amd sev=0 sev_es=0 sev_snp=0' \
+  | sudo tee /etc/modprobe.d/kata-disable-sev.conf
+sudo modprobe -r kvm_amd && sudo modprobe kvm_amd
+sudo cat /sys/module/kvm_amd/parameters/sev   # should now report "N"
 ```
 
-You should see a kernel version that is *not* the host's, plus the
-QEMU-style virtual CPU model — confirmation that the workload ran inside
-the guest VM and not on the host kernel.
+This change is reversible (delete the file, reload module) and does NOT
+disable any KubeVirt functionality on Harvester — only the SEV/SEV-SNP
+encrypted-memory features, which we aren't using and which weren't even
+enabled in BIOS.
 
-> **About `runtimeclass-kata.yaml` in this directory.** The Helm chart
-> already creates the `kata-qemu` RuntimeClass, so this manifest is
-> **not** part of the apply order below. It's kept in the repo as an
-> explicit, in-version-control declaration of the RuntimeClass we depend
-> on (and as a fallback if Kata is ever installed by some other path
-> that doesn't ship the RuntimeClass for us).
+### Step 4 — pick the right RuntimeClass
+
+Two viable RuntimeClasses exist after install:
+
+- `kata-qemu` — Kata's Go runtime. Dynamically linked against glibc 2.34+
+  on recent Kata releases. SLE Micro 5.x ships glibc 2.31 → fails to load
+  with `version 'GLIBC_2.34' not found`.
+- `kata-qemu-runtime-rs` — Kata's Rust rewrite. Statically linked
+  (`objdump -T` shows no dynamic symbol table → no glibc dependency at
+  all). Works on any host kernel + libc combination.
+
+**We use `kata-qemu-runtime-rs`** (already wired into `job_template.py`).
+runtime-rs is also where Kata's active development is happening, so this
+isn't a workaround — it's the modern path.
+
+### Step 5 — opt sandbox pods out of Dynatrace OneAgent injection
+
+The cluster runs Dynatrace OneAgent in cloud-native fullstack mode. Its
+mutating webhook injects an init container + an `LD_PRELOAD`-based agent
+into every new pod's main container. Inside a Kata guest VM the OneAgent
+spawns helper processes that prevent PID 1 from exiting cleanly when the
+user's code finishes — the pod runs the workload in 5 seconds, then sits
+idle for ~120 seconds until kubelet's grace timeout fires. That's not
+acceptable for ephemeral sandbox pods (concurrency caps + wall-clock
+balloons).
+
+The Dynatrace operator honors a master-switch annotation defined in
+`pkg/webhook/mutation/pod/mutator/config.go`:
+
+```go
+// AnnotationDynatraceInject is set to "false" on the Pod to indicate that does not want any injection.
+AnnotationDynatraceInject = "dynatrace.com/inject"
+```
+
+`job_template.py` sets `dynatrace.com/inject: "false"` on every sandbox
+pod, which short-circuits the webhook before any of its mutators run.
+The bot + agent sidecar (where Dynatrace observability does pay off) are
+not affected.
+
+### Smoke test
+
+After steps 1–5 are done on every node, run this to confirm everything's
+wired up correctly:
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kata-smoke
+  annotations:
+    dynatrace.com/inject: "false"
+spec:
+  runtimeClassName: kata-qemu-runtime-rs
+  restartPolicy: Never
+  containers:
+    - name: kata-smoke
+      image: busybox
+      command: ["sh", "-c", "uname -a; echo ---; cat /proc/cpuinfo | head -3; sleep 5"]
+EOF
+
+sleep 15
+kubectl get pod kata-smoke
+kubectl logs kata-smoke
+```
+
+Expected: `STATUS: Completed`, no init containers, and `uname -a` reporting
+a kernel version that is **not** the Harvester host's kernel — that's the
+visual confirmation the workload ran inside a Kata-managed VM.
 
 ## Apply order (after kata-deploy is healthy)
 
@@ -151,6 +259,9 @@ kubectl apply -n discord-article-bot \
 ## Pre-apply checklist
 
 - [ ] `helm list -n kube-system` shows `kata-deploy` deployed; the DaemonSet is healthy on every worker node
+- [ ] On every RKE2 node, `/var/lib/rancher/rke2/agent/etc/containerd/config.toml.tmpl` exists and has the `imports = [...]` line at the top, AND the rendered `config.toml` contains the same line
+- [ ] On every AMD worker node, `/etc/modprobe.d/kata-disable-sev.conf` exists and `cat /sys/module/kvm_amd/parameters/sev` returns `N`
+- [ ] Kata smoke-test pod (see "Smoke test" above) reaches `Completed` status
 - [ ] `sandbox-networkpolicy.yaml`'s pod/service CIDRs match this cluster (default: 10.52.0.0/16 and 10.53.0.0/16)
 - [ ] `mvilliger/discord-article-bot-agent:<TAG>` and `mvilliger/sandbox-base:<TAG>` pushed (Task 9.1)
 - [ ] Bot deployment + bot networkpolicy updates merged (see above)

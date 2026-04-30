@@ -1,7 +1,7 @@
 from src.job_template import build_job_spec
 
 
-def test_runtime_class_is_kata():
+def test_runtime_class_is_kata_runtime_rs():
     spec = build_job_spec(
         execution_id="abc-1234",
         user_id="discord-user-1",
@@ -12,7 +12,17 @@ def test_runtime_class_is_kata():
         env={},
         namespace="discord-article-bot",
     )
-    assert spec["spec"]["template"]["spec"]["runtimeClassName"] == "kata-qemu"
+    assert spec["spec"]["template"]["spec"]["runtimeClassName"] == "kata-qemu-runtime-rs"
+
+
+def test_dynatrace_injection_disabled():
+    spec = build_job_spec(
+        execution_id="x", user_id="u", image="x:y",
+        wall_clock_seconds=300, cpu_limit="2", memory_limit="2Gi",
+        env={}, namespace="ns",
+    )
+    annotations = spec["spec"]["template"]["metadata"].get("annotations", {})
+    assert annotations.get("dynatrace.com/inject") == "false"
 
 
 def test_no_sa_token_mounted():

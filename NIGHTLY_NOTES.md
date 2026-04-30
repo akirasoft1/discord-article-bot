@@ -1,8 +1,20 @@
 # Overnight Run — Resume Status
 
-**Last update:** 2026-04-29 — Phases 4–8 implemented, then sandbox runtime swapped from gVisor to Kata Containers in a follow-up pass (same day, different conversation).
+**Last update:** 2026-04-30 — Phases 4–8 done, then Kata install validated end-to-end against the Harvester cluster. Took five non-obvious gotchas to get there; all of them are now captured in `k8s/sandbox/README.md`.
 
 **Branch:** `feat/agentic-sandbox-skills-runtime`. All committed locally; not yet pushed (let the user push when ready).
+
+## Kata install on Harvester — what we learned the hard way
+
+All five issues are documented at length in `k8s/sandbox/README.md`. Brief log here so future-you doesn't redo any of it:
+
+1. **Helm chart needs `--set k8sDistribution=rke2`.** Default `k8s` value points the installer at `/etc/containerd/config.toml` which doesn't exist as a single file on RKE2.
+2. **RKE2 containerd template needs an `imports = […]` line.** Default RKE2 config doesn't pick up kata-deploy's drop-in dir until the template is patched and `rke2-server`/`rke2-agent` is restarted. **Filename must be `config.toml.tmpl`** (not `.tpl`). Use `systemctl start` not `restart` after a stuck stop, or the unit ends up `failed`.
+3. **Pin to `kata-qemu-runtime-rs`, not `kata-qemu`.** The Go runtime's shim binary is dynamically linked against glibc 2.34+; SLE Micro 5.x has glibc 2.31. The Rust runtime is fully static (no GLIBC versions in `objdump -T`) — no version-walking needed.
+4. **`kvm_amd sev=0` on AMD hosts.** runtime-rs probes for SEV unconditionally and fail-closes when the kernel module advertises SEV but BIOS hasn't enabled it. One file (`/etc/modprobe.d/kata-disable-sev.conf`) per node + module reload, persistent across reboots.
+5. **`dynatrace.com/inject: "false"` on sandbox pods.** OneAgent's webhook injects an `LD_PRELOAD` agent that prevents PID 1 from exiting cleanly inside the Kata guest, ballooning each execution from ~5s to ~120s. The master-switch annotation (confirmed in operator source at `pkg/webhook/mutation/pod/mutator/config.go`) bypasses all injection.
+
+Smoke test passes on the cluster. `kubectl get pod kata-smoke` reports `Completed`, `kubectl logs` shows the guest kernel (`Linux kata-smoke 6.18.15 …`) which is different from the Harvester host kernel — visual confirmation the workload ran inside a Kata-managed VM.
 
 ## Why Kata, not gVisor
 
@@ -83,7 +95,8 @@ EOF
 ## Test status
 
 - Node: **720/720 passing** (`npx jest`).
-- Python sidecar: **45/45 passing** (`cd agent-sidecar && . .venv/bin/activate && make test`).
+- Python sidecar: **46/46 passing** (`cd agent-sidecar && . .venv/bin/activate && make test`). +1 = `test_dynatrace_injection_disabled`.
+- Kata smoke test on the live cluster: ✅ Pod reaches `Completed` with guest kernel reported in logs.
 
 ## Notable adaptations made during this run
 
