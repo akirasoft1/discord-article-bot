@@ -32,7 +32,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: agent
-          image: mvilliger/discord-article-bot-agent:198c5db
+          image: mvilliger/discord-article-bot-agent:e861ef8
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50051
@@ -43,7 +43,7 @@ spec:
             - name: K8S_NAMESPACE
               value: "discord-article-bot"
             - name: SANDBOX_BASE_IMAGE
-              value: "mvilliger/sandbox-base:198c5db"
+              value: "mvilliger/sandbox-base:e861ef8"
           envFrom:
             - configMapRef:
                 name: sandbox-config
