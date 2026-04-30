@@ -41,9 +41,21 @@ spec:
         - podSelector:
             matchLabels:
               app: qdrant
-    # K8s API server (cluster-internal)
+    # K8s API server. On RKE2 the apiserver is a static pod running on the
+    # host network, so it can't be matched by namespaceSelector + podSelector.
+    # kube-proxy DNATs the kubernetes ClusterIP service to host:6443 — we
+    # allow both the service VIP (10.53.0.1) and the actual control-plane
+    # node IPs so post-DNAT traffic isn't dropped. The control-plane IPs
+    # are pinned to this Harvester cluster.
     - to:
-        - namespaceSelector: {}
+        - ipBlock:
+            cidr: 10.53.0.1/32
+        - ipBlock:
+            cidr: 192.168.16.10/32
+        - ipBlock:
+            cidr: 192.168.16.12/32
+        - ipBlock:
+            cidr: 192.168.16.15/32
       ports:
         - { protocol: TCP, port: 443 }
         - { protocol: TCP, port: 6443 }
