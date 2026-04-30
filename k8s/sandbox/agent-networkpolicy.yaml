@@ -9,10 +9,15 @@ spec:
       app: discord-article-bot-agent
   policyTypes: ["Egress", "Ingress"]
   ingress:
+    # Bot pod uses the kubernetes-recommended `app.kubernetes.io/name` label,
+    # not a bare `app:` key. Match that, otherwise the bot's gRPC dial to the
+    # agent is silently dropped at the ingress layer (AgentClient health
+    # check times out, isHealthy() stays false, channel-voice falls through
+    # to direct OpenAI without the LLM ever seeing the run_in_sandbox tool).
     - from:
         - podSelector:
             matchLabels:
-              app: discord-article-bot
+              app.kubernetes.io/name: discord-article-bot
       ports:
         - protocol: TCP
           port: 50051
