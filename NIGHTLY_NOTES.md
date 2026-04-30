@@ -1,8 +1,22 @@
 # Overnight Run — Resume Status
 
-**Last update:** 2026-04-30 — Phases 4–8 done, then Kata install validated end-to-end against the Harvester cluster. Took five non-obvious gotchas to get there; all of them are now captured in `k8s/sandbox/README.md`.
+**Last update:** 2026-04-30 — Phases 4–8 done, Kata install validated against the Harvester cluster, agent + bot images built and pushed, manifests applied, both rollouts green. Bot is now at v2.13.0 with AgentClient code talking to a healthy sidecar at `0a52e17`. Real Discord smoke test was about to be conducted by the user when this note was written.
 
-**Branch:** `feat/agentic-sandbox-skills-runtime`. All committed locally; not yet pushed (let the user push when ready).
+**Branch:** `feat/agentic-sandbox-skills-runtime` (41 commits ahead of main). Not yet pushed.
+
+## Currently deployed
+
+| Image | Tag | Source commit |
+|---|---|---|
+| `mvilliger/discord-article-bot` | `2.13.0` | `0a52e17` |
+| `mvilliger/discord-article-bot-agent` | `0a52e17` | `0a52e17` |
+| `mvilliger/sandbox-base` | `0a52e17` | `0a52e17` (retag of `c391d52`; content unchanged since c391d52) |
+
+Bot tag stream is semver (`npm version`); agent + sandbox-base stream is git short-SHA, **always in lockstep with each other** in `agent-deployment.yaml` per `feedback_no_latest_image_tags.md` memory. See that memory for the rule + how to bump correctly.
+
+Verification confirmed end-to-end:
+- Agent log: `agent sidecar listening on 0.0.0.0:50051`, no retention loop crash.
+- Bot log: `AgentClient initialized -> discord-article-bot-agent.discord-article-bot.svc.cluster.local:50051`.
 
 ## Kata install on Harvester — what we learned the hard way
 
@@ -13,6 +27,7 @@ All five issues are documented at length in `k8s/sandbox/README.md`. Brief log h
 3. **Pin to `kata-qemu-runtime-rs`, not `kata-qemu`.** The Go runtime's shim binary is dynamically linked against glibc 2.34+; SLE Micro 5.x has glibc 2.31. The Rust runtime is fully static (no GLIBC versions in `objdump -T`) — no version-walking needed.
 4. **`kvm_amd sev=0` on AMD hosts.** runtime-rs probes for SEV unconditionally and fail-closes when the kernel module advertises SEV but BIOS hasn't enabled it. One file (`/etc/modprobe.d/kata-disable-sev.conf`) per node + module reload, persistent across reboots.
 5. **`dynatrace.com/inject: "false"` on sandbox pods.** OneAgent's webhook injects an `LD_PRELOAD` agent that prevents PID 1 from exiting cleanly inside the Kata guest, ballooning each execution from ~5s to ~120s. The master-switch annotation (confirmed in operator source at `pkg/webhook/mutation/pod/mutator/config.go`) bypasses all injection.
+6. **Agent's `MONGO_URI` needed runtime `${MONGO_PASSWORD}` substitution** (caught after first deploy when the retention loop crashed with PyMongo `Authentication failed`). The deployed Secret stores the URI with a literal `${MONGO_PASSWORD}` placeholder for password rotation; the bot's `config.js` substitutes at runtime, the agent's `config.py` initially didn't. Fix at `agent-sidecar/src/config.py:_resolve_mongo_uri()`, three regression tests in `test_config.py`.
 
 Smoke test passes on the cluster. `kubectl get pod kata-smoke` reports `Completed`, `kubectl logs` shows the guest kernel (`Linux kata-smoke 6.18.15 …`) which is different from the Harvester host kernel — visual confirmation the workload ran inside a Kata-managed VM.
 
@@ -95,8 +110,10 @@ EOF
 ## Test status
 
 - Node: **720/720 passing** (`npx jest`).
-- Python sidecar: **46/46 passing** (`cd agent-sidecar && . .venv/bin/activate && make test`). +1 = `test_dynatrace_injection_disabled`.
+- Python sidecar: **49/49 passing** (`cd agent-sidecar && . .venv/bin/activate && make test`). +3 over last note: `test_dynatrace_injection_disabled` + 3× `test_config.py` for the mongo URI substitution.
 - Kata smoke test on the live cluster: ✅ Pod reaches `Completed` with guest kernel reported in logs.
+- End-to-end deploy: ✅ Agent + bot rollouts complete; `AgentClient initialized` logged from the bot.
+- Real Discord smoke test (in-Discord `@bot please run python: print(2+2)`): pending — being run by the user.
 
 ## Notable adaptations made during this run
 
