@@ -21,8 +21,18 @@ class Config:
     # gRPC
     grpc_listen_addr: str
 
-    # OpenAI (borrowed from bot's secret mount)
-    openai_api_key: str
+    # The LLM the ADK Agent uses. Format follows LiteLlm-style spec:
+    #   "gemini-3-flash"           -> native ADK Gemini (preferred default)
+    #   "gemini/gemini-3-flash"    -> same; explicit prefix tolerated
+    #   "openai/gpt-5.1"           -> OpenAI via LiteLlm wrapper
+    #   "anthropic/claude-opus-..."-> Anthropic via LiteLlm wrapper
+    # Empty/unrecognized values fall back to the default ("gemini-3-flash").
+    agent_model: str
+
+    # OpenAI key/model are still loaded for backwards compat with anyone
+    # setting AGENT_MODEL=openai/...; they aren't consumed when the agent
+    # runs on Gemini.
+    openai_api_key: str | None
     openai_model: str
 
     # MongoDB
@@ -50,7 +60,8 @@ class Config:
 def load() -> Config:
     return Config(
         grpc_listen_addr=os.environ.get("GRPC_LISTEN_ADDR", "0.0.0.0:50051"),
-        openai_api_key=os.environ["OPENAI_API_KEY"],
+        agent_model=os.environ.get("AGENT_MODEL", "gemini-3-flash"),
+        openai_api_key=os.environ.get("OPENAI_API_KEY"),
         openai_model=os.environ.get("OPENAI_MODEL", "gpt-5.1"),
         mongo_uri=_resolve_mongo_uri(),
         sandbox_inline_output_chars=int(os.environ.get("SANDBOX_INLINE_OUTPUT_CHARS", "750")),

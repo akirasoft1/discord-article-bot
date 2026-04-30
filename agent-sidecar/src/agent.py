@@ -1,15 +1,15 @@
 """ADK Agent assembly. One Agent per ChatRequest so per-turn tool state is fresh.
 
-Adapted for google-adk 1.31.1: uses LiteLlm wrapper (from google-adk[extensions])
-to drive OpenAI models, requires explicit session creation, and wraps the user
-message in google.genai.types.Content.
+Adapted for google-adk 1.31.1: drives Gemini natively (best ADK first-class
+support, GEMINI_API_KEY honored by google-genai SDK) by default; falls back
+to the LiteLlm wrapper for non-Gemini providers when AGENT_MODEL is set to
+something like "openai/gpt-5.1".
 """
 import logging
 from dataclasses import dataclass
 
 from google.adk.agents import Agent
 from google.adk.runners import InMemoryRunner
-from google.adk.models.lite_llm import LiteLlm
 from google.genai import types
 
 from .config import Config
@@ -19,6 +19,28 @@ from .tools import RunInSandboxTool, ToolBudgetExceeded
 log = logging.getLogger(__name__)
 
 _APP_NAME = "discord-article-bot"
+
+
+def _build_model(model_spec: str):
+    """Map an `AGENT_MODEL` env value to whatever ADK's `Agent(model=…)`
+    expects. For Gemini we pass a bare string (ADK auto-selects the native
+    Google genai client); for any other provider we wrap in LiteLlm.
+
+    Accepted shapes:
+      "gemini-3-flash"              -> "gemini-3-flash"          (native)
+      "gemini/gemini-3-flash"       -> "gemini-3-flash"          (native)
+      "openai/gpt-5.1"              -> LiteLlm("openai/gpt-5.1")
+      "anthropic/claude-opus-4-7"   -> LiteLlm("anthropic/...")
+    """
+    spec = (model_spec or "").strip() or "gemini-3-flash"
+    if spec.startswith("gemini/"):
+        return spec[len("gemini/"):]
+    if spec.startswith("gemini") or "/" not in spec:
+        return spec
+    # Non-Gemini providers go through LiteLlm. Imported lazily so we don't
+    # require the litellm dependency just to run the default Gemini path.
+    from google.adk.models.lite_llm import LiteLlm
+    return LiteLlm(model=spec)
 
 TOOL_AVAILABILITY_PREAMBLE = """
 You have access to a sandboxed Linux environment via the run_in_sandbox tool.
@@ -120,7 +142,7 @@ class ChannelVoiceAgent:
             description="Discord channel-voice agent with sandboxed execution capabilities.",
             instruction=f"{self._base_system_prompt}\n\n{TOOL_AVAILABILITY_PREAMBLE}",
             tools=[run_in_sandbox],
-            model=LiteLlm(model=f"openai/{self._config.openai_model}"),
+            model=_build_model(self._config.agent_model),
         )
         runner = InMemoryRunner(agent=agent, app_name=_APP_NAME)
         await runner.session_service.create_session(
