@@ -1270,4 +1270,90 @@ describe('ChatService', () => {
     });
 
   });
+
+  describe('agent sidecar routing for channel-voice', () => {
+    let mockAgentClient;
+    let mockOpenAIClientLocal;
+    let mockMongoServiceLocal;
+    let chatServiceLocal;
+    const user = { id: 'u', tag: 'u#0', username: 'u' };
+
+    beforeEach(() => {
+      mockAgentClient = {
+        isHealthy: jest.fn().mockReturnValue(true),
+        chat: jest.fn().mockResolvedValue({
+          messageText: 'agent says hi',
+          summary: { executionCount: 0, anyFailed: false, executionIds: [] },
+          fallbackOccurred: false,
+        }),
+      };
+      mockOpenAIClientLocal = {
+        responses: {
+          create: jest.fn().mockResolvedValue({
+            output_text: 'cloud says hi',
+            usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+          }),
+        },
+      };
+      mockMongoServiceLocal = null; // force stateless path on fallthrough
+      chatServiceLocal = new ChatService(
+        mockOpenAIClientLocal,
+        { openai: { model: 'gpt-5.1' } },
+        mockMongoServiceLocal,
+        null,
+        null,
+        null,
+        null,
+        mockAgentClient,
+      );
+    });
+
+    it('routes channel-voice through agent when healthy', async () => {
+      const result = await chatServiceLocal.chat('channel-voice', 'hi', user, 'c', 'g');
+      expect(mockAgentClient.chat).toHaveBeenCalledTimes(1);
+      const arg = mockAgentClient.chat.mock.calls[0][0];
+      expect(arg.userMessage).toBe('hi');
+      expect(arg.channelId).toBe('c');
+      expect(arg.guildId).toBe('g');
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('agent says hi');
+      expect(result.personality.id).toBe('channel-voice');
+      expect(mockOpenAIClientLocal.responses.create).not.toHaveBeenCalled();
+    });
+
+    it('falls through to direct OpenAI when agent unhealthy', async () => {
+      mockAgentClient.isHealthy.mockReturnValue(false);
+      const result = await chatServiceLocal.chat('channel-voice', 'hi', user, 'c', 'g');
+      expect(mockAgentClient.chat).not.toHaveBeenCalled();
+      // chat falls through to existing logic. With mongoService null and a
+      // valid personality, chat should reach the stateless path and call OpenAI.
+      expect(result).toBeDefined();
+    });
+
+    it('falls through to direct OpenAI when agent throws', async () => {
+      mockAgentClient.chat.mockRejectedValue(new Error('boom'));
+      const result = await chatServiceLocal.chat('channel-voice', 'hi', user, 'c', 'g');
+      expect(mockAgentClient.chat).toHaveBeenCalled();
+      expect(result).toBeDefined();
+    });
+
+    it('does not route non-channel-voice personalities through agent', async () => {
+      const result = await chatServiceLocal.chat('test-personality', 'hi', user, 'c', 'g');
+      expect(mockAgentClient.chat).not.toHaveBeenCalled();
+      expect(result).toBeDefined();
+    });
+
+    it('does not route when AGENT_ENABLED=false', async () => {
+      const prev = process.env.AGENT_ENABLED;
+      process.env.AGENT_ENABLED = 'false';
+      try {
+        const result = await chatServiceLocal.chat('channel-voice', 'hi', user, 'c', 'g');
+        expect(mockAgentClient.chat).not.toHaveBeenCalled();
+        expect(result).toBeDefined();
+      } finally {
+        if (prev === undefined) delete process.env.AGENT_ENABLED;
+        else process.env.AGENT_ENABLED = prev;
+      }
+    });
+  });
 });

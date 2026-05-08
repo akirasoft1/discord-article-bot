@@ -33,6 +33,12 @@ Object.entries(optionalEnvVars).forEach(([key, defaultValue]) => {
 const mongoUri = process.env.MONGO_URI.replace('${MONGO_PASSWORD}', process.env.MONGO_PASSWORD);
 
 module.exports = {
+  agent: {
+    enabled: process.env.AGENT_ENABLED !== 'false',
+    address: process.env.AGENT_GRPC_ADDR || 'discord-article-bot-agent.discord-article-bot.svc.cluster.local:50051',
+    healthIntervalMs: parseInt(process.env.AGENT_HEALTH_INTERVAL_MS || '5000', 10),
+    unhealthyThresholdMs: parseInt(process.env.AGENT_UNHEALTHY_THRESHOLD_MS || '30000', 10),
+  },
   discord: {
     token: process.env.DISCORD_TOKEN,
     // Application/Client ID for slash command registration

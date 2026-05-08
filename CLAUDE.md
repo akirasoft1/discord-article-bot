@@ -165,6 +165,24 @@ The `channel-voice` personality dynamically learns the group's communication sty
 
 **Profile storage**: MongoDB `voice_profiles` collection. Versioned with `previousVersion` for history.
 
+## Agentic Sandbox
+
+When `AGENT_ENABLED=true`, channel-voice chats are routed through the Python agent sidecar (`discord-article-bot-agent`). The sidecar is an ADK Agent with one tool — `run_in_sandbox` — that spawns ephemeral pods per execution and returns `{exit_code, stdout, stderr, duration_ms, egress_events, runtime_events}` to the model. Other personalities are unaffected.
+
+**Sandbox isolation:** Kata Containers, specifically `runtimeClassName: kata-qemu-runtime-rs` (Kata's Rust runtime — statically linked, no glibc coupling). Each `run_in_sandbox` call lands in its own tiny QEMU/KVM guest. Originally specified for gVisor, swapped to Kata on 2026-04-29 because Harvester's immutable SLE Micro host OS makes installing `runsc` impractical, and KubeVirt-on-bare-metal is already the platform's native model. Sandbox pods carry `dynatrace.com/inject: "false"` to keep OneAgent out of ephemeral guests (otherwise PID 1 doesn't release on container exit, ballooning wall-clock per execution to ~120s). See `k8s/sandbox/README.md` for the full Kata install play-by-play including the RKE2 containerd-template patch, the `kvm_amd sev=0` workaround for AMD hosts, and the smoke-test recipe. Cold start adds ~1.5–3s per call (VM boot); the agent prompt is aware of this so the model doesn't think the call hung.
+
+**Toggle:** `AGENT_ENABLED=false` reverts channel-voice to direct OpenAI immediately. The `AgentClient` health-polls every 5s and considers the sidecar unhealthy after 30s without a successful Health response, falling through to direct OpenAI when the sidecar is gone.
+
+**Sidecar:** single-replica `Recreate` Deployment — concurrency state is in-process; **do not scale**.
+
+**Tunables (sandbox-config ConfigMap):** `SANDBOX_INLINE_OUTPUT_CHARS`, `SANDBOX_WALL_CLOCK_SECONDS`, `SANDBOX_PER_USER_CONCURRENCY`, `SANDBOX_GLOBAL_CONCURRENCY`, `SANDBOX_MEMORY_LIMIT`, `SANDBOX_CPU_LIMIT`, `SANDBOX_BASE_IMAGE`, `SANDBOX_TRACE_RETENTION_PER_USER`, `SANDBOX_AGENT_TURN_CALL_BUDGET`.
+
+**Reaction reveal:** on a bot reply that ran code, react with 🔍 (source code), 📜 (stdout + stderr if non-empty), or 🐛 (stderr only) to get the artifact attached.
+
+**Trace storage:** MongoDB `sandbox_executions` (one doc per call). The retention loop in the sidecar demotes >N (default 50) traces per user — older docs keep `exit_code`/`stdout`/`stderr`/`duration_ms` but null out `code`, `stdin`, `env_keys`, `egress_events`, `runtime_events`, `agent_rationale`. The `runtime_events` field is empty by default under Kata (no built-in syscall-deny telemetry); the field is reserved for future `auditd`-in-guest signals.
+
+**Manifests:** `k8s/sandbox/` (tracked) — see its README for the kata-deploy prereq, apply order, and the two small edits the bot Deployment + NetworkPolicy need.
+
 ## Embedding Data Quality Validation
 
 Run the validation script to check health of all Qdrant collections:

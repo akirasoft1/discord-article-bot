@@ -1,0 +1,71 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-egress
+  namespace: discord-article-bot
+spec:
+  podSelector:
+    matchLabels:
+      app: discord-article-bot-agent
+  policyTypes: ["Egress", "Ingress"]
+  ingress:
+    # Bot pod uses the kubernetes-recommended `app.kubernetes.io/name` label,
+    # not a bare `app:` key. Match that, otherwise the bot's gRPC dial to the
+    # agent is silently dropped at the ingress layer (AgentClient health
+    # check times out, isHealthy() stays false, channel-voice falls through
+    # to direct OpenAI without the LLM ever seeing the run_in_sandbox tool).
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: discord-article-bot
+      ports:
+        - protocol: TCP
+          port: 50051
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # In-cluster Mongo and Qdrant
+    - to:
+        - podSelector:
+            matchLabels:
+              app: mongodb
+        - podSelector:
+            matchLabels:
+              app: qdrant
+    # K8s API server. On RKE2 the apiserver is a static pod running on the
+    # host network, so it can't be matched by namespaceSelector + podSelector.
+    # kube-proxy DNATs the kubernetes ClusterIP service to host:6443 — we
+    # allow both the service VIP (10.53.0.1) and the actual control-plane
+    # node IPs so post-DNAT traffic isn't dropped. The control-plane IPs
+    # are pinned to this Harvester cluster.
+    - to:
+        - ipBlock:
+            cidr: 10.53.0.1/32
+        - ipBlock:
+            cidr: 192.168.16.10/32
+        - ipBlock:
+            cidr: 192.168.16.12/32
+        - ipBlock:
+            cidr: 192.168.16.15/32
+      ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 6443 }
+    # OpenAI public API (no RFC1918 exposure)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - { protocol: TCP, port: 443 }

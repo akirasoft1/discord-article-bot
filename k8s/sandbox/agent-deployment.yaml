@@ -1,0 +1,67 @@
+# Image tags are pinned to the git short-SHA at deploy time, never `:latest`.
+# When you build + push a new image pair, bump BOTH tags below in lockstep:
+#   - .spec.template.spec.containers[0].image (the sidecar binary)
+#   - .spec.template.spec.containers[0].env[SANDBOX_BASE_IMAGE] (the image
+#     the agent passes into each ephemeral sandbox Job it spawns)
+# A new commit MUST be made for any tag change so the pinned-vs-deployed
+# state is captured in git history.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discord-article-bot-agent
+  namespace: discord-article-bot
+  labels:
+    app: discord-article-bot-agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate    # single-replica concurrency state; no rolling updates
+  selector:
+    matchLabels:
+      app: discord-article-bot-agent
+  template:
+    metadata:
+      labels:
+        app: discord-article-bot-agent
+    spec:
+      serviceAccountName: agent-sa
+      automountServiceAccountToken: true
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: agent
+          image: mvilliger/discord-article-bot-agent:e861ef8
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 50051
+              name: grpc
+          env:
+            - name: GRPC_LISTEN_ADDR
+              value: "0.0.0.0:50051"
+            - name: K8S_NAMESPACE
+              value: "discord-article-bot"
+            - name: SANDBOX_BASE_IMAGE
+              value: "mvilliger/sandbox-base:e861ef8"
+          envFrom:
+            - configMapRef:
+                name: sandbox-config
+            - secretRef:
+                name: discord-article-bot-secrets
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 30
+            periodSeconds: 30

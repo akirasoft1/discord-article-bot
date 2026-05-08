@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package discordbot.agent;
+
+service Agent {
+  rpc Chat(ChatRequest) returns (ChatResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message ChatRequest {
+  string user_id        = 1;
+  string user_tag       = 2;
+  string channel_id     = 3;
+  string guild_id       = 4;
+  string interaction_id = 5;
+  string user_message   = 6;
+  string image_url      = 7;
+}
+
+message ChatResponse {
+  string message_text          = 1;
+  repeated ImageAttachment images = 2;
+  ExecutionSummary summary     = 3;
+  bool fallback_occurred       = 4;
+}
+
+message ExecutionSummary {
+  int32 execution_count          = 1;
+  bool any_failed                = 2;
+  repeated string execution_ids  = 3;
+}
+
+message ImageAttachment {
+  bytes data        = 1;
+  string filename   = 2;
+  string mime_type  = 3;
+}
+
+message HealthRequest {}
+message HealthResponse {
+  bool healthy = 1;
+}
