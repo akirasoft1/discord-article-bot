@@ -182,6 +182,51 @@ describe('LyriaService.generateMusic - reference images', () => {
   });
 });
 
+describe('LyriaService.generateMusic - error paths', () => {
+  let svc;
+  let generateContent;
+  let costService;
+
+  beforeEach(() => {
+    GoogleGenAI.mockClear();
+    generateContent = jest.fn();
+    GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+    costService = { recordMediaGen: jest.fn() };
+    svc = new LyriaService(makeConfig(), costService);
+  });
+
+  test('returns success:false when SDK throws (5xx / network)', async () => {
+    generateContent.mockRejectedValueOnce(new Error('upstream 503'));
+    const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/upstream 503/);
+    expect(costService.recordMediaGen).not.toHaveBeenCalled();
+  });
+
+  test('returns API message verbatim on 4xx-style rejection', async () => {
+    generateContent.mockRejectedValueOnce(new Error('Music generation rejected: prompt violates policy'));
+    const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('prompt violates policy');
+  });
+
+  test('returns success:false when response has no audio part', async () => {
+    generateContent.mockResolvedValueOnce({
+      candidates: [{ content: { parts: [{ text: 'only text' }] } }]
+    });
+    const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/no audio data/i);
+    expect(costService.recordMediaGen).not.toHaveBeenCalled();
+  });
+
+  test('does not record cost on any failure path', async () => {
+    generateContent.mockRejectedValueOnce(new Error('boom'));
+    await svc.generateMusic('prompt', {}, { id: 'u1' });
+    expect(costService.recordMediaGen).not.toHaveBeenCalled();
+  });
+});
+
 describe('LyriaService constructor', () => {
   beforeEach(() => {
     GoogleGenAI.mockReset();
