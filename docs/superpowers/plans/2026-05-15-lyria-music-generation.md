@@ -556,6 +556,8 @@ git commit -m "feat(lyria): implement generateMusic happy path"
 
 ## Task 5: `generateMusic()` lyrics + negative prompt (TDD)
 
+**Important:** The Lyria 3 `generateContent` API does **not** accept a structured `negative_prompt` field — confirmed both by the official docs ("guidance focuses entirely on crafting effective positive prompts") and by the `@google/genai` SDK type declarations (`GenerateContentConfig` has no `negativePrompt` member; that field only exists on `GenerateImagesConfig`). The negative prompt must therefore be composed into the **prompt text** itself.
+
 **Files:**
 - Modify: `services/LyriaService.js`
 - Modify: `__tests__/services/LyriaService.test.js`
@@ -595,16 +597,26 @@ describe('LyriaService.generateMusic - lyrics + negative prompt', () => {
     expect(textParts).toHaveLength(1); // only the prompt
   });
 
-  test('forwards negativePrompt into config.negativePrompt', async () => {
-    await svc.generateMusic('prompt', { negativePrompt: 'no vocals' }, { id: 'u1' });
+  test('composes negativePrompt into the prompt text', async () => {
+    await svc.generateMusic('upbeat jazz', { negativePrompt: 'no vocals, no drums' }, { id: 'u1' });
     const call = generateContent.mock.calls[0][0];
-    expect(call.config).toEqual(expect.objectContaining({ negativePrompt: 'no vocals' }));
+    const textParts = call.contents.filter((p) => typeof p.text === 'string').map((p) => p.text);
+    expect(textParts[0]).toContain('upbeat jazz');
+    expect(textParts[0]).toContain('Avoid');
+    expect(textParts[0]).toContain('no vocals, no drums');
   });
 
-  test('omits config.negativePrompt when not provided', async () => {
-    await svc.generateMusic('prompt', {}, { id: 'u1' });
+  test('does not modify the prompt text when negativePrompt is empty', async () => {
+    await svc.generateMusic('upbeat jazz', {}, { id: 'u1' });
     const call = generateContent.mock.calls[0][0];
-    expect(call.config?.negativePrompt).toBeUndefined();
+    const textParts = call.contents.filter((p) => typeof p.text === 'string').map((p) => p.text);
+    expect(textParts[0]).toBe('upbeat jazz');
+  });
+
+  test('does not pass a config field to generateContent', async () => {
+    await svc.generateMusic('upbeat jazz', { negativePrompt: 'no vocals' }, { id: 'u1' });
+    const call = generateContent.mock.calls[0][0];
+    expect(call.config).toBeUndefined();
   });
 });
 ```
@@ -615,7 +627,7 @@ describe('LyriaService.generateMusic - lyrics + negative prompt', () => {
 npm test -- --testPathPatterns="LyriaService"
 ```
 
-Expected: FAIL — lyrics not propagated; `config.negativePrompt` not set.
+Expected: FAIL — lyrics not propagated; negative prompt not composed into the prompt text.
 
 - [ ] **Step 3: Extend the implementation**
 
@@ -624,22 +636,22 @@ Replace the body of `generateMusic` from the `const contents = [{ text: prompt }
 ```js
     const { lyrics, negativePrompt } = options;
 
-    const contents = [{ text: prompt }];
-    if (lyrics && lyrics.trim().length > 0) {
-      contents.push({ text: `Lyrics:\n${lyrics}` });
+    // Lyria 3 has no structured negative_prompt API field — compose it into the prompt text.
+    let promptText = prompt;
+    if (negativePrompt && negativePrompt.trim().length > 0) {
+      promptText = `${prompt}\n\nAvoid: ${negativePrompt.trim()}`;
     }
 
-    const apiConfig = {};
-    if (negativePrompt && negativePrompt.trim().length > 0) {
-      apiConfig.negativePrompt = negativePrompt;
+    const contents = [{ text: promptText }];
+    if (lyrics && lyrics.trim().length > 0) {
+      contents.push({ text: `Lyrics:\n${lyrics}` });
     }
 
     let response;
     try {
       response = await this.client.models.generateContent({
         model: this.config.lyria.model,
-        contents,
-        ...(Object.keys(apiConfig).length > 0 ? { config: apiConfig } : {})
+        contents
       });
     } catch (err) {
       logger.error(`Lyria generateContent failed: ${err.message}`, { error: err });
@@ -659,7 +671,7 @@ Expected: PASS — all lyrics/negative-prompt tests green; previous tests still 
 
 ```bash
 git add services/LyriaService.js __tests__/services/LyriaService.test.js
-git commit -m "feat(lyria): support lyrics and negative prompt"
+git commit -m "feat(lyria): support lyrics and prompt-composed negative prompt"
 ```
 
 ---
