@@ -23,6 +23,8 @@ const AgentClient = require('./services/AgentClient');
 const SandboxTraceService = require('./services/SandboxTraceService');
 const ImagenService = require('./services/ImagenService');
 const VeoService = require('./services/VeoService');
+const LyriaService = require('./services/LyriaService');
+const CostService = require('./services/CostService');
 const Mem0Service = require('./services/Mem0Service');
 const QdrantService = require('./services/QdrantService');
 const NickMappingService = require('./services/NickMappingService');
@@ -50,6 +52,7 @@ const {
   ResummarizeSlashCommand,
   ImagineSlashCommand,
   VideogenSlashCommand,
+  MusicgenSlashCommand,
   MemoriesSlashCommand,
   RememberSlashCommand,
   ForgetSlashCommand,
@@ -245,6 +248,16 @@ class DiscordBot {
       logger.info('Veo (video generation) is disabled or not fully configured');
     }
 
+    // Initialize Lyria (music generation) service
+    this.lyriaService = null;
+    try {
+      if (config.lyria && config.lyria.enabled) {
+        this.lyriaService = new LyriaService(config, new CostService());
+      }
+    } catch (err) {
+      logger.error(`Failed to initialize LyriaService: ${err.message}`);
+    }
+
     // Initialize Local LLM service for uncensored chat mode
     personalityManager.setLocalLlmService(localLlmService);
 
@@ -398,6 +411,12 @@ class DiscordBot {
     if (this.veoService) {
       this.slashCommandHandler.register(new VideogenSlashCommand(this.veoService));
       logger.info('Veo slash command registered');
+    }
+
+    // Register music generation slash commands
+    if (this.lyriaService && this.lyriaService.isEnabled()) {
+      this.slashCommandHandler.register(new MusicgenSlashCommand(this.lyriaService));
+      logger.info('Lyria slash command registered');
     }
 
     // Register IRC history slash commands
