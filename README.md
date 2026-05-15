@@ -60,6 +60,16 @@ A Discord bot with AI chat (channel-voice personality), image/video generation, 
 - **Progress Updates**: Real-time status updates during generation
 - **Usage Tracking**: All generations tracked in MongoDB
 
+### Music Generation (Lyria 3 Pro)
+
+- **AI Music Generation**: Generate music using Google's Lyria 3 Pro
+- **Text-to-Music**: Create music from natural language descriptions
+- **Lyrics Support**: Provide structured lyrics with verse/chorus/bridge tags
+- **Visual Inspiration**: Up to 3 reference images to guide the generation style
+- **Negative Prompts**: Specify what to avoid in the generated music
+- **MP3 Output**: Multi-minute audio attachments in Discord
+- **Usage Tracking**: All generations tracked in MongoDB
+
 ### IRC History Search
 
 - **Voice-Informed Search**: Query expansion using the group's vocabulary — searches for how the group actually talked, not just what you typed

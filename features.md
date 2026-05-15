@@ -83,6 +83,21 @@
 - **Progress Updates**: Real-time status updates during generation
 - **Usage Tracking**: All generations tracked in MongoDB
 
+### Music Generation (`/musicgen`)
+- **Lyria 3 Pro Generation**: Generate music using Google's Lyria 3 Pro (`lyria-3-pro-preview`)
+- **Text Prompts**: Describe the music in natural language
+- **Lyrics Support**: Provide lyrics with `[Verse]`, `[Chorus]`, `[Bridge]` tags for structured composition
+- **Negative Prompts**: Specify what to avoid (e.g., "no vocals"). Composed into the prompt text since Lyria has no structured negative_prompt API field.
+- **Visual Inspiration**: Up to 3 reference images to guide the generation style
+- **MP3 Output**: Multi-minute audio attachments with duration controllable through the prompt
+- **Lyrics Rendering**: Generated lyrics and structure displayed in an embed when provided by the model
+- **Usage Tracking**: All generations recorded in MongoDB via CostService
+- **Configuration**: `MUSICGEN_ENABLED=true`, `LYRIA_MODEL` (default `lyria-3-pro-preview`), `LYRIA_PER_CALL_COST_USD` (default `0.06`, placeholder pending finalized Google pricing)
+
+**Note on `/stats`**: Cost tracking per generation is recorded through CostService and surfaced in cumulative cost logs. The `/stats` command reads from MongoDB's token-usage leaderboard and does NOT include media-gen records today. Wiring media-gen rows into MongoDB for `/stats` display is part of the Approach B refactor (see `docs/superpowers/specs/2026-05-15-lyria-music-generation-design.md`).
+
+**TODO: Approach B refactor.** `ImagenService` / `VeoService` / `LyriaService` duplicate noticeable plumbing (enabled checks, image fetching, attachment construction, error shaping). Worth extracting a `MediaGenBase` once Lyria has soaked. See `docs/superpowers/specs/2026-05-15-lyria-music-generation-design.md` ("Approach B").
+
 ### Channel Context Tracking
 - **Passive Recording**: Opt-in per-channel message tracking (non-blocking)
 - **3-Tier Architecture**: Hot (recent messages in memory), warm (batch-indexed to Qdrant), cold (Mem0 memory extraction)
