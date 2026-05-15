@@ -25,6 +25,57 @@ function makeConfig(overrides = {}) {
   };
 }
 
+describe('LyriaService.generateMusic - happy path', () => {
+  let svc;
+  let generateContent;
+  let costService;
+
+  beforeEach(() => {
+    GoogleGenAI.mockReset();
+    generateContent = jest.fn().mockResolvedValue({
+      candidates: [{
+        content: {
+          parts: [
+            { inlineData: { mimeType: 'audio/mpeg', data: Buffer.from('FAKE_MP3').toString('base64') } }
+          ]
+        }
+      }]
+    });
+    GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+    costService = { recordMediaGen: jest.fn().mockReturnValue({ success: true, cost: 0.06 }) };
+    svc = new LyriaService(makeConfig(), costService);
+  });
+
+  test('returns audio buffer on success and records cost', async () => {
+    const result = await svc.generateMusic('upbeat lo-fi', {}, { id: 'u1', tag: 'alice' });
+
+    expect(result.success).toBe(true);
+    expect(result.buffer).toBeInstanceOf(Buffer);
+    expect(result.buffer.toString()).toBe('FAKE_MP3');
+    expect(result.mimeType).toBe('audio/mpeg');
+    expect(costService.recordMediaGen).toHaveBeenCalledWith('lyria-3-pro-preview', { id: 'u1', tag: 'alice' });
+  });
+
+  test('passes prompt as the first content part', async () => {
+    await svc.generateMusic('a slow piano ballad', {}, { id: 'u1' });
+
+    expect(generateContent).toHaveBeenCalledTimes(1);
+    const call = generateContent.mock.calls[0][0];
+    expect(call.model).toBe('lyria-3-pro-preview');
+    expect(call.contents).toEqual(
+      expect.arrayContaining([expect.objectContaining({ text: expect.stringContaining('a slow piano ballad') })])
+    );
+  });
+
+  test('returns success:false when service is disabled', async () => {
+    const disabled = new LyriaService(makeConfig({ enabled: false }), costService);
+    const result = await disabled.generateMusic('foo', {}, { id: 'u1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/not enabled/i);
+    expect(costService.recordMediaGen).not.toHaveBeenCalled();
+  });
+});
+
 describe('LyriaService constructor', () => {
   beforeEach(() => {
     GoogleGenAI.mockReset();

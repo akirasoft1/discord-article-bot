@@ -34,6 +34,41 @@ class LyriaService {
   isEnabled() {
     return this.client !== null;
   }
+
+  async generateMusic(prompt, options = {}, user = null) {
+    if (!this.isEnabled()) {
+      return { success: false, error: 'Music generation is not enabled on this bot.' };
+    }
+
+    const contents = [{ text: prompt }];
+
+    let response;
+    try {
+      response = await this.client.models.generateContent({
+        model: this.config.lyria.model,
+        contents
+      });
+    } catch (err) {
+      logger.error(`Lyria generateContent failed: ${err.message}`, { error: err });
+      return { success: false, error: `Music generation failed: ${err.message}` };
+    }
+
+    const parts = response?.candidates?.[0]?.content?.parts || [];
+    const audioPart = parts.find((p) => p.inlineData && (p.inlineData.mimeType || '').startsWith('audio/'));
+    if (!audioPart) {
+      return { success: false, error: 'Music generation completed but no audio data was returned.' };
+    }
+
+    const buffer = Buffer.from(audioPart.inlineData.data, 'base64');
+    const mimeType = audioPart.inlineData.mimeType;
+
+    const textPart = parts.find((p) => typeof p.text === 'string' && p.text.length > 0);
+    const generatedLyrics = textPart ? textPart.text : null;
+
+    this.costService?.recordMediaGen(this.config.lyria.model, user);
+
+    return { success: true, buffer, mimeType, generatedLyrics };
+  }
 }
 
 module.exports = LyriaService;
