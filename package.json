@@ -30,7 +30,7 @@
     "discord.js": "^14.26.4",
     "dotenv": "^17.2.3",
     "google-auth-library": "^10.6.2",
-    "mem0ai": "^2.1.38",
+    "mem0ai": "2.1.38",
     "mongodb": "^6.21.0",
     "openai": "^6.9.1",
     "rss-parser": "^3.13.0",
@@ -45,7 +45,10 @@
     "picomatch": "^2.3.2",
     "jws": "^4.0.1",
     "mem0ai": {
-      "axios": "^1.16.1"
+      "axios": "^1.16.1",
+      "@langchain/core": "^1.1.39",
+      "langsmith": "^0.6.0",
+      "sqlite3": "^6.0.1"
     },
     "minimatch": "^3.1.4"
   },
