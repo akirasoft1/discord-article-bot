@@ -109,14 +109,21 @@ Errors are logged in full — no truncation (project preference).
 
 ## CostService extension
 
-Today `CostService` only handles token-based costs from LLM calls. To make `/stats` reflect music gen (and lay groundwork for retroactively tracking Imagen/Veo):
+Today `CostService` is a log-helper: each consumer service (currently `SummarizationService`) instantiates its own copy and uses it to log per-call and cumulative costs. `/stats` does **not** read from CostService — it reads from MongoDB's token-usage records (`mongoService.getTokenUsageLeaderboard`).
 
-- Add `recordMediaGen(modelKey, user)` method.
+For media gen:
+
+- Add `recordMediaGen(modelKey, user)` method on `CostService`.
 - Add a `MEDIA_GEN_COSTS` map: `{ 'lyria-3-pro-preview': 0.06, ... }` (placeholder pricing — TBD when Google publishes).
-- Synthesize a cost record (`{ totalCost, modelKey, callCount: 1 }`) and feed it through the existing `updateCumulative()` path so `/stats` rolls it in unchanged.
+- Track in a new `cumulative.media = { total, calls, byModel }` accumulator.
+- Surface the totals via the existing `logCumulative()` log line.
+- `LyriaService` instantiates its own `CostService` (matching the existing per-consumer pattern). This keeps the change small and avoids touching `SummarizationService`'s constructor.
 - New unit tests in `CostService.test.js`.
 
-**Follow-up TODO**: once pricing is confirmed, wire `ImagenService` and `VeoService` through `recordMediaGen()` too. Gated behind the Approach B refactor.
+**Follow-up TODOs** (gated behind the Approach B refactor):
+- Hoist a single `CostService` instance into `bot.js` and inject it into every consumer (SummarizationService, LyriaService, future Imagen/Veo wiring).
+- Record media-gen rows in MongoDB so `/stats` can surface them alongside token usage.
+- Wire `ImagenService` and `VeoService` through `recordMediaGen()` once pricing is confirmed.
 
 ## Config additions
 
