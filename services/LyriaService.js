@@ -5,6 +5,7 @@
 // See docs/superpowers/specs/2026-05-15-lyria-music-generation-design.md ("Approach B").
 
 const { GoogleGenAI } = require('@google/genai');
+const axios = require('axios');
 const logger = require('../logger');
 
 class LyriaService {
@@ -52,6 +53,26 @@ class LyriaService {
     const contents = [{ text: promptText }];
     if (lyrics && lyrics.trim().length > 0) {
       contents.push({ text: `Lyrics:\n${lyrics}` });
+    }
+
+    const { imageUrls = [] } = options;
+    if (imageUrls.length > 0) {
+      const fetched = await Promise.all(imageUrls.map(async (url) => {
+        try {
+          const resp = await axios.get(url, { responseType: 'arraybuffer' });
+          const mimeType = resp.headers['content-type'] || 'image/png';
+          const data = Buffer.from(resp.data).toString('base64');
+          return { inlineData: { mimeType, data } };
+        } catch (err) {
+          logger.warn(`Lyria: failed to fetch reference image ${url}: ${err.message}`);
+          return null;
+        }
+      }));
+      const okImages = fetched.filter(Boolean);
+      if (okImages.length === 0) {
+        return { success: false, error: 'Could not fetch reference images.' };
+      }
+      contents.push(...okImages);
     }
 
     let response;

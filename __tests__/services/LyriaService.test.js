@@ -129,6 +129,59 @@ describe('LyriaService.generateMusic - lyrics + negative prompt', () => {
   });
 });
 
+describe('LyriaService.generateMusic - reference images', () => {
+  let svc;
+  let generateContent;
+  const axios = require('axios');
+
+  beforeEach(() => {
+    GoogleGenAI.mockClear();
+    generateContent = jest.fn().mockResolvedValue({
+      candidates: [{
+        content: { parts: [{ inlineData: { mimeType: 'audio/mpeg', data: Buffer.from('ok').toString('base64') } }] }
+      }]
+    });
+    GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+    svc = new LyriaService(makeConfig(), { recordMediaGen: jest.fn() });
+    jest.spyOn(axios, 'get').mockReset();
+  });
+
+  test('fetches and inlines a single reference image', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: Buffer.from([0x89, 0x50, 0x4e, 0x47]), // PNG magic
+      headers: { 'content-type': 'image/png' }
+    });
+
+    await svc.generateMusic('prompt', { imageUrls: ['https://x/1.png'] }, { id: 'u1' });
+    const call = generateContent.mock.calls[0][0];
+    const imageParts = call.contents.filter((p) => p.inlineData && (p.inlineData.mimeType || '').startsWith('image/'));
+    expect(imageParts).toHaveLength(1);
+    expect(imageParts[0].inlineData.mimeType).toBe('image/png');
+    expect(imageParts[0].inlineData.data.length).toBeGreaterThan(0);
+  });
+
+  test('drops a failed image fetch and continues with the rest', async () => {
+    axios.get
+      .mockResolvedValueOnce({ data: Buffer.from('a'), headers: { 'content-type': 'image/png' } })
+      .mockRejectedValueOnce(new Error('404'))
+      .mockResolvedValueOnce({ data: Buffer.from('b'), headers: { 'content-type': 'image/jpeg' } });
+
+    const result = await svc.generateMusic('prompt', { imageUrls: ['u1', 'u2', 'u3'] }, { id: 'u1' });
+    expect(result.success).toBe(true);
+    const call = generateContent.mock.calls[0][0];
+    const imageParts = call.contents.filter((p) => p.inlineData && (p.inlineData.mimeType || '').startsWith('image/'));
+    expect(imageParts).toHaveLength(2);
+  });
+
+  test('returns success:false when all image fetches fail', async () => {
+    axios.get.mockRejectedValue(new Error('boom'));
+    const result = await svc.generateMusic('prompt', { imageUrls: ['u1', 'u2'] }, { id: 'u1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/reference images/i);
+    expect(generateContent).not.toHaveBeenCalled();
+  });
+});
+
 describe('LyriaService constructor', () => {
   beforeEach(() => {
     GoogleGenAI.mockReset();
