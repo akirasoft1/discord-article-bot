@@ -1107,12 +1107,14 @@ git commit -m "feat(bot): wire LyriaService and /musicgen into the bot"
 
 ## Task 10: Update Kubernetes configmap
 
+**IMPORTANT:** `k8s/overlays/deployed/configmap.yaml` is `.gitignore`d (line 27: `k8s/overlays/deployed/`). The file is the local source-of-truth for what gets `kubectl apply`ed to the cluster, but it must **not** be committed to git — it contains personally-identifying values (`BOT_ADMIN_USER_IDS`, `DISCORD_TEST_GUILD_ID`, etc.). The earlier draft of this task instructed a `git add` + commit, which would have force-added a gitignored file. That step has been removed.
+
 **Files:**
-- Modify: `k8s/overlays/deployed/configmap.yaml`
+- Modify (locally only, not committed): `k8s/overlays/deployed/configmap.yaml`
 
-- [ ] **Step 1: Add the env vars**
+- [ ] **Step 1: Add the env vars (in-place file edit)**
 
-In `k8s/overlays/deployed/configmap.yaml`, append (near other media gen flags like `VEO_ENABLED` / `IMAGEGEN_ENABLED`):
+In `k8s/overlays/deployed/configmap.yaml`, append near other media gen flags (`VEO_ENABLED` / `IMAGEGEN_ENABLED`):
 
 ```yaml
   # Music generation (Lyria 3 Pro)
@@ -1129,12 +1131,14 @@ python3 -c "import yaml; yaml.safe_load(open('k8s/overlays/deployed/configmap.ya
 
 Expected: `OK`.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Confirm the file is still gitignored**
 
 ```bash
-git add k8s/overlays/deployed/configmap.yaml
-git commit -m "k8s(config): enable MUSICGEN_ENABLED and Lyria pricing"
+git status --short
+git check-ignore k8s/overlays/deployed/configmap.yaml
 ```
+
+Expected: `git status` shows the file is **not** listed (gitignored). `git check-ignore` prints the path (proof it's ignored). **Do not commit this file.** Task 10 produces no git commit — Task 12's `kubectl apply -f k8s/overlays/deployed/configmap.yaml` picks up the local file at deploy time.
 
 ---
 
