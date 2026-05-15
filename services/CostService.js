@@ -10,12 +10,19 @@ class CostService {
       output: 1.60 / 1_000_000       // $1.60 per 1M tokens
     };
 
+    // Flat per-call pricing for media generation models (USD per call).
+    // Placeholders pending finalized Google pricing.
+    this.mediaPricing = {
+      'lyria-3-pro-preview': 0.06
+    };
+
     // Track cumulative costs
     this.cumulative = {
       input: 0,
       output: 0,
       total: 0,
-      requests: 0
+      requests: 0,
+      media: { total: 0, calls: 0, byModel: {} }
     };
   }
 
@@ -64,6 +71,24 @@ class CostService {
     }
   }
 
+  recordMediaGen(modelKey, user) {
+    const cost = this.mediaPricing[modelKey];
+    if (typeof cost !== 'number') {
+      const error = `Unknown model for media generation cost: ${modelKey}`;
+      logger.warn(error);
+      return { success: false, error };
+    }
+
+    this.cumulative.media.total += cost;
+    this.cumulative.media.calls += 1;
+    this.cumulative.media.byModel[modelKey] = (this.cumulative.media.byModel[modelKey] || 0) + cost;
+
+    const userLabel = user?.tag || user?.id || 'unknown';
+    logger.info(`Media gen recorded - model: ${modelKey}, user: ${userLabel}, cost: ${this.formatCost(cost)}, cumulative: ${this.formatCost(this.cumulative.media.total)} over ${this.cumulative.media.calls} calls`);
+
+    return { success: true, cost, modelKey };
+  }
+
   logCostBreakdown(costs, tokenCounts) {
     logger.info(
       `Cost breakdown - Input: ${this.formatCost(costs.input)} ` +
@@ -78,7 +103,10 @@ class CostService {
       `Cumulative costs (${this.cumulative.requests} requests) - ` +
       `Input: ${this.formatCost(this.cumulative.input)}, ` +
       `Output: ${this.formatCost(this.cumulative.output)}, ` +
-      `Total: ${this.formatCost(this.cumulative.total)}`
+      `Total: ${this.formatCost(this.cumulative.total)}` +
+      (this.cumulative.media.calls > 0
+        ? `, Media gen: ${this.formatCost(this.cumulative.media.total)} (${this.cumulative.media.calls} calls)`
+        : '')
     );
   }
 }

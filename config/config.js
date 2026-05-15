@@ -218,6 +218,25 @@ module.exports = {
     // Polling interval for checking operation status (in milliseconds)
     pollIntervalMs: parseInt(process.env.VEO_POLL_INTERVAL_MS || '5000', 10)
   },
+  // Lyria 3 - Google Gemini music generation
+  lyria: {
+    // Enable/disable music generation
+    enabled: process.env.MUSICGEN_ENABLED === 'true',
+    // Gemini API key (falls back to GEMINI_API_KEY since they are the same credential)
+    apiKey: process.env.LYRIA_API_KEY || process.env.GEMINI_API_KEY || '',
+    // Model to use. Pro is the only supported option today.
+    model: process.env.LYRIA_MODEL || 'lyria-3-pro-preview',
+    // Max reference images per request (Discord slash command exposes 3 slots)
+    maxImagesPerRequest: 3,
+    // Max prompt / lyrics / negative-prompt lengths
+    maxPromptLength: parseInt(process.env.LYRIA_MAX_PROMPT_LENGTH || '1000', 10),
+    maxLyricsLength: parseInt(process.env.LYRIA_MAX_LYRICS_LENGTH || '2000', 10),
+    maxNegativePromptLength: parseInt(process.env.LYRIA_MAX_NEGATIVE_PROMPT_LENGTH || '500', 10),
+    // Cooldown between music generations per user (in seconds)
+    cooldownSeconds: parseInt(process.env.LYRIA_COOLDOWN_SECONDS || '60', 10),
+    // Per-call flat cost (USD) used to seed CostService.mediaPricing override at runtime
+    perCallCostUsd: parseFloat(process.env.LYRIA_PER_CALL_COST_USD || '0.06')
+  },
   // Mem0 - Persistent AI conversation memory
   mem0: {
     // Enable/disable Mem0 memory service

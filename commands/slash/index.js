@@ -16,6 +16,7 @@ module.exports = {
   // Media generation commands
   ImagineSlashCommand: require('./ImagineCommand'),
   VideogenSlashCommand: require('./VideogenCommand'),
+  MusicgenSlashCommand: require('./MusicgenCommand'),
 
   // Memory commands
   MemoriesSlashCommand: require('./MemoriesCommand'),
