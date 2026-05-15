@@ -19,6 +19,7 @@ const {
   ResummarizeSlashCommand,
   ImagineSlashCommand,
   VideogenSlashCommand,
+  MusicgenSlashCommand,
   MemoriesSlashCommand,
   RememberSlashCommand,
   ForgetSlashCommand,
@@ -69,6 +70,11 @@ async function registerCommands() {
   if (config.veo?.enabled) {
     commands.push(new VideogenSlashCommand(null));
     console.log('Including /videogen command (veo enabled)');
+  }
+
+  if (config.lyria?.enabled) {
+    commands.push(new MusicgenSlashCommand(null));
+    console.log('Including /musicgen command (lyria enabled)');
   }
 
   if (config.mem0?.enabled) {
