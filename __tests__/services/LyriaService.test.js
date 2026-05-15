@@ -76,6 +76,59 @@ describe('LyriaService.generateMusic - happy path', () => {
   });
 });
 
+describe('LyriaService.generateMusic - lyrics + negative prompt', () => {
+  let svc;
+  let generateContent;
+
+  beforeEach(() => {
+    GoogleGenAI.mockClear();
+    generateContent = jest.fn().mockResolvedValue({
+      candidates: [{
+        content: { parts: [{ inlineData: { mimeType: 'audio/mpeg', data: Buffer.from('ok').toString('base64') } }] }
+      }]
+    });
+    GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+    svc = new LyriaService(makeConfig(), { recordMediaGen: jest.fn() });
+  });
+
+  test('includes lyrics text part when provided', async () => {
+    await svc.generateMusic('prompt', { lyrics: '[Verse]\nhello world' }, { id: 'u1' });
+    const call = generateContent.mock.calls[0][0];
+    const textParts = call.contents.filter((p) => typeof p.text === 'string').map((p) => p.text);
+    expect(textParts.some((t) => t.includes('[Verse]'))).toBe(true);
+    expect(textParts.some((t) => t.includes('hello world'))).toBe(true);
+  });
+
+  test('omits lyrics part when empty', async () => {
+    await svc.generateMusic('prompt', { lyrics: '' }, { id: 'u1' });
+    const call = generateContent.mock.calls[0][0];
+    const textParts = call.contents.filter((p) => typeof p.text === 'string');
+    expect(textParts).toHaveLength(1); // only the prompt
+  });
+
+  test('composes negativePrompt into the prompt text', async () => {
+    await svc.generateMusic('upbeat jazz', { negativePrompt: 'no vocals, no drums' }, { id: 'u1' });
+    const call = generateContent.mock.calls[0][0];
+    const textParts = call.contents.filter((p) => typeof p.text === 'string').map((p) => p.text);
+    expect(textParts[0]).toContain('upbeat jazz');
+    expect(textParts[0]).toContain('Avoid');
+    expect(textParts[0]).toContain('no vocals, no drums');
+  });
+
+  test('does not modify the prompt text when negativePrompt is empty', async () => {
+    await svc.generateMusic('upbeat jazz', {}, { id: 'u1' });
+    const call = generateContent.mock.calls[0][0];
+    const textParts = call.contents.filter((p) => typeof p.text === 'string').map((p) => p.text);
+    expect(textParts[0]).toBe('upbeat jazz');
+  });
+
+  test('does not pass a config field to generateContent', async () => {
+    await svc.generateMusic('upbeat jazz', { negativePrompt: 'no vocals' }, { id: 'u1' });
+    const call = generateContent.mock.calls[0][0];
+    expect(call.config).toBeUndefined();
+  });
+});
+
 describe('LyriaService constructor', () => {
   beforeEach(() => {
     GoogleGenAI.mockReset();

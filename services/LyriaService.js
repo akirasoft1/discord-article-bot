@@ -41,7 +41,18 @@ class LyriaService {
       return { success: false, error: 'Music generation is not enabled on this bot.' };
     }
 
-    const contents = [{ text: prompt }];
+    const { lyrics, negativePrompt } = options;
+
+    // Lyria 3 has no structured negative_prompt API field — compose it into the prompt text.
+    let promptText = prompt;
+    if (negativePrompt && negativePrompt.trim().length > 0) {
+      promptText = `${prompt}\n\nAvoid: ${negativePrompt.trim()}`;
+    }
+
+    const contents = [{ text: promptText }];
+    if (lyrics && lyrics.trim().length > 0) {
+      contents.push({ text: `Lyrics:\n${lyrics}` });
+    }
 
     let response;
     try {
