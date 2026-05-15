@@ -254,3 +254,31 @@ describe('LyriaService constructor', () => {
     expect(GoogleGenAI).not.toHaveBeenCalled();
   });
 });
+
+describe('LyriaService - per-call cost override', () => {
+  let costService;
+
+  beforeEach(() => {
+    GoogleGenAI.mockClear();
+    GoogleGenAI.mockImplementation(() => ({ models: { generateContent: jest.fn() } }));
+    costService = {
+      recordMediaGen: jest.fn(),
+      mediaPricing: { 'lyria-3-pro-preview': 0.06 }
+    };
+  });
+
+  test('applies config.lyria.perCallCostUsd into the costService mediaPricing map', () => {
+    new LyriaService(makeConfig({ perCallCostUsd: 0.123 }), costService);
+    expect(costService.mediaPricing['lyria-3-pro-preview']).toBeCloseTo(0.123, 5);
+  });
+
+  test('leaves mediaPricing untouched when perCallCostUsd is NaN', () => {
+    new LyriaService(makeConfig({ perCallCostUsd: NaN }), costService);
+    expect(costService.mediaPricing['lyria-3-pro-preview']).toBeCloseTo(0.06, 5);
+  });
+
+  test('does not crash when costService has no mediaPricing (defensive)', () => {
+    const noPricing = { recordMediaGen: jest.fn() };
+    expect(() => new LyriaService(makeConfig({ perCallCostUsd: 0.5 }), noPricing)).not.toThrow();
+  });
+});

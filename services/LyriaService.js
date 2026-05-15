@@ -29,6 +29,15 @@ class LyriaService {
     }
 
     this.client = new GoogleGenAI({ apiKey: cfg.apiKey });
+
+    // Apply the env-driven per-call cost override into this CostService instance's
+    // pricing map so LYRIA_PER_CALL_COST_USD actually takes effect. Reaching into
+    // mediaPricing here is intentionally direct; the Approach B refactor will hoist
+    // CostService to bot.js and accept pricing through a proper API.
+    if (this.costService?.mediaPricing && typeof cfg.perCallCostUsd === 'number' && !isNaN(cfg.perCallCostUsd)) {
+      this.costService.mediaPricing[cfg.model] = cfg.perCallCostUsd;
+    }
+
     logger.info(`LyriaService enabled - model: ${cfg.model}`);
   }
 
