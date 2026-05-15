@@ -5,10 +5,13 @@
 // See docs/superpowers/specs/2026-05-15-lyria-music-generation-design.md ("Approach B").
 
 const { GoogleGenAI } = require('@google/genai');
-const axios = require('axios');
 const logger = require('../logger');
 
 class LyriaService {
+  // Unlike ImagenService (which throws on disabled state), LyriaService
+  // constructs successfully when disabled and exposes isEnabled() so callers
+  // can check runtime availability without try/catch. Future MediaGenBase
+  // refactor (Approach B in the spec) will reconcile the two patterns.
   constructor(config, costService) {
     this.config = config;
     this.costService = costService;

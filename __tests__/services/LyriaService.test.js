@@ -27,7 +27,11 @@ function makeConfig(overrides = {}) {
 
 describe('LyriaService constructor', () => {
   beforeEach(() => {
-    GoogleGenAI.mockClear();
+    GoogleGenAI.mockReset();
+    // Restore default implementation since mockReset wipes it
+    GoogleGenAI.mockImplementation(() => ({
+      models: { generateContent: jest.fn() }
+    }));
   });
 
   test('initializes the genai client when enabled', () => {
