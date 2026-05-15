@@ -14,9 +14,9 @@ class MusicgenSlashCommand extends BaseSlashCommand {
       data: new SlashCommandBuilder()
         .setName('musicgen')
         .setDescription('Generate music with Lyria 3')
-        .addStringOption((o) => o.setName('prompt').setDescription('What to generate').setRequired(true).setMaxLength(1000))
-        .addStringOption((o) => o.setName('lyrics').setDescription('Custom lyrics. Supports [Verse] / [Chorus] / [Bridge] tags').setRequired(false).setMaxLength(2000))
-        .addStringOption((o) => o.setName('negative_prompt').setDescription('Things to avoid (e.g. "no vocals", "no drums")').setRequired(false).setMaxLength(500))
+        .addStringOption((o) => o.setName('prompt').setDescription('What to generate').setRequired(true).setMaxLength(6000))
+        .addStringOption((o) => o.setName('lyrics').setDescription('Custom lyrics. Supports [Verse] / [Chorus] / [Bridge] tags').setRequired(false).setMaxLength(6000))
+        .addStringOption((o) => o.setName('negative_prompt').setDescription('Things to avoid (e.g. "no vocals", "no drums")').setRequired(false).setMaxLength(6000))
         .addAttachmentOption((o) => o.setName('image1').setDescription('Reference image 1').setRequired(false))
         .addAttachmentOption((o) => o.setName('image2').setDescription('Reference image 2').setRequired(false))
         .addAttachmentOption((o) => o.setName('image3').setDescription('Reference image 3').setRequired(false)),
