@@ -1174,7 +1174,8 @@ Generate music with Google's Lyria 3 Pro (`lyria-3-pro-preview`).
 - `LYRIA_API_KEY` falls back to `GEMINI_API_KEY`
 
 **Cost tracking**
-- Each call is recorded through `CostService.recordMediaGen()` and rolled into `/stats`.
+- Each call is recorded through `CostService.recordMediaGen()` and surfaced in the bot's cumulative cost log lines.
+- `/stats` reads from MongoDB's token-usage leaderboard and does **not** include media-gen records today. Wiring media-gen rows into MongoDB so they appear in `/stats` is part of the Approach B refactor (see the design spec).
 
 **TODO: Approach B refactor.** `ImagenService` / `VeoService` / `LyriaService` duplicate noticeable plumbing (enabled checks, image fetching, attachment construction, error shaping). Worth extracting a `MediaGenBase` once Lyria has soaked. See `docs/superpowers/specs/2026-05-15-lyria-music-generation-design.md` ("Approach B").
 ```
