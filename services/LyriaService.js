@@ -35,6 +35,7 @@ class LyriaService {
     return this.client !== null;
   }
 
+  // options: { lyrics?, negativePrompt?, imageUrls? } — fields are read by future tasks.
   async generateMusic(prompt, options = {}, user = null) {
     if (!this.isEnabled()) {
       return { success: false, error: 'Music generation is not enabled on this bot.' };
@@ -49,12 +50,17 @@ class LyriaService {
         contents
       });
     } catch (err) {
-      logger.error(`Lyria generateContent failed: ${err.message}`, { error: err });
+      logger.error('Lyria generateContent failed', { error: err });
       return { success: false, error: `Music generation failed: ${err.message}` };
     }
 
     const parts = response?.candidates?.[0]?.content?.parts || [];
-    const audioPart = parts.find((p) => p.inlineData && (p.inlineData.mimeType || '').startsWith('audio/'));
+    const audioPart = parts.find((p) =>
+      p.inlineData &&
+      typeof p.inlineData.data === 'string' &&
+      p.inlineData.data.length > 0 &&
+      (p.inlineData.mimeType || '').startsWith('audio/')
+    );
     if (!audioPart) {
       return { success: false, error: 'Music generation completed but no audio data was returned.' };
     }
