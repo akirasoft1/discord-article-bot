@@ -11,7 +11,7 @@ class CostService {
     };
 
     // Flat per-call pricing for media generation models (USD per call).
-    // Placeholders pending finalized Google pricing — override via env if needed.
+    // Placeholders pending finalized Google pricing.
     this.mediaPricing = {
       'lyria-3-pro-preview': 0.06
     };
@@ -21,13 +21,8 @@ class CostService {
       input: 0,
       output: 0,
       total: 0,
-      requests: 0
-    };
-
-    this.cumulative.media = {
-      total: 0,
-      calls: 0,
-      byModel: {}
+      requests: 0,
+      media: { total: 0, calls: 0, byModel: {} }
     };
   }
 
