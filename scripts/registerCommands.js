@@ -101,32 +101,31 @@ async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(config.discord.token);
 
   try {
-    // Check if we should register to a specific guild (instant) or globally (up to 1 hour)
-    const testGuildId = config.discord.testGuildId;
+    // Always register globally so commands appear in every guild the bot is in.
+    // Global commands can take up to 1 hour to propagate to Discord clients.
+    console.log('\nRegistering globally (may take up to 1 hour to propagate to all guilds)...');
 
+    await rest.put(
+      Routes.applicationCommands(config.discord.clientId),
+      { body: commandData }
+    );
+
+    console.log(`Successfully registered ${commandData.length} global commands`);
+
+    // If a test guild is configured, ALSO register there for instant feedback
+    // during development. Guild commands shadow global ones in that guild, so
+    // there's no duplication or conflict.
+    const testGuildId = config.discord.testGuildId;
     if (testGuildId) {
-      // Guild-specific registration (instant updates, good for development)
-      console.log(`\nRegistering to guild ${testGuildId} (instant)...`);
+      console.log(`\nAlso registering to test guild ${testGuildId} (instant)...`);
 
       await rest.put(
         Routes.applicationGuildCommands(config.discord.clientId, testGuildId),
         { body: commandData }
       );
 
-      console.log(`Successfully registered ${commandData.length} commands to guild ${testGuildId}`);
-      console.log('\nNote: Guild commands update instantly.');
-
-    } else {
-      // Global registration (can take up to 1 hour to propagate)
-      console.log('\nRegistering globally (may take up to 1 hour to propagate)...');
-
-      await rest.put(
-        Routes.applicationCommands(config.discord.clientId),
-        { body: commandData }
-      );
-
-      console.log(`Successfully registered ${commandData.length} global commands`);
-      console.log('\nNote: Global commands can take up to 1 hour to appear in all servers.');
+      console.log(`Successfully registered ${commandData.length} commands to test guild ${testGuildId}`);
+      console.log('Note: Guild commands update instantly and override the global definitions in that guild.');
     }
 
     console.log('\nDone!');
