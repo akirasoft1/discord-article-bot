@@ -45,7 +45,7 @@ No NetworkPolicy change needed — Google's public AI API egress is already perm
 |---|---|---|---|
 | `prompt` | string (≤1000) | yes | Description of music to generate |
 | `lyrics` | string (≤2000) | no | Supports `[Verse]`/`[Chorus]`/`[Bridge]` tags; passed verbatim |
-| `negative_prompt` | string (≤500) | no | Things to avoid; forwarded to API `config.negativePrompt` |
+| `negative_prompt` | string (≤500) | no | Things to avoid; composed into the prompt text as "Avoid: <neg>" because Lyria 3 has no structured negative_prompt API field |
 | `image1` / `image2` / `image3` | attachment | no | PNG/JPEG/GIF/WebP; same MIME validation as VideogenCommand |
 
 - `cooldown: 60` seconds (matches `/videogen`)
@@ -68,9 +68,9 @@ MusicgenCommand.execute:
    ├─ build contents: [prompt text, optional lyrics block, image parts]
    ├─ genaiClient.models.generateContent({
    │      model: 'lyria-3-pro-preview',
-   │      contents,
-   │      config: { negativePrompt }
+   │      contents
    │   })
+   │   (negativePrompt is composed into the prompt text, not a structured API field)
    ├─ extract audio bytes from inlineData parts where mimeType ~ 'audio/'
    ├─ extract generated-lyrics text part if present
    ├─ costService.recordMediaGen('lyria-3-pro-preview', user)
@@ -158,7 +158,7 @@ Modeled on `VeoService.test.js`. Covers:
 - Constructor: enabled / disabled by config; missing API key → disabled, warning logged.
 - `generateMusic()` happy path: returns `{success:true, buffer, mimeType:'audio/mpeg'}`.
 - With lyrics: lyrics string is included in `contents`.
-- With negative prompt: forwarded into `config.negativePrompt`.
+- With negative prompt: composed into the prompt text.
 - With reference images (0, 1, 3): URLs fetched, base64-encoded, included as `inlineData` parts.
 - Image fetch failures: partial → continue with warning; all → success-false.
 - API 4xx: returns `{success:false, error}` with verbatim API message.
@@ -182,7 +182,9 @@ No existing pattern under `__tests__/commands/slash/`. `MusicgenCommand` will no
 2. `/musicgen prompt:"..." lyrics:"[Verse]..."` — generated-lyrics text appears in reply.
 3. `/musicgen prompt:"..." image1:<png>` — reference image honored.
 4. `/musicgen prompt:"..."` with `MUSICGEN_ENABLED=false` — clean error.
-5. `/stats` — cost shows up after a generation.
+5. Check the bot pod logs (`kubectl logs deployment/discord-article-bot -n discord-article-bot --tail=200`) for a `Media gen recorded` line confirming the Lyria call landed in CostService.
+
+   Note: `/stats` reads MongoDB token-usage records and will NOT show media-gen costs today. Surfacing media-gen in `/stats` is part of the Approach B refactor.
 
 ## Open questions / risks
 
