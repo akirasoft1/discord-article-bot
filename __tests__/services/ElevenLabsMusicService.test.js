@@ -175,3 +175,52 @@ describe('ElevenLabsMusicService.generateMusic - compositionPlan mode (lyrics)',
     expect(call.compositionPlan).toBeUndefined();
   });
 });
+
+describe('ElevenLabsMusicService._splitLyricsIntoMaxLines', () => {
+  let svc;
+
+  beforeEach(() => {
+    ElevenLabsClient.mockReset();
+    ElevenLabsClient.mockImplementation(() => ({ music: { composeDetailed: jest.fn() } }));
+    svc = new ElevenLabsMusicService(makeConfig(), { recordMediaGen: jest.fn(), mediaPricing: {} });
+  });
+
+  test('preserves user-supplied \\n line breaks under the cap', () => {
+    const out = svc._splitLyricsIntoMaxLines('line one\nline two\nline three', 200);
+    expect(out).toEqual(['line one', 'line two', 'line three']);
+  });
+
+  test('drops empty lines', () => {
+    const out = svc._splitLyricsIntoMaxLines('one\n\n\ntwo', 200);
+    expect(out).toEqual(['one', 'two']);
+  });
+
+  test('drops whitespace-only lines', () => {
+    const out = svc._splitLyricsIntoMaxLines('one\n   \n\t\ntwo', 200);
+    expect(out).toEqual(['one', 'two']);
+  });
+
+  test('word-wraps a line longer than maxLen at the nearest space', () => {
+    const long = 'aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee ffffffffff';
+    const out = svc._splitLyricsIntoMaxLines(long, 50);
+    out.forEach((line) => expect(line.length).toBeLessThanOrEqual(50));
+    expect(out.join(' ')).toBe(long);
+  });
+
+  test('falls back to hard split when a single word exceeds maxLen', () => {
+    const huge = 'a'.repeat(250);
+    const out = svc._splitLyricsIntoMaxLines(huge, 200);
+    out.forEach((line) => expect(line.length).toBeLessThanOrEqual(200));
+    expect(out.join('')).toBe(huge);
+  });
+
+  test('handles a single short line', () => {
+    const out = svc._splitLyricsIntoMaxLines('hello', 200);
+    expect(out).toEqual(['hello']);
+  });
+
+  test('handles empty input', () => {
+    const out = svc._splitLyricsIntoMaxLines('', 200);
+    expect(out).toEqual([]);
+  });
+});

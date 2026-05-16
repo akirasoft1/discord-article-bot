@@ -104,8 +104,42 @@ class ElevenLabsMusicService {
     return { success: true, buffer, mimeType: 'audio/mpeg' };
   }
 
+  // ElevenLabs caps each compositionPlan section's `lines[i]` at 200 characters.
+  // Split on user-supplied \n first, then word-wrap any over-long lines at the
+  // nearest space ≤maxLen. Fall back to hard slicing if a single word exceeds
+  // maxLen.
   _splitLyricsIntoMaxLines(lyrics, maxLen) {
-    return lyrics.split('\n').filter((l) => l.length > 0);
+    const out = [];
+    const rawLines = lyrics.split('\n');
+    for (const raw of rawLines) {
+      const line = raw.trim();
+      if (line.length === 0) continue;
+
+      if (line.length <= maxLen) {
+        out.push(line);
+        continue;
+      }
+
+      // Word-wrap
+      let remaining = line;
+      while (remaining.length > maxLen) {
+        // Find the last space ≤maxLen
+        let splitAt = remaining.lastIndexOf(' ', maxLen);
+        if (splitAt <= 0) {
+          // No usable space — hard split
+          splitAt = maxLen;
+          out.push(remaining.slice(0, splitAt));
+          remaining = remaining.slice(splitAt);
+        } else {
+          out.push(remaining.slice(0, splitAt));
+          remaining = remaining.slice(splitAt + 1); // skip the space
+        }
+      }
+      if (remaining.length > 0) {
+        out.push(remaining);
+      }
+    }
+    return out;
   }
 }
 
