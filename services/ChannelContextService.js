@@ -95,6 +95,15 @@ class ChannelContextService {
       // Load tracked channels from MongoDB
       await this._loadTrackedChannels();
 
+      // Rehydrate per-channel hot buffer from MongoDB so the bot has
+      // conversation context immediately after restart, not after N
+      // new messages arrive.
+      for (const channelId of this.trackedChannels) {
+        await this._rehydrateBufferFromMongoDB(channelId).catch((err) => {
+          logger.warn(`Rehydration for ${channelId} failed (non-fatal): ${err.message}`);
+        });
+      }
+
       // Start background batch indexing job
       const intervalMs = this.config.batchIndexIntervalMinutes * 60 * 1000;
       this.batchInterval = setInterval(() => this._processBatchIndex(), intervalMs);

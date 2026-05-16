@@ -796,3 +796,39 @@ describe('ChannelContextService._rehydrateBufferFromMongoDB', () => {
     expect(buf.messages.size()).toBe(0);
   });
 });
+
+describe('ChannelContextService.start - rehydration ordering', () => {
+  test('calls _rehydrateBufferFromMongoDB once per tracked channel before scheduling intervals', async () => {
+    const config = {
+      channelContext: {
+        enabled: true,
+        recentMessageCount: 100,
+        batchIndexIntervalMinutes: 60,
+        retentionDays: 30,
+        qdrantCollection: 'channel_conversations',
+        searchScoreThreshold: 0.4,
+        semanticSearchLimit: 5,
+        promptRecentCount: 10,
+      },
+      qdrant: { host: 'qdrant', port: 6333 },
+      discord: { clientId: 'bot-1' },
+    };
+    const mongo = {
+      getRecentChannelMessages: jest.fn().mockResolvedValue([]),
+      getTrackedChannels: jest.fn().mockResolvedValue([
+        { channelId: 'chan-1', guildId: 'guild-1' },
+        { channelId: 'chan-2', guildId: 'guild-1' },
+      ]),
+    };
+    const svc = new ChannelContextService(config, {}, mongo, null, 'bot-1');
+    svc._ensureCollection = jest.fn().mockResolvedValue();
+    svc._cleanupExpiredMessages = jest.fn().mockResolvedValue();
+    svc.qdrantClient = {};
+
+    await svc.start();
+
+    expect(mongo.getRecentChannelMessages).toHaveBeenCalledTimes(2);
+    expect(mongo.getRecentChannelMessages).toHaveBeenCalledWith('chan-1', 100);
+    expect(mongo.getRecentChannelMessages).toHaveBeenCalledWith('chan-2', 100);
+  });
+});
