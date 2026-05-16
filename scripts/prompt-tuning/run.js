@@ -231,7 +231,83 @@ async function main() {
     });
   }
 
-  // Task 6 onwards extend main() — build + write the report
+  // Compute diff summary
+  const sumLen = (r) => (r.ok ? r.text.length : 0);
+  const sumTokens = (r) => (r.ok && r.usage?.completion_tokens) || 0;
+  const totalBaseLen = results.reduce((s, r) => s + sumLen(r.baseline), 0);
+  const totalCandLen = results.reduce((s, r) => s + sumLen(r.candidate), 0);
+  const totalBaseTokens = results.reduce((s, r) => s + sumTokens(r.baseline), 0);
+  const totalCandTokens = results.reduce((s, r) => s + sumTokens(r.candidate), 0);
+  const exactMatches = results.filter((r) => r.baseline.ok && r.candidate.ok && r.baseline.text === r.candidate.text).length;
+  const avgBaseLen = Math.round(totalBaseLen / results.length);
+  const avgCandLen = Math.round(totalCandLen / results.length);
+  const lenDelta = avgBaseLen > 0 ? Math.round(((avgCandLen - avgBaseLen) / avgBaseLen) * 100) : 0;
+
+  // Rough cost: model.pricing × tokens. Use a simple per-1M rate map.
+  // gpt-5-mini placeholder rates; fall back to the same for unknown models.
+  const RATES = {
+    'gpt-5-mini': { in: 0.25, out: 2.0 },
+    'gpt-4.1-mini': { in: 0.40, out: 1.60 },
+    'gpt-4o-mini': { in: 0.15, out: 0.60 }
+  };
+  const rate = RATES[args.model] || RATES['gpt-4.1-mini'];
+  const totalBaseIn = results.reduce((s, r) => s + ((r.baseline.ok && r.baseline.usage?.prompt_tokens) || 0), 0);
+  const totalCandIn = results.reduce((s, r) => s + ((r.candidate.ok && r.candidate.usage?.prompt_tokens) || 0), 0);
+  const baseCost = ((totalBaseIn * rate.in) + (totalBaseTokens * rate.out)) / 1_000_000;
+  const candCost = ((totalCandIn * rate.in) + (totalCandTokens * rate.out)) / 1_000_000;
+
+  // Build report
+  const now = new Date();
+  const stamp = now.toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+  const reportPath = path.join(__dirname, 'runs', `${stamp}-${args.label}.md`);
+
+  const lines = [];
+  lines.push(`# Prompt tuning run: ${args.label}`);
+  lines.push('');
+  lines.push(`**Date:** ${now.toISOString().replace('T', ' ').slice(0, 16)} UTC`);
+  lines.push(`**Candidate:** \`${path.relative(path.join(__dirname, '..', '..'), args.candidate)}\``);
+  lines.push(`**Baseline:** \`${path.relative(path.join(__dirname, '..', '..'), args.baseline)}\``);
+  lines.push(`**Model:** ${args.model}`);
+  if (voiceProfileMeta.version != null) {
+    lines.push(`**Voice profile:** v${voiceProfileMeta.version} (generated ${voiceProfileMeta.generatedAt})`);
+  } else {
+    lines.push(`**Voice profile:** none (stub placeholder used)`);
+  }
+  const where = args.channel ? `, channel ${args.channel}` : '';
+  lines.push(`**Sampled:** ${results.length} user messages from last ${args.days} days${where}`);
+  lines.push(`**Seed:** ${args.seed != null ? args.seed : 'none'}`);
+  lines.push(`**Cost:** $${baseCost.toFixed(4)} baseline + $${candCost.toFixed(4)} candidate = $${(baseCost + candCost).toFixed(4)} total`);
+  lines.push('');
+  lines.push('## Diff summary');
+  lines.push(`- Avg response length: baseline ${avgBaseLen} chars, candidate ${avgCandLen} chars (${lenDelta >= 0 ? '+' : ''}${lenDelta}%)`);
+  lines.push(`- Tokens per response: baseline avg ${Math.round(totalBaseTokens / results.length)}, candidate avg ${Math.round(totalCandTokens / results.length)}`);
+  lines.push(`- Exact-match (same wording): ${exactMatches} / ${results.length}`);
+  lines.push('');
+  lines.push('## Per-case results');
+  lines.push('');
+
+  results.forEach((r, idx) => {
+    const channelLabel = r.msg.channelId || 'unknown-channel';
+    const author = r.msg.authorName || r.msg.authorId || 'unknown';
+    lines.push(`### Case ${idx + 1}`);
+    lines.push(`**Channel:** #${channelLabel} (${author})`);
+    lines.push('**User input:**');
+    r.msg.content.split('\n').forEach((line) => lines.push(`> ${line}`));
+    lines.push('');
+    lines.push('**Baseline response:**');
+    const baselineText = r.baseline.ok ? r.baseline.text : `[OPENAI ERROR: ${r.baseline.error}]`;
+    baselineText.split('\n').forEach((line) => lines.push(`> ${line}`));
+    lines.push('');
+    lines.push('**Candidate response:**');
+    const candidateText = r.candidate.ok ? r.candidate.text : `[OPENAI ERROR: ${r.candidate.error}]`;
+    candidateText.split('\n').forEach((line) => lines.push(`> ${line}`));
+    lines.push('');
+    lines.push('---');
+  });
+
+  fs.writeFileSync(reportPath, lines.join('\n'));
+  console.log(`\nReport written: ${reportPath}`);
+  console.log(`Total cost: $${(baseCost + candCost).toFixed(4)}`);
 }
 
 main().catch((err) => {
