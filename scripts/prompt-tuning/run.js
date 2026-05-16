@@ -143,9 +143,48 @@ async function main() {
     console.warn('WARN: no voice profile found in MongoDB — using stub placeholder');
   }
 
-  await mongoService.disconnect();
   console.log('voiceInstructions length:', voiceInstructions.length);
-  // Task 4 onwards extend main()
+
+  // Sample input messages
+  const messagesCollection = mongoService.db.collection('channel_messages');
+  const sinceMs = Date.now() - (args.days * 24 * 60 * 60 * 1000);
+  const sinceDate = new Date(sinceMs);
+
+  const botUserId = config.discord?.clientId;
+  if (!botUserId) {
+    console.warn('WARN: config.discord.clientId is not set — bot replies will not be filtered out of the sample');
+  }
+
+  const filter = {
+    timestamp: { $gte: sinceDate },
+    content: { $exists: true, $type: 'string', $not: /^\/\w/ } // reject slash-command invocations
+  };
+  if (botUserId) {
+    filter.authorId = { $ne: botUserId };
+  }
+  if (args.channel) {
+    filter.channelId = args.channel;
+  }
+
+  const sampled = await messagesCollection
+    .find(filter, { projection: { content: 1, authorId: 1, authorName: 1, channelId: 1, timestamp: 1 } })
+    .sort({ timestamp: -1 })
+    .limit(args.n)
+    .toArray();
+
+  if (sampled.length === 0) {
+    const where = args.channel ? ` in channel ${args.channel}` : '';
+    console.error(`ERROR: no eligible messages found for last ${args.days} days${where}`);
+    await mongoService.disconnect();
+    process.exit(1);
+  }
+
+  // Reverse so report shows oldest first (more natural reading order)
+  sampled.reverse();
+  console.log(`Sampled ${sampled.length} messages`);
+
+  await mongoService.disconnect();
+  // Task 5 onwards extend main() — OpenAI replays + report writing
 }
 
 main().catch((err) => {
