@@ -688,3 +688,36 @@ describe('ChannelContextService', () => {
     });
   });
 });
+
+describe('ChannelContextService.buildHybridContext - configurable prompt slice', () => {
+  test('uses config.promptRecentCount when slicing the recent buffer', async () => {
+    // Use a value (7) that is distinct from both the old hardcode (10) and the
+    // manual edit (40) so the test is RED until the config path is wired.
+    const config = {
+      channelContext: {
+        enabled: true,
+        recentMessageCount: 100,
+        batchIndexIntervalMinutes: 60,
+        retentionDays: 30,
+        qdrantCollection: 'channel_conversations',
+        searchScoreThreshold: 0.4,
+        semanticSearchLimit: 5,
+        promptRecentCount: 7,
+      },
+      qdrant: { host: 'qdrant', port: 6333 },
+      discord: { clientId: 'bot-1' },
+    };
+
+    const svc = new ChannelContextService(config, {}, {}, null, 'bot-1');
+    svc._enabled = true;
+    svc.isChannelTracked = jest.fn().mockReturnValue(true);
+    svc.getRecentContext = jest.fn().mockReturnValue('');
+    svc.searchRelevantHistory = jest.fn().mockResolvedValue([]);
+    svc.getChannelFacts = jest.fn().mockResolvedValue(null);
+    svc.getParticipantContext = jest.fn().mockReturnValue('');
+
+    await svc.buildHybridContext('chan-1', 'hello');
+
+    expect(svc.getRecentContext).toHaveBeenCalledWith('chan-1', 7);
+  });
+});

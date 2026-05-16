@@ -729,7 +729,7 @@ class ChannelContextService {
     try {
       // Parallel fetch all context tiers
       const [recent, semantic, facts] = await Promise.all([
-        Promise.resolve(this.getRecentContext(channelId, 10)),
+        Promise.resolve(this.getRecentContext(channelId, this.config.promptRecentCount || 10)),
         this.searchRelevantHistory(currentMessage, channelId),
         this.getChannelFacts(channelId)
       ]);
