@@ -1,716 +1,159 @@
-# Kubernetes Deployment Guide
+# Kubernetes Deployment Runbook
 
-This guide provides instructions for deploying the Discord Article Bot to a Kubernetes cluster.
+Operational runbook for deploying and operating the Discord Article Bot on Kubernetes. For the cluster topology and how all the pieces connect, see [`docs/architecture.md`](docs/architecture.md). For the Kata sandbox install play-by-play, see [`k8s/sandbox/README.md`](k8s/sandbox/README.md).
+
+## Quick orientation
+
+- **Namespace**: `discord-article-bot`. Everything lives here — bot, agent sidecar, ephemeral Kata sandbox Jobs, MongoDB, Qdrant, Postgres.
+- **Source of truth**: `k8s/overlays/deployed/` is gitignored and holds the live manifests with real secrets. The `k8s/base/` and `k8s/overlays/prod/` paths are stale (out of sync, placeholder secrets) — **do not use them**.
+- **Image tags**: every image is pinned to a git short-SHA. `:latest` is forbidden. The bot, agent sidecar, and `sandbox-base` images move in lockstep when any of them changes.
+- **Container name** in the bot deployment is `bot`, not `discord-article-bot`.
 
 ## Prerequisites
 
-- Kubernetes cluster (1.19+)
-- kubectl configured to access your cluster
-- Docker registry access (Docker Hub, GitHub Container Registry, etc.)
-- MongoDB instance (can be deployed in-cluster or external)
+- A Kubernetes cluster with the **Kata Containers RuntimeClass `kata-qemu-runtime-rs`** registered — see [`k8s/sandbox/README.md`](k8s/sandbox/README.md) for the install play-by-play. Without Kata, the agent sidecar's `run_in_sandbox` tool won't work.
+- `kubectl` configured for the cluster.
+- A Docker registry (this project uses Docker Hub: `mvilliger/*`).
+- A live MongoDB pod, Qdrant pod, and Postgres-pgvector pod in the same namespace. All three run in-cluster; see deployment manifests under `k8s/overlays/deployed/`.
 
-## Quick Start
+## Initial deploy
 
-1. Create namespace
-2. Create secrets
-3. Deploy MongoDB (optional)
-4. Deploy the bot
-5. Monitor logs
+1. **Create the namespace.**
+   ```bash
+   kubectl create namespace discord-article-bot
+   ```
 
-## Step-by-Step Deployment
+2. **Fill in your local `k8s/overlays/deployed/` files.** This directory is gitignored. You need at minimum:
+   - `secret.yaml` — `DISCORD_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY` (if music gen is on), `MONGO_PASSWORD`, `LINKWARDEN_API_TOKEN` (optional), `BOT_ADMIN_USER_IDS`, and a `service-account.json` for Vertex AI / GCS if Veo is enabled.
+   - `configmap.yaml` — all env vars (feature flags, model names, etc.). The bot's `config/config.js` is the canonical source of which keys are read.
+   - `configmap-prompt.yaml` — `prompt.txt` content mounted into the bot at `/usr/src/app/prompt.txt`.
+   - `configmap-sandbox.yaml` — sandbox tunables for the agent sidecar (concurrency, wall-clock, etc.).
+   - `deployment.yaml` — bot Deployment, with `image:` pinned to a built short-SHA and the env vars wired from the secret/configmap.
+   - `service.yaml`, `serviceaccount.yaml`, `networkpolicy.yaml` — for the bot pod.
+   - `agent-deployment.yaml`, `agent-service.yaml`, `agent-serviceaccount.yaml`, `agent-role.yaml`, `agent-rolebinding.yaml`, `agent-networkpolicy.yaml` — for the agent sidecar (with K8s RBAC to create/delete sandbox Jobs).
+   - `sandbox-networkpolicy.yaml`, `sandbox-serviceaccount.yaml` — for the ephemeral sandbox pods.
 
-### 1. Create Namespace
+3. **Apply everything.**
+   ```bash
+   kubectl apply -f k8s/overlays/deployed/ -n discord-article-bot
+   ```
 
-```bash
-kubectl create namespace discord-article-bot
-```
+4. **Register slash commands.** Wait for the bot pod to be `1/1 Running`, then:
+   ```bash
+   POD=$(kubectl get pod -n discord-article-bot -l app.kubernetes.io/name=discord-article-bot -o jsonpath='{.items[0].metadata.name}')
+   kubectl exec -n discord-article-bot $POD -c bot -- node scripts/registerCommands.js
+   ```
+   This pushes the schema globally AND (if `DISCORD_TEST_GUILD_ID` is set) to your test guild for instant feedback. Global propagation can take up to 1 hour.
 
-### 2. Create Secrets
-
-Create a file `secrets.yaml` with your sensitive configuration:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: discord-bot-secrets
-  namespace: discord-article-bot
-type: Opaque
-stringData:
-  DISCORD_TOKEN: "your-discord-bot-token"
-  OPENAI_API_KEY: "your-openai-api-key"
-  MONGO_PASSWORD: "your-mongo-password"
-```
-
-Apply the secret:
+## Ship-a-change deploy loop
 
 ```bash
-kubectl apply -f secrets.yaml
+# 1. Run tests
+npm test
+
+# 2. Bump version (semver: minor for features, patch for fixes)
+npm version minor --no-git-tag-version
+git add package.json package-lock.json && git commit -m "chore: bump version to X.Y.Z"
+
+# 3. Build + push (always pin to git short-SHA — no :latest)
+SHA=$(git rev-parse --short HEAD)
+docker build -t mvilliger/discord-article-bot:$SHA .
+docker push mvilliger/discord-article-bot:$SHA
+
+# 4. Update local deployment.yaml image tag to $SHA, then roll out
+kubectl set image deployment/discord-article-bot bot=mvilliger/discord-article-bot:$SHA -n discord-article-bot
+kubectl rollout status deployment/discord-article-bot -n discord-article-bot --timeout=180s
+
+# 5. Re-register slash commands if any command schema changed
+POD=$(kubectl get pod -n discord-article-bot -l app.kubernetes.io/name=discord-article-bot -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n discord-article-bot $POD -c bot -- node scripts/registerCommands.js
 ```
 
-### 3. Create ConfigMap for Bot Configuration
+For agent-sidecar changes the agent and `sandbox-base` images move together; build/push/deploy both at the same SHA.
 
-Create `configmap.yaml`:
+## Adding a new secret-backed integration
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: discord-bot-config
-  namespace: discord-article-bot
-data:
-  # Core Settings
-  DISCORD_PREFIX: "!"
-  OPENAI_BASE_URL: "https://api.openai.com/v1"
-  OPENAI_METHOD: "completion"
-  OPENAI_MODEL: "gpt-4.1-mini"
-  DEBUG: "false"
-  
-  # Feature Toggles
-  FACT_CHECKER_ENABLED: "true"
-  SOURCE_CREDIBILITY_ENABLED: "true"
-  RSS_FEEDS_ENABLED: "false"
-  FOLLOW_UP_TRACKER_ENABLED: "false"
-  SUMMARY_STYLES_ENABLED: "true"
-  MOOD_BASED_SUMMARIES_ENABLED: "true"
-  CELEBRITY_NARRATORS_ENABLED: "true"
-  HISTORICAL_PERSPECTIVES_ENABLED: "true"
-  BIAS_DETECTION_ENABLED: "false"
-  ALTERNATIVE_PERSPECTIVES_ENABLED: "false"
-  CONTEXT_PROVIDER_ENABLED: "false"
-  AUTO_TRANSLATION_ENABLED: "true"
-  LANGUAGE_LEARNING_ENABLED: "true"
-  CULTURAL_CONTEXT_ENABLED: "true"
-  
-  # Feature Configuration
-  RSS_INTERVAL_MINUTES: "60"
-  FOLLOW_UP_INTERVAL_MINUTES: "1440"
-  BIAS_THRESHOLD: "0.7"
-  BIAS_TYPES: "political,gender,racial,corporate"
-  CONTEXT_MIN_KEYWORDS: "3"
-  AUTO_TRANSLATION_TARGET_LANGUAGE: "English"
-  AUTO_TRANSLATION_SUPPORTED_LANGUAGES: "English,Spanish,French,German,Italian,Portuguese"
-  LANGUAGE_LEARNING_TARGET_LANGUAGES: "Spanish,French"
-  LANGUAGE_LEARNING_PRESENTATION_STYLE: "side-by-side"
-  
-  # System Prompt
-  prompt.txt: |
-    You are an AI assistant that specializes in summarizing news articles and web content.
-    Your summaries should be:
-    - Concise (under 1500 characters)
-    - Objective and factual
-    - Well-structured with clear main points
-    - Free of personal opinions unless analyzing bias
-    
-    Always include:
-    1. Main topic/headline
-    2. Key facts and findings
-    3. Important quotes if relevant
-    4. Context or background when necessary
-    
-    Avoid:
-    - Speculation beyond what's in the article
-    - Personal commentary
-    - Unnecessary details
-    - URLs or links
-```
+This is the trap that bit PR #79's ElevenLabs rollout. When adding a new external service that needs a secret:
 
-Apply the configmap:
+1. Add the key to **`k8s/overlays/deployed/secret.yaml`** (gitignored — local only).
+2. Add the consuming env var defaults to **`k8s/overlays/deployed/configmap.yaml`**.
+3. **Wire the secret as an env var in `k8s/overlays/deployed/deployment.yaml`** using `valueFrom: secretKeyRef`. Without this step the pod starts but `config.<service>.apiKey` reads an empty string and the service initializes as disabled. The agent will produce a startup warning like `<Service> disabled: missing <KEY>`.
+4. `kubectl apply -f k8s/overlays/deployed/secret.yaml -f k8s/overlays/deployed/configmap.yaml -f k8s/overlays/deployed/deployment.yaml -n discord-article-bot` and roll out.
 
+## NetworkPolicy: opening egress to a new destination
+
+The bot namespace has a restrictive NetworkPolicy that blocks egress to private IP ranges by default. When adding a service on a home / lab network (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`):
+
+1. Edit `k8s/overlays/deployed/networkpolicy.yaml` (gitignored).
+2. Add an `egress` rule with the specific `ipBlock` CIDR and port. Example for Ollama on the home network:
+   ```yaml
+   - to:
+       - ipBlock:
+           cidr: 192.168.1.164/32
+     ports:
+       - protocol: TCP
+         port: 11434
+   ```
+3. `kubectl apply -f k8s/overlays/deployed/networkpolicy.yaml -n discord-article-bot`
+4. Restart the pod to re-evaluate any service inits that ran against a now-allowed endpoint.
+
+To debug connectivity:
 ```bash
-kubectl apply -f configmap.yaml
-```
+# Inspect current policy
+kubectl get networkpolicies -n discord-article-bot -o yaml
 
-### 4. Deploy MongoDB (Optional - Skip if using external MongoDB)
-
-Create `mongodb-deployment.yaml`:
-
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mongodb-pvc
-  namespace: discord-article-bot
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mongodb
-  namespace: discord-article-bot
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: mongodb
-  template:
-    metadata:
-      labels:
-        app: mongodb
-    spec:
-      containers:
-      - name: mongodb
-        image: mongo:6.0
-        ports:
-        - containerPort: 27017
-        env:
-        - name: MONGO_INITDB_ROOT_USERNAME
-          value: "admin"
-        - name: MONGO_INITDB_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: discord-bot-secrets
-              key: MONGO_PASSWORD
-        - name: MONGO_INITDB_DATABASE
-          value: "discord-bot"
-        volumeMounts:
-        - name: mongodb-storage
-          mountPath: /data/db
-      volumes:
-      - name: mongodb-storage
-        persistentVolumeClaim:
-          claimName: mongodb-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mongodb
-  namespace: discord-article-bot
-spec:
-  selector:
-    app: mongodb
-  ports:
-  - port: 27017
-    targetPort: 27017
-```
-
-Apply MongoDB deployment:
-
-```bash
-kubectl apply -f mongodb-deployment.yaml
-```
-
-### 5. Deploy the Discord Bot
-
-Create `bot-deployment.yaml`:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: discord-article-bot
-  namespace: discord-article-bot
-  labels:
-    app: discord-article-bot
-spec:
-  replicas: 1  # Only run one instance to avoid duplicate responses
-  selector:
-    matchLabels:
-      app: discord-article-bot
-  template:
-    metadata:
-      labels:
-        app: discord-article-bot
-    spec:
-      containers:
-      - name: bot
-        image: your-registry/discord-article-bot:latest  # Replace with your image
-        imagePullPolicy: Always
-        env:
-        # Secrets
-        - name: DISCORD_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: discord-bot-secrets
-              key: DISCORD_TOKEN
-        - name: OPENAI_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: discord-bot-secrets
-              key: OPENAI_API_KEY
-        - name: MONGO_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: discord-bot-secrets
-              key: MONGO_PASSWORD
-        
-        # MongoDB Connection
-        - name: MONGO_URI
-          value: "mongodb://admin:${MONGO_PASSWORD}@mongodb:27017/discord-bot?authSource=admin"
-        
-        # Load all config from ConfigMap
-        envFrom:
-        - configMapRef:
-            name: discord-bot-config
-        
-        # Resources
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        
-        # Volume for prompt.txt
-        volumeMounts:
-        - name: prompt-volume
-          mountPath: /usr/src/app/prompt.txt
-          subPath: prompt.txt
-        
-        # Health checks (HTTP probes - more efficient than exec probes)
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 15
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 10
-        
-      volumes:
-      - name: prompt-volume
-        configMap:
-          name: discord-bot-config
-          items:
-          - key: prompt.txt
-            path: prompt.txt
-```
-
-Apply the bot deployment:
-
-```bash
-kubectl apply -f bot-deployment.yaml
-```
-
-### 6. Build and Push Docker Image
-
-Create a `Dockerfile` in your project root:
-
-```dockerfile
-
-FROM node:20-alpine
-
-WORKDIR /usr/src/app
-
-COPY package*.json ./
-RUN npm install
-
-COPY . .
-
-CMD [ "node", "bot.js" ]
-
-```
-
-Build and push:
-
-```bash
-docker build -t your-registry/discord-article-bot:latest .
-docker push your-registry/discord-article-bot:latest
-```
-
-## Advanced Configuration
-
-### Using External MongoDB
-
-If using MongoDB Atlas or external MongoDB, update the `MONGO_URI` in the deployment:
-
-```yaml
-- name: MONGO_URI
-  value: "mongodb+srv://username:${MONGO_PASSWORD}@cluster.mongodb.net/discord-bot?retryWrites=true&w=majority"
-```
-
-### Enabling RSS Feeds
-
-Add RSS feed configuration to the ConfigMap:
-
-```yaml
-data:
-  RSS_FEEDS_ENABLED: "true"
-  RSS_FEEDS: |
-    [
-      {
-        "url": "https://example.com/rss",
-        "channelId": "123456789012345678"
-      }
-    ]
-```
-
-### Horizontal Pod Autoscaling
-
-```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: discord-bot-hpa
-  namespace: discord-article-bot
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: discord-article-bot
-  minReplicas: 1
-  maxReplicas: 1  # Keep at 1 to avoid duplicate bot responses
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 80
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-```
-
-### Network Policies
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: discord-bot-network-policy
-  namespace: discord-article-bot
-spec:
-  podSelector:
-    matchLabels:
-      app: discord-article-bot
-  policyTypes:
-  - Ingress
-  - Egress
-  egress:
-  # Allow DNS
-  - to:
-    - namespaceSelector: {}
-    ports:
-    - protocol: UDP
-      port: 53
-  # Allow MongoDB
-  - to:
-    - podSelector:
-        matchLabels:
-          app: mongodb
-    ports:
-    - protocol: TCP
-      port: 27017
-  # Allow external HTTPS (Discord, OpenAI)
-  - to:
-    - namespaceSelector: {}
-    ports:
-    - protocol: TCP
-      port: 443
-  # Allow Qdrant (for Mem0 and IRC history)
-  - to:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: qdrant
-    ports:
-    - protocol: TCP
-      port: 6333
-  # Allow Local LLM (Ollama) on home network (adjust IP as needed)
-  # - to:
-  #     - ipBlock:
-  #         cidr: 192.168.1.164/32
-  #   ports:
-  #     - protocol: TCP
-  #       port: 11434
-  # Allow OpenTelemetry collector / Dynatrace endpoint
-  - to:
-    - namespaceSelector: {}
-    ports:
-    - protocol: TCP
-      port: 4318
-  ingress:
-  # Allow health check probes
-  - ports:
-    - protocol: TCP
-      port: 8080
-```
-
-## Monitoring
-
-### View Logs
-
-```bash
-kubectl logs -f deployment/discord-article-bot -n discord-article-bot
-```
-
-### Check Pod Status
-
-```bash
-kubectl get pods -n discord-article-bot
-kubectl describe pod -n discord-article-bot <pod-name>
-```
-
-### Resource Usage
-
-```bash
-kubectl top pods -n discord-article-bot
+# Test from a fresh unrestricted pod (bypasses the namespace policy because
+# this pod isn't selected by it)
+kubectl run test-curl --rm -it --image=curlimages/curl -- curl http://<ip>:<port>/path
 ```
 
 ## Troubleshooting
 
-### Pod Crashes or Restarts
+### Duplicate messages / multiple replies
 
-1. Check logs:
-   ```bash
-   kubectl logs deployment/discord-article-bot -n discord-article-bot --previous
-   ```
-
-2. Check events:
-   ```bash
-   kubectl get events -n discord-article-bot --sort-by='.lastTimestamp'
-   ```
-
-3. Verify secrets:
-   ```bash
-   kubectl get secrets -n discord-article-bot
-   ```
-
-### Connection Issues
-
-1. Test MongoDB connection:
-   ```bash
-   kubectl run -it --rm debug --image=mongo:6.0 --restart=Never -n discord-article-bot -- mongosh mongodb://admin:password@mongodb:27017/discord-bot?authSource=admin
-   ```
-
-2. Check network policies:
-   ```bash
-   kubectl get networkpolicies -n discord-article-bot
-   ```
-
-### Resource Constraints
-
-If the bot is being killed due to memory limits:
-
-1. Check resource usage:
-   ```bash
-   kubectl top pod -n discord-article-bot
-   ```
-
-2. Increase limits in deployment:
-   ```yaml
-   resources:
-     limits:
-       memory: "1Gi"
-       cpu: "1000m"
-   ```
-
-## Backup and Recovery
-
-### MongoDB Backup
-
-Create a CronJob for regular backups:
-
-```yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: mongodb-backup
-  namespace: discord-article-bot
-spec:
-  schedule: "0 2 * * *"  # Daily at 2 AM
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-          - name: mongodb-backup
-            image: mongo:6.0
-            command:
-            - sh
-            - -c
-            - |
-              mongodump --uri="mongodb://admin:${MONGO_PASSWORD}@mongodb:27017/discord-bot?authSource=admin" --archive=/backup/backup-$(date +%Y%m%d).gz --gzip
-            env:
-            - name: MONGO_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: discord-bot-secrets
-                  key: MONGO_PASSWORD
-            volumeMounts:
-            - name: backup
-              mountPath: /backup
-          restartPolicy: OnFailure
-          volumes:
-          - name: backup
-            persistentVolumeClaim:
-              claimName: mongodb-backup-pvc
-```
-
-## Security Best Practices
-
-1. **Use RBAC**: Create a service account with minimal permissions
-2. **Scan Images**: Use tools like Trivy to scan Docker images
-3. **Update Regularly**: Keep dependencies and base images updated
-4. **Use Network Policies**: Restrict network access as shown above
-5. **Encrypt Secrets**: Consider using Sealed Secrets or external secret managers
-6. **Resource Limits**: Always set resource requests and limits
-
-## Scaling Considerations
-
-⚠️ **Important**: This bot should typically run as a single instance to avoid:
-- Duplicate responses to commands
-- Multiple reactions to the same message
-- Conflicting RSS feed processing
-
-If high availability is required, consider:
-- Using leader election
-- Implementing distributed locking
-- Separating concerns (e.g., separate RSS processor)
-
-## Kustomize-Based Deployment (Recommended)
-
-The repository includes a Kustomize-based deployment structure in `k8s/` for templatized, environment-specific deployments.
-
-### Directory Structure
-
-```
-k8s/
-├── base/                          # Base configuration (shared across environments)
-│   ├── kustomization.yaml         # Kustomize configuration
-│   ├── deployment.yaml            # Main bot deployment
-│   ├── service.yaml               # Service (for internal DNS)
-│   ├── configmap.yaml             # Environment configuration
-│   ├── configmap-prompt.yaml      # System prompt configuration
-│   ├── secret.yaml                # Secret template (DO NOT commit real secrets)
-│   ├── serviceaccount.yaml        # Service account with minimal permissions
-│   └── networkpolicy.yaml         # Network restrictions
-├── mem0/                          # AI Memory infrastructure (optional)
-│   ├── kustomization.yaml         # Kustomize configuration
-│   ├── qdrant.yaml                # Qdrant vector database
-│   └── postgres.yaml              # PostgreSQL with pgvector
-└── overlays/                      # Environment-specific overrides
-    ├── dev/
-    │   └── kustomization.yaml     # Development overrides
-    └── prod/
-        └── kustomization.yaml     # Production overrides
-```
-
-### Quick Start with Kustomize
-
-1. **Preview the generated manifests:**
-   ```bash
-   kubectl kustomize k8s/overlays/dev
-   ```
-
-2. **Deploy to development:**
-   ```bash
-   # Create namespace first
-   kubectl create namespace discord-article-bot-dev
-
-   # Apply the kustomization
-   kubectl apply -k k8s/overlays/dev
-   ```
-
-3. **Deploy to production:**
-   ```bash
-   # Create namespace first
-   kubectl create namespace discord-article-bot
-
-   # Apply the kustomization
-   kubectl apply -k k8s/overlays/prod
-   ```
-
-### Customizing for Your Environment
-
-1. **Update the image registry** in `k8s/overlays/prod/kustomization.yaml`:
-   ```yaml
-   images:
-     - name: discord-article-bot
-       newName: your-registry.io/discord-article-bot
-       newTag: v1.0.0
-   ```
-
-2. **Configure secrets** - Replace placeholder values in `k8s/base/secret.yaml` or use a secret management solution:
-   ```bash
-   # Using kubectl to create secrets directly (recommended for production)
-   kubectl create secret generic discord-article-bot-secrets \
-     --from-literal=DISCORD_TOKEN=your-token \
-     --from-literal=OPENAI_API_KEY=your-key \
-     --from-literal=MONGO_PASSWORD=your-password \
-     -n discord-article-bot
-   ```
-
-3. **Adjust resource limits** by patching in your overlay's `kustomization.yaml`
-
-### Deploying Mem0 (AI Memory) Infrastructure
-
-The bot supports AI-powered long-term memory using Mem0. This requires a Qdrant vector database for semantic search.
-
-1. **Deploy Mem0 infrastructure:**
-   ```bash
-   kubectl apply -k k8s/mem0
-   ```
-
-   This deploys:
-   - **Qdrant**: Vector database for semantic memory search (port 6333)
-   - **PostgreSQL with pgvector**: Relational storage with vector extension (optional, for history)
-
-2. **Verify the deployment:**
-   ```bash
-   kubectl get pods -l app.kubernetes.io/part-of=mem0
-   ```
-
-3. **Update your configmap** to enable Mem0:
-   ```yaml
-   data:
-     MEM0_ENABLED: "true"
-     MEM0_QDRANT_HOST: "qdrant.discord-article-bot.svc.cluster.local"
-     MEM0_QDRANT_PORT: "6333"
-     MEM0_COLLECTION_NAME: "discord_memories"
-     MEM0_LLM_MODEL: "gpt-4o-mini"
-     MEM0_EMBEDDING_MODEL: "text-embedding-3-small"
-   ```
-
-4. **Update network policy** to allow Qdrant access:
-   ```yaml
-   # Add to egress rules
-   - to:
-       - podSelector:
-           matchLabels:
-             app.kubernetes.io/name: qdrant
-     ports:
-       - protocol: TCP
-         port: 6333
-   ```
-
-**Note**: Mem0 uses your existing OpenAI API key for embeddings and memory extraction. No additional API keys required.
-
-### Best Practices Applied
-
-The base configuration implements these Kubernetes best practices:
-
-- **Security Context**: Non-root user, read-only filesystem, dropped capabilities
-- **Resource Limits**: CPU and memory requests/limits defined
-- **Network Policies**: Egress-only rules for external API access
-- **Service Account**: Dedicated SA with `automountServiceAccountToken: false`
-- **Probes**: Liveness and readiness probes configured
-- **Recreate Strategy**: Ensures single instance runs at a time
-
-## Clean Up
-
-To remove all resources:
+**Always check this first.** If the bot is replying twice to every message, there are almost certainly two pods running with the same `DISCORD_TOKEN`:
 
 ```bash
-kubectl delete namespace discord-article-bot
+kubectl get pods -A | grep -i discord
+kubectl get deployments -A | grep -i discord
 ```
 
-This will delete all resources in the namespace including:
-- Deployments
-- Services
-- Secrets
-- ConfigMaps
-- PersistentVolumeClaims
+Multiple instances with the same token all receive Discord events and all respond. A real incident (Dec 2025): a forgotten deployment in the `default` namespace ran alongside production for 10 days.
+
+### Bot starts but a feature is "disabled"
+
+Check the pod's startup logs:
+```bash
+kubectl logs -n discord-article-bot deployment/discord-article-bot --tail=50 -c bot | grep -iE "disabled|enabled"
+```
+`<X>Service disabled: missing <KEY>` usually means a secret-binding gap in `deployment.yaml` — see [Adding a new secret-backed integration](#adding-a-new-secret-backed-integration).
+
+### Local LLM (Ollama) circuit-breaker tripped
+
+When Ollama becomes unavailable mid-runtime, the bot logs `LocalLlmService temporarily unavailable, falling back` and uses the cloud LLM for the next 60 seconds. The `uncensored` personality declares `fallbackPersonality: 'friendly'` and the user is notified with a warning emoji. After the cooldown, the next request optimistically retries Ollama.
+
+### Sandbox pods not starting / Kata errors
+
+Most likely the `kata-qemu-runtime-rs` RuntimeClass isn't installed in the cluster. Confirm:
+```bash
+kubectl get runtimeclass kata-qemu-runtime-rs
+```
+If missing, see [`k8s/sandbox/README.md`](k8s/sandbox/README.md) for the install procedure.
+
+On AMD hosts, the `kvm_amd sev=0` kernel parameter is sometimes needed for nested virt to work. The sandbox README has the workaround.
+
+### "Bot is online" but slash commands don't appear
+
+You probably forgot the `scripts/registerCommands.js` step after the rollout, or you tried it before the new pod was healthy. Re-run it after `kubectl rollout status` returns success. Discord caches the schema globally for up to 1 hour; if you set `DISCORD_TEST_GUILD_ID`, the test-guild registration is instant.
+
+## Observability
+
+- Distributed traces (with full LLM prompt/completion content via OpenLLMetry) export over OTLP HTTP to `${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces` — in production this is `http://telemetry-ingest.dynatrace.svc.cluster.local:4318/v1/traces`.
+- Metrics and logs exporters are explicitly set to `none` (Dynatrace OneAgent handles those).
+- The `tracing.js` module **must be required before all other modules** — it's at `bot.js:4`.
+
+## Pre-existing dev/operator preferences
+
+- **Image pinning**: every Docker tag is a git short-SHA. The agent sidecar image and `sandbox-base` image move in lockstep (both must bump together on every release).
+- **No log truncation**: logger calls never truncate payloads — full error messages, full URLs.
+- **Single replica with `Recreate` strategy** for both the bot and the agent sidecar. Conversation state and sidecar concurrency caps are in-process — do not scale either to >1 replica.

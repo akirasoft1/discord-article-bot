@@ -167,23 +167,43 @@ Parallel music generation surface via ElevenLabs' `POST /v1/music` (Compose Musi
 
 ---
 
-## Planned Features
+## Backlog / planned
 
-### Memory & Context
-- [x] Conversation memory for personality chats
-- [x] Reply to bot messages to continue conversations
-- [x] User preference persistence (Mem0 long-term memory)
+The "planned" section below reflects items that have NOT yet shipped. Anything previously listed here that's now in production has been moved to `done-todos/` (the archived implementation plans) or struck through.
 
-### Enhanced Personalities
-- [x] Default personality for quick chat
-- [ ] More personality archetypes
-- [ ] Custom personality creation via commands
+### Architectural follow-ups
+- [ ] **Approach B — `MediaGenBase` refactor.** Imagen / Veo / Lyria / ElevenLabs duplicate noticeable plumbing (enabled checks, error shaping, attachment handling, per-call cost override). Lift into a shared base; while at it, hoist a single `CostService` instance to `bot.js` and inject everywhere.
+- [ ] **MongoDB-backed media-gen records for `/stats`.** Today `/stats` reads `token_usage` only; media-gen flat-fee rows are surfaced in pod logs but don't appear in the leaderboard. Wire them in.
+- [ ] **OpenTelemetry SDK major bump.** `@opentelemetry/auto-instrumentations-node` 0.52.x and `@opentelemetry/sdk-node` 0.56.x carry GHSA-q7rr-3cgh-j5r3 (high, Prometheus crash). Coordinated major bump deferred from CVE PR #76.
+- [ ] **`@tootallnate/once` chain.** High-sev via `@google-cloud/storage` → `teeny-request` → `http-proxy-agent@5`. Fixing requires breaking-change library swaps. Deferred.
+- [ ] **Slash-command unit tests.** No `__tests__/commands/slash/` pattern exists; commands are smoke-tested manually in Discord. Worth introducing.
+- [ ] **Files-to-touch checklist for new secret-backed services.** PR #79 missed `deployment.yaml`'s `valueFrom: secretKeyRef` binding for `ELEVENLABS_API_KEY` and the bot booted with the service disabled. Catch this for the next media-gen plan.
 
-### Media Generation
-- [x] Image generation via Gemini
-- [x] Video generation via Veo
-- [ ] Audio generation
+### Chat / personality
+- [ ] **More personality archetypes beyond `channel-voice`.** All other personalities were removed in v2.8.x; reintroducing distinct ones is a backlog item.
+- [ ] **Custom personality creation via commands.**
 
-### Analytics
-- [ ] Token usage leaderboards
-- [ ] Server-wide usage statistics
+### Digests
+- [ ] **Digests channel feature.** Blocked on a dedicated Discord channel being set up; see project memory.
+
+### Reviving deferred plans
+- [ ] **Analytics dashboard.** The full plan lives at `docs/analytics-dashboard-plan.md` (the only `*-plan.md` doc not moved to `done-todos/`). Nothing in the codebase implements it today.
+
+---
+
+## Shipped (cross-reference)
+
+For the full history of completed initiatives — including the implementation plans and design specs that drove each one — see `done-todos/`:
+
+- `done-todos/LINKWARDEN_INTEGRATION_PLAN.md` — Linkwarden integration
+- `done-todos/VEO_IMPLEMENTATION_PLAN.md` — Veo video generation
+- `done-todos/chat_memory_todos.md` — channel-scoped chat memory
+- `done-todos/mem0-memory-integration-plan.md` — long-term memory via mem0
+- `done-todos/mem0-hybrid-local-llm.md` — hybrid Ollama + OpenAI mem0 config
+- `done-todos/irc-vectordb-ingestion-plan.md` — IRC log → Qdrant pipeline
+- `done-todos/2026-04-28-agentic-sandbox-skills-runtime-design.md` — agentic sandbox spec
+- `done-todos/2026-04-28-agentic-sandbox-skills-runtime.md` — agentic sandbox plan
+- `done-todos/2026-05-15-lyria-music-generation-design.md` — Lyria spec
+- `done-todos/2026-05-15-lyria-music-generation.md` — Lyria plan
+- `done-todos/2026-05-15-elevenlabs-music-generation-design.md` — ElevenLabs spec
+- `done-todos/2026-05-15-elevenlabs-music-generation.md` — ElevenLabs plan

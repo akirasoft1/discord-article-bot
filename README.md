@@ -1,6 +1,8 @@
 # Discord Article Bot
 
-A Discord bot with AI chat (channel-voice personality), image/video generation, IRC history search, and article summarization.
+A Discord bot with AI chat (channel-voice personality), image/video/music generation, IRC history search, and article summarization.
+
+For the system-level overview (software architecture + Kubernetes deployment topology, both with Mermaid diagrams), see [`docs/architecture.md`](docs/architecture.md). For deploy and operational details, see [`kubernetes.md`](kubernetes.md).
 
 ## Features
 

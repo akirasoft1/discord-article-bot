@@ -31,7 +31,7 @@ After deploying the bot, register the slash commands with Discord:
 npm run register:commands
 ```
 
-**Note:** Global commands can take up to 1 hour to appear. For instant updates during development, set `DISCORD_TEST_GUILD_ID` to a specific guild ID. CTRL-R in the Discord client forces a refresh of available commands.
+**Note:** `scripts/registerCommands.js` always pushes the schema globally; if `DISCORD_TEST_GUILD_ID` is set, it *also* pushes to that guild for instant feedback. Discord shadows global commands with guild commands in the same guild, so there's no duplication. Global commands can take up to 1 hour to appear in non-test guilds; CTRL-R in the Discord client forces a refresh.
 
 ## Available Commands
 
@@ -58,8 +58,10 @@ npm run register:commands
 
 | Command | Description |
 |---------|-------------|
-| `/imagine` | Generate an image from text |
-| `/videogen` | Generate a video from text/images |
+| `/imagine` | Generate an image from text (Google Gemini) |
+| `/videogen` | Generate a video from text/images (Google Veo) |
+| `/musicgen` | Generate music (Google Lyria 3 Pro) |
+| `/elevenmusic` | Generate music (ElevenLabs `music_v1`, parallel to `/musicgen`) |
 
 ### Memory
 
@@ -128,6 +130,34 @@ Use `/chatthread` to create a dedicated thread for extended conversations. In th
 | `prompt` | Yes | Description of image to generate |
 | `ratio` | No | Aspect ratio (1:1, 16:9, 9:16, etc.) |
 | `reference` | No | Reference image attachment |
+
+### `/musicgen`
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `prompt` | Yes | Description of the music (≤6000 chars) |
+| `lyrics` | No | Custom lyrics; supports `[Verse]` / `[Chorus]` / `[Bridge]` tags (≤6000) |
+| `negative_prompt` | No | Things to avoid (e.g. "no vocals"). Composed into the prompt text since Lyria has no structured negative_prompt API field. (≤6000) |
+| `image1` / `image2` / `image3` | No | Up to 3 reference images for visual inspiration (PNG / JPEG / GIF / WebP, ≤10MB each) |
+
+### `/elevenmusic`
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `prompt` | Yes | Description of the music (≤6000 chars) |
+| `duration` | No | Seconds, 3–600 (default 90) |
+| `instrumental` | No | Force instrumental output. Silently ignored when `lyrics` is provided (lyrics imply vocals). |
+| `lyrics` | No | Triggers ElevenLabs' `composition_plan` mode under the hood (the only API path that accepts lyrics). |
+
+### `/videogen`
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `prompt` | Yes | Description of the video |
+| `duration` | No | 4, 6, or 8 seconds (default 8) |
+| `ratio` | No | 16:9 (landscape) or 9:16 (portrait) |
+| `first_frame` | No | Starting frame image |
+| `last_frame` | No | Ending frame image (for first/last-frame morphing) |
 
 ### `/recall`
 
