@@ -239,7 +239,7 @@ describe('ElevenLabsMusicService constructor', () => {
   beforeEach(() => {
     ElevenLabsClient.mockReset();
     ElevenLabsClient.mockImplementation(() => ({
-      music: { compose: jest.fn() }
+      music: { composeDetailed: jest.fn() }
     }));
   });
 
@@ -363,13 +363,13 @@ Append to `__tests__/services/ElevenLabsMusicService.test.js`:
 ```js
 describe('ElevenLabsMusicService.generateMusic - prompt mode happy path', () => {
   let svc;
-  let compose;
+  let composeDetailed;
   let costService;
 
   beforeEach(() => {
     ElevenLabsClient.mockReset();
-    compose = jest.fn().mockResolvedValue(Buffer.from('FAKE_MP3'));
-    ElevenLabsClient.mockImplementation(() => ({ music: { compose } }));
+    composeDetailed = jest.fn().mockResolvedValue({ audio: Buffer.from('FAKE_MP3') });
+    ElevenLabsClient.mockImplementation(() => ({ music: { composeDetailed } }));
     costService = { recordMediaGen: jest.fn().mockReturnValue({ success: true, cost: 0.10 }), mediaPricing: {} };
     svc = new ElevenLabsMusicService(makeConfig(), costService);
   });
@@ -383,27 +383,27 @@ describe('ElevenLabsMusicService.generateMusic - prompt mode happy path', () => 
     expect(costService.recordMediaGen).toHaveBeenCalledWith('elevenlabs-music-v1', { id: 'u1', tag: 'alice' });
   });
 
-  test('forwards prompt, music_length_ms, model_id, force_instrumental', async () => {
+  test('forwards prompt, musicLengthMs, modelId, forceInstrumental (SDK uses camelCase)', async () => {
     await svc.generateMusic('a slow piano ballad', { durationSeconds: 30, instrumental: true }, { id: 'u1' });
-    expect(compose).toHaveBeenCalledTimes(1);
-    const call = compose.mock.calls[0][0];
+    expect(composeDetailed).toHaveBeenCalledTimes(1);
+    const call = composeDetailed.mock.calls[0][0];
     expect(call.prompt).toBe('a slow piano ballad');
-    expect(call.music_length_ms).toBe(30000);
-    expect(call.model_id).toBe('music_v1');
-    expect(call.force_instrumental).toBe(true);
-    expect(call.composition_plan).toBeUndefined();
+    expect(call.musicLengthMs).toBe(30000);
+    expect(call.modelId).toBe('music_v1');
+    expect(call.forceInstrumental).toBe(true);
+    expect(call.compositionPlan).toBeUndefined();
   });
 
   test('defaults durationSeconds to config.elevenlabs.defaultDurationSeconds (90)', async () => {
     await svc.generateMusic('jazz', {}, { id: 'u1' });
-    const call = compose.mock.calls[0][0];
-    expect(call.music_length_ms).toBe(90000);
+    const call = composeDetailed.mock.calls[0][0];
+    expect(call.musicLengthMs).toBe(90000);
   });
 
-  test('defaults force_instrumental to false', async () => {
+  test('defaults forceInstrumental to false', async () => {
     await svc.generateMusic('jazz', {}, { id: 'u1' });
-    const call = compose.mock.calls[0][0];
-    expect(call.force_instrumental).toBe(false);
+    const call = composeDetailed.mock.calls[0][0];
+    expect(call.forceInstrumental).toBe(false);
   });
 
   test('returns success:false when service is disabled', async () => {
@@ -430,6 +430,10 @@ Add to `services/ElevenLabsMusicService.js`, inside the class after `isEnabled()
 
 ```js
   // options: { lyrics?, durationSeconds?, instrumental? }
+  // Uses composeDetailed() (not compose()) because composeDetailed returns
+  // { audio: Buffer, json, filename } directly. The raw compose() returns a
+  // ReadableStream<Uint8Array> that would need a coercion helper. The SDK's
+  // detailed variant does the buffering for us.
   async generateMusic(prompt, options = {}, user = null) {
     if (!this.isEnabled()) {
       return { success: false, error: 'Music generation is not enabled on this bot.' };
@@ -438,51 +442,31 @@ Add to `services/ElevenLabsMusicService.js`, inside the class after `isEnabled()
     const durationSeconds = options.durationSeconds || this.config.elevenlabs.defaultDurationSeconds;
     const forceInstrumental = options.instrumental === true;
 
+    // NOTE: The @elevenlabs/elevenlabs-js SDK uses camelCase for all request
+    // fields, NOT the snake_case shown in the REST docs.
     const request = {
       prompt,
-      music_length_ms: durationSeconds * 1000,
-      model_id: this.config.elevenlabs.model,
-      force_instrumental: forceInstrumental
+      musicLengthMs: durationSeconds * 1000,
+      modelId: this.config.elevenlabs.model,
+      forceInstrumental: forceInstrumental
     };
 
     let response;
     try {
-      response = await this.client.music.compose(request);
+      response = await this.client.music.composeDetailed(request);
     } catch (err) {
-      logger.error('ElevenLabs compose failed', { error: err });
+      logger.error('ElevenLabs composeDetailed failed', { error: err });
       return { success: false, error: `Music generation failed: ${err.message}` };
     }
 
-    const buffer = await this._coerceToBuffer(response);
-    if (!buffer || buffer.length === 0) {
+    const buffer = response?.audio;
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
       return { success: false, error: 'Music generation completed but no audio data was returned.' };
     }
 
     this.costService?.recordMediaGen('elevenlabs-music-v1', user);
 
     return { success: true, buffer, mimeType: 'audio/mpeg' };
-  }
-
-  // The SDK may return a Buffer directly, a Node Readable stream, or a fetch
-  // Response. Normalize to a Buffer.
-  async _coerceToBuffer(response) {
-    if (!response) return null;
-    if (Buffer.isBuffer(response)) return response;
-    if (response instanceof Uint8Array) return Buffer.from(response);
-    if (typeof response.arrayBuffer === 'function') {
-      // fetch Response / Blob
-      const ab = await response.arrayBuffer();
-      return Buffer.from(ab);
-    }
-    if (typeof response.on === 'function') {
-      // Node Readable
-      const chunks = [];
-      for await (const chunk of response) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      }
-      return Buffer.concat(chunks);
-    }
-    return null;
   }
 ```
 
@@ -512,38 +496,38 @@ git commit -m "feat(elevenlabs): implement generateMusic prompt-mode happy path"
 Append:
 
 ```js
-describe('ElevenLabsMusicService.generateMusic - composition_plan mode (lyrics)', () => {
+describe('ElevenLabsMusicService.generateMusic - compositionPlan mode (lyrics)', () => {
   let svc;
-  let compose;
+  let composeDetailed;
 
   beforeEach(() => {
     ElevenLabsClient.mockReset();
-    compose = jest.fn().mockResolvedValue(Buffer.from('FAKE_MP3'));
-    ElevenLabsClient.mockImplementation(() => ({ music: { compose } }));
+    composeDetailed = jest.fn().mockResolvedValue({ audio: Buffer.from('FAKE_MP3') });
+    ElevenLabsClient.mockImplementation(() => ({ music: { composeDetailed } }));
     svc = new ElevenLabsMusicService(makeConfig(), { recordMediaGen: jest.fn(), mediaPricing: {} });
   });
 
-  test('switches to composition_plan when lyrics provided', async () => {
+  test('switches to compositionPlan when lyrics provided', async () => {
     await svc.generateMusic('upbeat jazz', { lyrics: 'first line\nsecond line', durationSeconds: 30 }, { id: 'u1' });
-    const call = compose.mock.calls[0][0];
+    const call = composeDetailed.mock.calls[0][0];
     expect(call.prompt).toBeUndefined();
-    expect(call.music_length_ms).toBeUndefined();
-    expect(call.composition_plan).toBeDefined();
-    expect(call.composition_plan.sections).toHaveLength(1);
-    expect(call.composition_plan.sections[0]).toMatchObject({
-      section_name: 'main',
-      positive_local_styles: ['upbeat jazz'],
-      negative_local_styles: [],
-      duration_ms: 30000
+    expect(call.musicLengthMs).toBeUndefined();
+    expect(call.compositionPlan).toBeDefined();
+    expect(call.compositionPlan.sections).toHaveLength(1);
+    expect(call.compositionPlan.sections[0]).toMatchObject({
+      sectionName: 'main',
+      positiveLocalStyles: ['upbeat jazz'],
+      negativeLocalStyles: [],
+      durationMs: 30000
     });
-    expect(call.composition_plan.sections[0].lines).toEqual(['first line', 'second line']);
-    expect(call.model_id).toBe('music_v1');
+    expect(call.compositionPlan.sections[0].lines).toEqual(['first line', 'second line']);
+    expect(call.modelId).toBe('music_v1');
   });
 
-  test('does not pass force_instrumental in composition_plan mode (API contradiction)', async () => {
+  test('does not pass forceInstrumental in compositionPlan mode (API contradiction)', async () => {
     await svc.generateMusic('jazz', { lyrics: 'hello', instrumental: true }, { id: 'u1' });
-    const call = compose.mock.calls[0][0];
-    expect(call.force_instrumental).toBeUndefined();
+    const call = composeDetailed.mock.calls[0][0];
+    expect(call.forceInstrumental).toBeUndefined();
   });
 
   test('logs warning when instrumental=true is combined with lyrics', async () => {
@@ -553,24 +537,24 @@ describe('ElevenLabsMusicService.generateMusic - composition_plan mode (lyrics)'
     warnSpy.mockRestore();
   });
 
-  test('uses default duration in composition_plan mode too', async () => {
+  test('uses default duration in compositionPlan mode too', async () => {
     await svc.generateMusic('jazz', { lyrics: 'hello' }, { id: 'u1' });
-    const call = compose.mock.calls[0][0];
-    expect(call.composition_plan.sections[0].duration_ms).toBe(90000);
+    const call = composeDetailed.mock.calls[0][0];
+    expect(call.compositionPlan.sections[0].durationMs).toBe(90000);
   });
 
   test('empty lyrics string falls back to prompt mode', async () => {
     await svc.generateMusic('jazz', { lyrics: '' }, { id: 'u1' });
-    const call = compose.mock.calls[0][0];
+    const call = composeDetailed.mock.calls[0][0];
     expect(call.prompt).toBe('jazz');
-    expect(call.composition_plan).toBeUndefined();
+    expect(call.compositionPlan).toBeUndefined();
   });
 
   test('whitespace-only lyrics falls back to prompt mode', async () => {
     await svc.generateMusic('jazz', { lyrics: '   \n  ' }, { id: 'u1' });
-    const call = compose.mock.calls[0][0];
+    const call = composeDetailed.mock.calls[0][0];
     expect(call.prompt).toBe('jazz');
-    expect(call.composition_plan).toBeUndefined();
+    expect(call.compositionPlan).toBeUndefined();
   });
 });
 ```
@@ -598,37 +582,37 @@ Replace the body of `generateMusic` between the disabled-guard and the try/catch
 
     let request;
     if (lyrics.length > 0) {
-      // ElevenLabs' `force_instrumental` is prompt-mode-only and would contradict the
+      // ElevenLabs' `forceInstrumental` is prompt-mode-only and would contradict the
       // presence of lyrics anyway. Drop it with a warn-log when both are provided.
       if (forceInstrumental) {
         logger.warn('elevenmusic: ignoring instrumental=true because lyrics were provided');
       }
       request = {
-        composition_plan: {
+        compositionPlan: {
           sections: [{
-            section_name: 'main',
-            positive_local_styles: [prompt],
-            negative_local_styles: [],
-            duration_ms: durationSeconds * 1000,
+            sectionName: 'main',
+            positiveLocalStyles: [prompt],
+            negativeLocalStyles: [],
+            durationMs: durationSeconds * 1000,
             lines: this._splitLyricsIntoMaxLines(lyrics, 200)
           }]
         },
-        model_id: this.config.elevenlabs.model
+        modelId: this.config.elevenlabs.model
       };
     } else {
       request = {
         prompt,
-        music_length_ms: durationSeconds * 1000,
-        model_id: this.config.elevenlabs.model,
-        force_instrumental: forceInstrumental
+        musicLengthMs: durationSeconds * 1000,
+        modelId: this.config.elevenlabs.model,
+        forceInstrumental: forceInstrumental
       };
     }
 
     let response;
     try {
-      response = await this.client.music.compose(request);
+      response = await this.client.music.composeDetailed(request);
     } catch (err) {
-      logger.error('ElevenLabs compose failed', { error: err });
+      logger.error('ElevenLabs composeDetailed failed', { error: err });
       return { success: false, error: `Music generation failed: ${err.message}` };
     }
 ```
@@ -801,19 +785,19 @@ Append:
 ```js
 describe('ElevenLabsMusicService.generateMusic - error paths', () => {
   let svc;
-  let compose;
+  let composeDetailed;
   let costService;
 
   beforeEach(() => {
     ElevenLabsClient.mockReset();
-    compose = jest.fn();
-    ElevenLabsClient.mockImplementation(() => ({ music: { compose } }));
+    composeDetailed = jest.fn();
+    ElevenLabsClient.mockImplementation(() => ({ music: { composeDetailed } }));
     costService = { recordMediaGen: jest.fn(), mediaPricing: {} };
     svc = new ElevenLabsMusicService(makeConfig(), costService);
   });
 
   test('returns success:false when SDK throws (5xx / network)', async () => {
-    compose.mockRejectedValueOnce(new Error('upstream 503'));
+    composeDetailed.mockRejectedValueOnce(new Error('upstream 503'));
     const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/upstream 503/);
@@ -821,15 +805,23 @@ describe('ElevenLabsMusicService.generateMusic - error paths', () => {
   });
 
   test('returns API message verbatim on 4xx-style rejection', async () => {
-    compose.mockRejectedValueOnce(new Error('Music generation rejected: prompt violates policy'));
+    composeDetailed.mockRejectedValueOnce(new Error('Music generation rejected: prompt violates policy'));
     const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
     expect(result.success).toBe(false);
     expect(result.error).toContain('prompt violates policy');
     expect(costService.recordMediaGen).not.toHaveBeenCalled();
   });
 
-  test('returns success:false when response is empty/zero-length buffer', async () => {
-    compose.mockResolvedValueOnce(Buffer.alloc(0));
+  test('returns success:false when response.audio is empty/zero-length buffer', async () => {
+    composeDetailed.mockResolvedValueOnce({ audio: Buffer.alloc(0) });
+    const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/no audio data/i);
+    expect(costService.recordMediaGen).not.toHaveBeenCalled();
+  });
+
+  test('returns success:false when response.audio is missing', async () => {
+    composeDetailed.mockResolvedValueOnce({});
     const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/no audio data/i);
@@ -837,7 +829,7 @@ describe('ElevenLabsMusicService.generateMusic - error paths', () => {
   });
 
   test('returns success:false when response is null', async () => {
-    compose.mockResolvedValueOnce(null);
+    composeDetailed.mockResolvedValueOnce(null);
     const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/no audio data/i);
@@ -845,7 +837,7 @@ describe('ElevenLabsMusicService.generateMusic - error paths', () => {
   });
 
   test('does not record cost on any failure path', async () => {
-    compose.mockRejectedValueOnce(new Error('boom'));
+    composeDetailed.mockRejectedValueOnce(new Error('boom'));
     await svc.generateMusic('prompt', {}, { id: 'u1' });
     expect(costService.recordMediaGen).not.toHaveBeenCalled();
   });
