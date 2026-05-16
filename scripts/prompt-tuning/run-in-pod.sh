@@ -13,7 +13,12 @@ set -euo pipefail
 NAMESPACE="discord-article-bot"
 SELECTOR="app.kubernetes.io/name=discord-article-bot"
 CONTAINER="bot"
-REMOTE_BASE="/usr/src/app/scripts/prompt-tuning"
+# /usr/src/app is read-only (readOnlyRootFilesystem: true on the bot pod).
+# Stage everything we cp into the writable /tmp emptyDir volume and tell
+# run.js to look at /usr/src/app for config/services/node_modules via the
+# BOT_APP_ROOT env var.
+REMOTE_BASE="/tmp/prompt-tuning"
+APP_ROOT_IN_POD="/usr/src/app"
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 <candidate-path> [--n N] [--label LABEL] [--channel ID] [--days D] [--model NAME] [--seed N]" >&2
@@ -42,15 +47,16 @@ fi
 
 echo "Using pod: ${POD}"
 
-# Ensure the remote dirs exist. The deployed pod's image may pre-date the
-# prompt-tuning tool, in which case scripts/prompt-tuning/ won't be in /usr/src/app.
-# This makes the wrapper image-agnostic.
+# Ensure the remote dirs exist under /tmp (writable emptyDir; /usr/src/app is RO).
 echo "Ensuring remote directories exist..."
 kubectl exec -n "${NAMESPACE}" "${POD}" -c "${CONTAINER}" -- \
   mkdir -p "${REMOTE_BASE}/candidates" "${REMOTE_BASE}/runs"
 
-# Always copy run.js into the pod (also for image-agnosticism — old images don't
-# have it; new images get it overwritten with the local copy, which is harmless).
+# Always copy run.js into the pod. We stage it under /tmp/prompt-tuning/run.js
+# (not /usr/src/app/scripts/prompt-tuning/) because the root filesystem is
+# read-only. run.js uses createRequire(BOT_APP_ROOT/package.json) to find
+# config/services/node_modules at /usr/src/app, so its physical location
+# under /tmp doesn't break module resolution.
 LOCAL_RUN_JS="$(dirname "$0")/run.js"
 if [[ ! -f "${LOCAL_RUN_JS}" ]]; then
   echo "ERROR: local run.js not found at ${LOCAL_RUN_JS}" >&2
@@ -70,10 +76,12 @@ kubectl cp -c "${CONTAINER}" \
 # Build the in-pod command, forwarding --candidate and any extra flags the user passed
 REMOTE_CANDIDATE="${REMOTE_BASE}/candidates/${CANDIDATE_BASENAME}"
 
-# Forward the cost-confirm env var if set locally
-ENV_ARGS=()
+# Build the env-prefix for the in-pod exec. BOT_APP_ROOT tells run.js where to
+# find config/services/node_modules; PROMPT_TUNING_CONFIRM_COST is forwarded
+# only if the caller set it locally.
+ENV_PREFIX=(env "BOT_APP_ROOT=${APP_ROOT_IN_POD}")
 if [[ "${PROMPT_TUNING_CONFIRM_COST:-}" == "1" ]]; then
-  ENV_ARGS+=(env PROMPT_TUNING_CONFIRM_COST=1)
+  ENV_PREFIX+=("PROMPT_TUNING_CONFIRM_COST=1")
 fi
 
 echo "Running prompt-tuning script inside pod..."
@@ -82,7 +90,7 @@ RUN_OUTPUT="$(mktemp)"
 trap 'rm -f "${RUN_OUTPUT}"' EXIT
 
 kubectl exec -n "${NAMESPACE}" "${POD}" -c "${CONTAINER}" -- \
-  "${ENV_ARGS[@]}" node "${REMOTE_BASE}/run.js" \
+  "${ENV_PREFIX[@]}" node "${REMOTE_BASE}/run.js" \
   --candidate "${REMOTE_CANDIDATE}" \
   "$@" | tee "${RUN_OUTPUT}"
 

@@ -1,14 +1,25 @@
 #!/usr/bin/env node
 // scripts/prompt-tuning/run.js
-// Local prompt tuning tool — see docs/superpowers/specs/2026-05-16-prompt-tuning-tool-design.md
+// Prompt tuning tool — see docs/superpowers/specs/2026-05-16-prompt-tuning-tool-design.md
+//
+// Designed to run from two locations:
+//   1. Local checkout: scripts/prompt-tuning/run.js — relative requires work as-is
+//   2. Inside the bot pod, staged under /tmp/prompt-tuning/ — the host filesystem
+//      (/usr/src/app) is read-only, so the wrapper copies us into /tmp. Set
+//      BOT_APP_ROOT=/usr/src/app and we use createRequire to resolve the bot's
+//      config, services, personalities, and npm modules from there.
 
 const fs = require('fs');
 const path = require('path');
+const { createRequire } = require('module');
 
-const config = require('../../config/config');
+const APP_ROOT = process.env.BOT_APP_ROOT || path.resolve(__dirname, '..', '..');
+const appRequire = createRequire(path.join(APP_ROOT, 'package.json'));
+
+const config = appRequire('./config/config');
 
 function parseArgs(argv) {
-  const args = { n: 20, days: 7, baseline: path.resolve(__dirname, '..', '..', 'personalities', 'channel-voice.js') };
+  const args = { n: 20, days: 7, baseline: path.resolve(APP_ROOT, 'personalities', 'channel-voice.js') };
   for (let i = 2; i < argv.length; i++) {
     const flag = argv[i];
     const next = argv[i + 1];
@@ -121,7 +132,7 @@ async function main() {
     }
   }
 
-  const MongoService = require('../../services/MongoService');
+  const MongoService = appRequire('./services/MongoService');
   const mongoService = new MongoService(config.mongo.uri);
   await mongoService.connect();
 
@@ -202,7 +213,7 @@ async function main() {
   }
 
   await mongoService.disconnect();
-  const OpenAI = require('openai');
+  const OpenAI = appRequire('openai');
   const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
   const baselineSystem = baselineModule.systemPrompt.replace('{VOICE_INSTRUCTIONS}', voiceInstructions);

@@ -34,14 +34,16 @@ The wrapper requires `kubectl` configured for the cluster and the `discord-artic
 
 ### What happens inside the pod
 
-The wrapper is image-agnostic — it works whether the running pod was built before or after this tool existed. It:
+The bot pod runs with `readOnlyRootFilesystem: true`, so we can't write to `/usr/src/app` at all. The pod does have a writable `/tmp` emptyDir volume — that's where the wrapper stages everything. The script's relative requires (for `config`, `services/MongoService`, and npm modules like `openai`) are routed back to `/usr/src/app` via Node's `createRequire` using the `BOT_APP_ROOT` env var. So `run.js` lives physically under `/tmp/prompt-tuning/` but reads its dependencies from `/usr/src/app`.
+
+Step by step the wrapper:
 1. Resolves the current bot pod name (`kubectl get pod -l app.kubernetes.io/name=discord-article-bot ...`)
-2. `mkdir -p`s `/usr/src/app/scripts/prompt-tuning/{candidates,runs}` inside the pod (no-op when the image already has them)
-3. `kubectl cp`s your local `run.js` into `/usr/src/app/scripts/prompt-tuning/run.js` (so the wrapper works even against pods built before this tool existed)
-4. `kubectl cp`s your candidate file into `/usr/src/app/scripts/prompt-tuning/candidates/`
-5. `kubectl exec`s `node scripts/prompt-tuning/run.js --candidate ...` with all the runtime env vars already populated by the deployment's envFrom/secret bindings
+2. `mkdir -p`s `/tmp/prompt-tuning/{candidates,runs}` inside the pod
+3. `kubectl cp`s your local `run.js` into `/tmp/prompt-tuning/run.js` (the wrapper is image-agnostic — works against any image, even ones built before this tool existed)
+4. `kubectl cp`s your candidate file into `/tmp/prompt-tuning/candidates/`
+5. `kubectl exec`s `env BOT_APP_ROOT=/usr/src/app node /tmp/prompt-tuning/run.js --candidate ...`. All the runtime env vars (`OPENAI_API_KEY`, `MONGO_URI`, `DISCORD_CLIENT_ID`, etc.) are already populated by the deployment's envFrom/secret bindings.
 6. `kubectl cp`s the resulting report back to your local `scripts/prompt-tuning/runs/`
-7. Cleans up the candidate + report files from the pod so they don't survive across pod rolls. (`run.js` is intentionally left in place — harmless and saves the next run a copy step.)
+7. Cleans up the candidate + report files from the pod so they don't survive across pod rolls. (`run.js` is intentionally left in place under `/tmp` — `/tmp` itself gets wiped on every pod restart since it's an `emptyDir`, so nothing persists across rolls regardless.)
 
 ### Manual fallback (no wrapper)
 
@@ -52,20 +54,27 @@ POD=$(kubectl get pod -n discord-article-bot \
   -l app.kubernetes.io/name=discord-article-bot \
   -o jsonpath='{.items[0].metadata.name}')
 
-# Copy candidate in
-kubectl cp -c bot scripts/prompt-tuning/candidates/no-tech-bias-v1.js \
-  discord-article-bot/${POD}:/usr/src/app/scripts/prompt-tuning/candidates/no-tech-bias-v1.js
-
-# Run
+# Prep writable staging area
 kubectl exec -n discord-article-bot ${POD} -c bot -- \
-  node scripts/prompt-tuning/run.js \
-  --candidate scripts/prompt-tuning/candidates/no-tech-bias-v1.js \
+  mkdir -p /tmp/prompt-tuning/candidates /tmp/prompt-tuning/runs
+
+# Copy run.js and the candidate into /tmp (root filesystem is read-only)
+kubectl cp -c bot scripts/prompt-tuning/run.js \
+  discord-article-bot/${POD}:/tmp/prompt-tuning/run.js
+kubectl cp -c bot scripts/prompt-tuning/candidates/no-tech-bias-v1.js \
+  discord-article-bot/${POD}:/tmp/prompt-tuning/candidates/no-tech-bias-v1.js
+
+# Run (BOT_APP_ROOT tells run.js where to find config/services/node_modules)
+kubectl exec -n discord-article-bot ${POD} -c bot -- \
+  env BOT_APP_ROOT=/usr/src/app \
+  node /tmp/prompt-tuning/run.js \
+  --candidate /tmp/prompt-tuning/candidates/no-tech-bias-v1.js \
   --n 20 --label no-tech-bias-v1
 
 # Find the report filename it wrote (printed at the end of the run)
 # Then copy it out
 kubectl cp -c bot \
-  discord-article-bot/${POD}:/usr/src/app/scripts/prompt-tuning/runs/<filename>.md \
+  discord-article-bot/${POD}:/tmp/prompt-tuning/runs/<filename>.md \
   scripts/prompt-tuning/runs/<filename>.md
 ```
 
