@@ -107,7 +107,45 @@ async function main() {
     process.exit(1);
   }
   console.log('Args:', { ...args, candidate: path.basename(args.candidate), baseline: path.basename(args.baseline) });
-  // Task 3 onwards extend main()
+
+  const candidateModule = require(args.candidate);
+  const baselineModule = require(args.baseline);
+
+  for (const [name, mod] of [['candidate', candidateModule], ['baseline', baselineModule]]) {
+    if (!mod || typeof mod.systemPrompt !== 'string') {
+      console.error(`ERROR: ${name} (${name === 'candidate' ? args.candidate : args.baseline}) must export a personality module with a 'systemPrompt' string field`);
+      process.exit(1);
+    }
+    if (!mod.systemPrompt.includes('{VOICE_INSTRUCTIONS}')) {
+      console.warn(`WARN: ${name} systemPrompt does not contain {VOICE_INSTRUCTIONS} — voice profile will not be substituted`);
+    }
+  }
+
+  const MongoService = require('../../services/MongoService');
+  const mongoService = new MongoService(config.mongo.uri);
+  await mongoService.connect();
+
+  let voiceProfile;
+  try {
+    const collection = mongoService.db.collection('voice_profiles');
+    voiceProfile = await collection.findOne({}, { sort: { version: -1 } });
+  } catch (err) {
+    console.warn(`WARN: failed to load voice_profiles: ${err.message}`);
+  }
+
+  let voiceInstructions = '[no voice profile available]';
+  let voiceProfileMeta = { version: null, generatedAt: null };
+  if (voiceProfile?.voiceInstructions) {
+    voiceInstructions = voiceProfile.voiceInstructions;
+    voiceProfileMeta = { version: voiceProfile.version, generatedAt: voiceProfile.generatedAt };
+    console.log(`Loaded voice profile v${voiceProfile.version} (generated ${voiceProfile.generatedAt})`);
+  } else {
+    console.warn('WARN: no voice profile found in MongoDB — using stub placeholder');
+  }
+
+  await mongoService.disconnect();
+  console.log('voiceInstructions length:', voiceInstructions.length);
+  // Task 4 onwards extend main()
 }
 
 main().catch((err) => {
