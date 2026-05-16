@@ -237,6 +237,15 @@ module.exports = {
     // Per-call flat cost (USD) used to seed CostService.mediaPricing override at runtime
     perCallCostUsd: parseFloat(process.env.LYRIA_PER_CALL_COST_USD || '0.06')
   },
+  // ElevenLabs - music generation via @elevenlabs/elevenlabs-js
+  elevenlabs: {
+    enabled: process.env.ELEVENMUSIC_ENABLED === 'true',
+    apiKey: process.env.ELEVENLABS_API_KEY || '',
+    model: process.env.ELEVENLABS_MUSIC_MODEL || 'music_v1',
+    defaultDurationSeconds: parseInt(process.env.ELEVENLABS_DEFAULT_DURATION_SECONDS || '90', 10),
+    cooldownSeconds: parseInt(process.env.ELEVENLABS_COOLDOWN_SECONDS || '60', 10),
+    perCallCostUsd: parseFloat(process.env.ELEVENLABS_PER_CALL_COST_USD || '0.10'),
+  },
   // Mem0 - Persistent AI conversation memory
   mem0: {
     // Enable/disable Mem0 memory service

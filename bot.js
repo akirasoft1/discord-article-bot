@@ -24,6 +24,7 @@ const SandboxTraceService = require('./services/SandboxTraceService');
 const ImagenService = require('./services/ImagenService');
 const VeoService = require('./services/VeoService');
 const LyriaService = require('./services/LyriaService');
+const ElevenLabsMusicService = require('./services/ElevenLabsMusicService');
 const CostService = require('./services/CostService');
 const Mem0Service = require('./services/Mem0Service');
 const QdrantService = require('./services/QdrantService');
@@ -53,6 +54,7 @@ const {
   ImagineSlashCommand,
   VideogenSlashCommand,
   MusicgenSlashCommand,
+  ElevenmusicSlashCommand,
   MemoriesSlashCommand,
   RememberSlashCommand,
   ForgetSlashCommand,
@@ -258,6 +260,15 @@ class DiscordBot {
       logger.error(`Failed to initialize LyriaService: ${err.message}`);
     }
 
+    this.elevenLabsMusicService = null;
+    try {
+      if (config.elevenlabs && config.elevenlabs.enabled) {
+        this.elevenLabsMusicService = new ElevenLabsMusicService(config, new CostService());
+      }
+    } catch (err) {
+      logger.error(`Failed to initialize ElevenLabsMusicService: ${err.message}`);
+    }
+
     // Initialize Local LLM service for uncensored chat mode
     personalityManager.setLocalLlmService(localLlmService);
 
@@ -417,6 +428,10 @@ class DiscordBot {
     if (this.lyriaService && this.lyriaService.isEnabled()) {
       this.slashCommandHandler.register(new MusicgenSlashCommand(this.lyriaService));
       logger.info('Lyria slash command registered');
+    }
+
+    if (this.elevenLabsMusicService && this.elevenLabsMusicService.isEnabled()) {
+      this.slashCommandHandler.register(new ElevenmusicSlashCommand(this.elevenLabsMusicService));
     }
 
     // Register IRC history slash commands

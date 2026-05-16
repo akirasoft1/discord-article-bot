@@ -20,6 +20,7 @@ const {
   ImagineSlashCommand,
   VideogenSlashCommand,
   MusicgenSlashCommand,
+  ElevenmusicSlashCommand,
   MemoriesSlashCommand,
   RememberSlashCommand,
   ForgetSlashCommand,
@@ -75,6 +76,11 @@ async function registerCommands() {
   if (config.lyria?.enabled) {
     commands.push(new MusicgenSlashCommand(null));
     console.log('Including /musicgen command (lyria enabled)');
+  }
+
+  if (config.elevenlabs?.enabled) {
+    commands.push(new ElevenmusicSlashCommand(null));
+    console.log('Including /elevenmusic command (elevenlabs enabled)');
   }
 
   if (config.mem0?.enabled) {
