@@ -50,3 +50,17 @@ describe('CostService.recordMediaGen', () => {
     expect(svc.cumulative.media.byModel['fake-model-x']).toBeCloseTo(0.10, 5);
   });
 });
+
+describe('CostService.recordMediaGen - ElevenLabs', () => {
+  let svc;
+  beforeEach(() => {
+    svc = new CostService();
+  });
+
+  test('records elevenlabs-music-v1 successfully', () => {
+    const result = svc.recordMediaGen('elevenlabs-music-v1', { id: 'u1', tag: 'alice' });
+    expect(result.success).toBe(true);
+    expect(result.cost).toBeCloseTo(0.10, 5);
+    expect(svc.cumulative.media.byModel['elevenlabs-music-v1']).toBeCloseTo(0.10, 5);
+  });
+});

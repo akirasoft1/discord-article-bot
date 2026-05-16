@@ -13,7 +13,8 @@ class CostService {
     // Flat per-call pricing for media generation models (USD per call).
     // Placeholders pending finalized Google pricing.
     this.mediaPricing = {
-      'lyria-3-pro-preview': 0.06
+      'lyria-3-pro-preview': 0.06,
+      'elevenlabs-music-v1': 0.10
     };
 
     // Track cumulative costs
