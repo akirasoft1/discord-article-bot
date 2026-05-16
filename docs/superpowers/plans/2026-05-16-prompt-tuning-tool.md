@@ -334,26 +334,37 @@ git commit -m "feat(prompt-tuning): load candidate/baseline modules and voice pr
 
 - [ ] **Step 1: Add the message sampling step**
 
+**Schema confirmed before this plan was finalized** (from `bot.js:556` and `bot.js:801` call sites of `mongoService.recordChannelMessage`):
+- Collection: `channel_messages` (NOT `messages`)
+- Fields: `messageId`, `channelId`, `guildId`, `authorId`, `authorName`, `content`, `timestamp`, optional `executionIds` (string[], only on bot replies that triggered sandbox calls)
+- No `isBot` field — filter bot replies via `authorId !== config.discord.clientId`
+
 Replace the closing `await mongoService.disconnect();` line from Task 3 with the message-sampling step. The full updated section (after the voice profile load) becomes:
 
 ```js
   // Sample input messages
-  const messagesCollection = mongoService.db.collection('messages');
+  const messagesCollection = mongoService.db.collection('channel_messages');
   const sinceMs = Date.now() - (args.days * 24 * 60 * 60 * 1000);
   const sinceDate = new Date(sinceMs);
 
+  const botUserId = config.discord?.clientId;
+  if (!botUserId) {
+    console.warn('WARN: config.discord.clientId is not set — bot replies will not be filtered out of the sample');
+  }
+
   const filter = {
     timestamp: { $gte: sinceDate },
-    isBot: { $ne: true },
-    // Reject slash-command invocations (they start with `/`)
-    content: { $exists: true, $not: /^\/\w/ }
+    content: { $exists: true, $type: 'string', $not: /^\/\w/ } // reject slash-command invocations
   };
+  if (botUserId) {
+    filter.authorId = { $ne: botUserId };
+  }
   if (args.channel) {
     filter.channelId = args.channel;
   }
 
   const sampled = await messagesCollection
-    .find(filter, { projection: { content: 1, author: 1, channelId: 1, channelName: 1, timestamp: 1 } })
+    .find(filter, { projection: { content: 1, authorId: 1, authorName: 1, channelId: 1, timestamp: 1 } })
     .sort({ timestamp: -1 })
     .limit(args.n)
     .toArray();
@@ -372,8 +383,6 @@ Replace the closing `await mongoService.disconnect();` line from Task 3 with the
   await mongoService.disconnect();
   // Task 5 onwards extend main() — OpenAI replays + report writing
 ```
-
-**Note for the implementer on field names:** Check `services/MongoService.js` for the actual field names used when messages are persisted (look at how MessageService writes them). If the project uses `userId` instead of `author`, or `content` is stored under a different key, adjust accordingly. The plan assumes the common names; verify before continuing.
 
 - [ ] **Step 2: Smoke test**
 
@@ -543,8 +552,8 @@ In `scripts/prompt-tuning/run.js`, replace the `// Task 6 onwards extend main() 
   lines.push('');
 
   results.forEach((r, idx) => {
-    const channelLabel = r.msg.channelName || r.msg.channelId || 'unknown-channel';
-    const author = r.msg.author || 'unknown';
+    const channelLabel = r.msg.channelId || 'unknown-channel';
+    const author = r.msg.authorName || r.msg.authorId || 'unknown';
     lines.push(`### Case ${idx + 1}`);
     lines.push(`**Channel:** #${channelLabel} (${author})`);
     lines.push('**User input:**');
