@@ -183,6 +183,24 @@ async function main() {
   sampled.reverse();
   console.log(`Sampled ${sampled.length} messages`);
 
+  // Pre-flight cost estimate (rough): assume ~300 tokens in (system) + ~50 tokens out per call
+  const ESTIMATED_IN_PER_CALL = 600;   // system+user; conservative
+  const ESTIMATED_OUT_PER_CALL = 100;  // response; conservative
+  const RATES_PRE = {
+    'gpt-5-mini': { in: 0.25, out: 2.0 },
+    'gpt-4.1-mini': { in: 0.40, out: 1.60 },
+    'gpt-4o-mini': { in: 0.15, out: 0.60 }
+  };
+  const rate_pre = RATES_PRE[args.model] || RATES_PRE['gpt-4.1-mini'];
+  const callsTotal = sampled.length * 2;
+  const estCost = ((ESTIMATED_IN_PER_CALL * rate_pre.in) + (ESTIMATED_OUT_PER_CALL * rate_pre.out)) / 1_000_000 * callsTotal;
+  console.log(`Estimated cost: $${estCost.toFixed(4)} for ${callsTotal} OpenAI calls`);
+
+  if (estCost > 1 && process.env.PROMPT_TUNING_CONFIRM_COST !== '1') {
+    console.error(`ERROR: estimated cost $${estCost.toFixed(4)} exceeds $1 guardrail. Re-run with PROMPT_TUNING_CONFIRM_COST=1 to proceed.`);
+    process.exit(1);
+  }
+
   await mongoService.disconnect();
   const OpenAI = require('openai');
   const openai = new OpenAI({ apiKey: config.openai.apiKey });
