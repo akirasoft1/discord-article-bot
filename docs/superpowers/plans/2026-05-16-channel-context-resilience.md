@@ -318,7 +318,7 @@ describe('ChannelContextService._rehydrateBufferFromMongoDB', () => {
       { messageId: '2', authorId: 'bot-1', authorName: 'bot', content: 'hello', timestamp: t1 },
     ]);
 
-    await svc._rehydrateBufferFromMongoDB('chan-1', 'guild-1');
+    await svc._rehydrateBufferFromMongoDB('chan-1');
 
     const buf = svc.channelBuffers.get('chan-1');
     const msgs = buf.messages.getRecent(10);
@@ -330,17 +330,17 @@ describe('ChannelContextService._rehydrateBufferFromMongoDB', () => {
 
   test('returns gracefully when mongoService is null', async () => {
     svc.mongoService = null;
-    await expect(svc._rehydrateBufferFromMongoDB('chan-1', 'guild-1')).resolves.not.toThrow();
+    await expect(svc._rehydrateBufferFromMongoDB('chan-1')).resolves.not.toThrow();
   });
 
   test('returns gracefully when getRecentChannelMessages throws', async () => {
     mongo.getRecentChannelMessages.mockRejectedValueOnce(new Error('mongo down'));
-    await expect(svc._rehydrateBufferFromMongoDB('chan-1', 'guild-1')).resolves.not.toThrow();
+    await expect(svc._rehydrateBufferFromMongoDB('chan-1')).resolves.not.toThrow();
   });
 
   test('does nothing when mongo returns 0 messages', async () => {
     mongo.getRecentChannelMessages.mockResolvedValueOnce([]);
-    await svc._rehydrateBufferFromMongoDB('chan-1', 'guild-1');
+    await svc._rehydrateBufferFromMongoDB('chan-1');
     const buf = svc.channelBuffers.get('chan-1');
     expect(buf.messages.size()).toBe(0);
   });
@@ -379,11 +379,15 @@ In `services/ChannelContextService.js`, add a method to the class (place near ot
    * `channel_messages` persists every incoming message, so this gives the bot
    * immediate conversation context after a pod restart instead of waiting for
    * new messages to arrive.
+   *
+   * Called after `_loadTrackedChannels` has already initialized buffer entries
+   * for each tracked channel, so the buffer is guaranteed to exist by the time
+   * this runs.
+   *
    * @param {string} channelId
-   * @param {string} guildId
    * @private
    */
-  async _rehydrateBufferFromMongoDB(channelId, guildId) {
+  async _rehydrateBufferFromMongoDB(channelId) {
     if (!this.mongoService) {
       logger.debug(`Skipping buffer rehydration for ${channelId}: no mongoService`);
       return;
@@ -401,17 +405,13 @@ In `services/ChannelContextService.js`, add a method to the class (place near ot
       return;
     }
 
-    // Ensure buffer exists
-    if (!this.channelBuffers.has(channelId)) {
-      this.channelBuffers.set(channelId, {
-        messages: new CircularBuffer(this.config.recentMessageCount),
-        lastActivity: new Date(0),
-        guildId,
-        activeParticipants: new Map(),
-      });
+    const buffer = this.channelBuffers.get(channelId);
+    if (!buffer) {
+      // Defensive — _loadTrackedChannels should have initialized this. Bail.
+      logger.warn(`No buffer entry for ${channelId}; skipping rehydration`);
+      return;
     }
 
-    const buffer = this.channelBuffers.get(channelId);
     let latestTimestamp = buffer.lastActivity;
 
     for (const doc of docs) {
@@ -510,20 +510,20 @@ Expected: FAIL — `start()` doesn't call rehydration.
 
 - [ ] **Step 3: Wire rehydration into `start()`**
 
-In `services/ChannelContextService.js`, find `start()`. After `_loadTrackedChannels` finishes (which populates `this.trackedChannels`) and **before** `setInterval(... _processBatchIndex ...)`, add:
+In `services/ChannelContextService.js`, find `start()`. After `_loadTrackedChannels` finishes (which populates `this.trackedChannels` as a `Set<channelId>` and initializes per-channel buffer entries) and **before** `setInterval(... _processBatchIndex ...)`, add:
 
 ```js
       // Rehydrate per-channel hot buffer from MongoDB so the bot has
-      // conversation context immediately after restart, not after 20+
+      // conversation context immediately after restart, not after N
       // new messages arrive.
-      for (const [channelId, channelData] of this.trackedChannels) {
-        await this._rehydrateBufferFromMongoDB(channelId, channelData.guildId).catch((err) => {
+      for (const channelId of this.trackedChannels) {
+        await this._rehydrateBufferFromMongoDB(channelId).catch((err) => {
           logger.warn(`Rehydration for ${channelId} failed (non-fatal): ${err.message}`);
         });
       }
 ```
 
-If `this.trackedChannels` is keyed by channelId with `{ guildId }` values, use that shape; if it's an array, iterate accordingly. **Read the surrounding `_loadTrackedChannels` code to confirm the data structure before pasting.**
+`this.trackedChannels` is a `Set<channelId>` (confirmed at line 67 of the service). Per-channel buffer entries (including `guildId`) are already created by `_loadTrackedChannels` at lines 211-216 and 226-231, so rehydration just looks them up.
 
 - [ ] **Step 4: Run tests**
 
