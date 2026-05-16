@@ -688,3 +688,147 @@ describe('ChannelContextService', () => {
     });
   });
 });
+
+describe('ChannelContextService.buildHybridContext - configurable prompt slice', () => {
+  test('uses config.promptRecentCount when slicing the recent buffer', async () => {
+    // Use a value (7) that is distinct from both the old hardcode (10) and the
+    // manual edit (40) so the test is RED until the config path is wired.
+    const config = {
+      channelContext: {
+        enabled: true,
+        recentMessageCount: 100,
+        batchIndexIntervalMinutes: 60,
+        retentionDays: 30,
+        qdrantCollection: 'channel_conversations',
+        searchScoreThreshold: 0.4,
+        semanticSearchLimit: 5,
+        promptRecentCount: 7,
+      },
+      qdrant: { host: 'qdrant', port: 6333 },
+      discord: { clientId: 'bot-1' },
+    };
+
+    const svc = new ChannelContextService(config, {}, {}, null, 'bot-1');
+    svc._enabled = true;
+    svc.isChannelTracked = jest.fn().mockReturnValue(true);
+    svc.getRecentContext = jest.fn().mockReturnValue('');
+    svc.searchRelevantHistory = jest.fn().mockResolvedValue([]);
+    svc.getChannelFacts = jest.fn().mockResolvedValue(null);
+    svc.getParticipantContext = jest.fn().mockReturnValue('');
+
+    await svc.buildHybridContext('chan-1', 'hello');
+
+    expect(svc.getRecentContext).toHaveBeenCalledWith('chan-1', 7);
+  });
+});
+
+describe('ChannelContextService._rehydrateBufferFromMongoDB', () => {
+  let svc;
+  let mongo;
+  const config = {
+    channelContext: {
+      enabled: true,
+      recentMessageCount: 100,
+      batchIndexIntervalMinutes: 60,
+      retentionDays: 30,
+      qdrantCollection: 'channel_conversations',
+      searchScoreThreshold: 0.4,
+      semanticSearchLimit: 5,
+      promptRecentCount: 10,
+    },
+    qdrant: { host: 'qdrant', port: 6333 },
+    discord: { clientId: 'bot-1' },
+  };
+
+  // Minimal CircularBuffer compatible with ChannelContextService usage
+  class TestCircularBuffer {
+    constructor(cap) { this.capacity = cap; this.items = []; }
+    push(x) { this.items.push(x); if (this.items.length > this.capacity) this.items.shift(); }
+    getRecent(n) { return this.items.slice(-n); }
+    size() { return this.items.length; }
+  }
+
+  beforeEach(() => {
+    mongo = {
+      getRecentChannelMessages: jest.fn(),
+    };
+    svc = new ChannelContextService(config, {}, mongo, null, 'bot-1');
+    svc.channelBuffers.set('chan-1', {
+      messages: new TestCircularBuffer(100),
+      lastActivity: new Date(0),
+      guildId: 'guild-1',
+      activeParticipants: new Map(),
+    });
+  });
+
+  test('populates the buffer with messages in chronological order', async () => {
+    const t0 = new Date('2026-05-16T01:00:00Z');
+    const t1 = new Date('2026-05-16T02:00:00Z');
+    mongo.getRecentChannelMessages.mockResolvedValueOnce([
+      { messageId: '1', authorId: 'u1', authorName: 'alice', content: 'hi', timestamp: t0 },
+      { messageId: '2', authorId: 'bot-1', authorName: 'bot', content: 'hello', timestamp: t1 },
+    ]);
+
+    await svc._rehydrateBufferFromMongoDB('chan-1');
+
+    const buf = svc.channelBuffers.get('chan-1');
+    const msgs = buf.messages.getRecent(10);
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]).toMatchObject({ id: '1', authorId: 'u1', authorName: 'alice', content: 'hi', isBot: false });
+    expect(msgs[1]).toMatchObject({ id: '2', authorId: 'bot-1', authorName: 'bot', content: 'hello', isBot: true });
+    expect(buf.lastActivity).toEqual(t1);
+  });
+
+  test('returns gracefully when mongoService is null', async () => {
+    svc.mongoService = null;
+    await expect(svc._rehydrateBufferFromMongoDB('chan-1')).resolves.not.toThrow();
+  });
+
+  test('returns gracefully when getRecentChannelMessages throws', async () => {
+    mongo.getRecentChannelMessages.mockRejectedValueOnce(new Error('mongo down'));
+    await expect(svc._rehydrateBufferFromMongoDB('chan-1')).resolves.not.toThrow();
+  });
+
+  test('does nothing when mongo returns 0 messages', async () => {
+    mongo.getRecentChannelMessages.mockResolvedValueOnce([]);
+    await svc._rehydrateBufferFromMongoDB('chan-1');
+    const buf = svc.channelBuffers.get('chan-1');
+    expect(buf.messages.size()).toBe(0);
+  });
+});
+
+describe('ChannelContextService.start - rehydration ordering', () => {
+  test('calls _rehydrateBufferFromMongoDB once per tracked channel before scheduling intervals', async () => {
+    const config = {
+      channelContext: {
+        enabled: true,
+        recentMessageCount: 100,
+        batchIndexIntervalMinutes: 60,
+        retentionDays: 30,
+        qdrantCollection: 'channel_conversations',
+        searchScoreThreshold: 0.4,
+        semanticSearchLimit: 5,
+        promptRecentCount: 10,
+      },
+      qdrant: { host: 'qdrant', port: 6333 },
+      discord: { clientId: 'bot-1' },
+    };
+    const mongo = {
+      getRecentChannelMessages: jest.fn().mockResolvedValue([]),
+      getTrackedChannels: jest.fn().mockResolvedValue([
+        { channelId: 'chan-1', guildId: 'guild-1' },
+        { channelId: 'chan-2', guildId: 'guild-1' },
+      ]),
+    };
+    const svc = new ChannelContextService(config, {}, mongo, null, 'bot-1');
+    svc._ensureCollection = jest.fn().mockResolvedValue();
+    svc._cleanupExpiredMessages = jest.fn().mockResolvedValue();
+    svc.qdrantClient = {};
+
+    await svc.start();
+
+    expect(mongo.getRecentChannelMessages).toHaveBeenCalledTimes(2);
+    expect(mongo.getRecentChannelMessages).toHaveBeenCalledWith('chan-1', 100);
+    expect(mongo.getRecentChannelMessages).toHaveBeenCalledWith('chan-2', 100);
+  });
+});

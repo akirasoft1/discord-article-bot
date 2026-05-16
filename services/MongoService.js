@@ -1368,6 +1368,29 @@ class MongoService {
             return [];
         }
     }
+
+    /**
+     * Get the most recent N messages from a single channel, in chronological order.
+     * Used by ChannelContextService for startup hot-buffer rehydration.
+     * @param {string} channelId
+     * @param {number} limit
+     * @returns {Promise<Array>} Messages sorted by timestamp ASCENDING (oldest first)
+     */
+    async getRecentChannelMessages(channelId, limit = 100) {
+        if (!this.db) return [];
+        try {
+            const collection = this.db.collection('channel_messages');
+            const docs = await collection
+                .find({ channelId })
+                .sort({ timestamp: -1 })
+                .limit(limit)
+                .toArray();
+            return docs.reverse();
+        } catch (error) {
+            logger.error(`Error fetching recent channel messages for ${channelId}: ${error.message}`);
+            return [];
+        }
+    }
 }
 
 module.exports = MongoService;

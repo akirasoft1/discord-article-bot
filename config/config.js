@@ -284,6 +284,10 @@ module.exports = {
       : [],
     // Number of recent messages to keep in memory per channel (Tier 1: hot)
     recentMessageCount: parseInt(process.env.CHANNEL_CONTEXT_RECENT_COUNT || '20', 10),
+    // Number of buffered messages to inject into the chat prompt's "recent
+    // channel conversation" tier. Must be ≤ recentMessageCount (the buffer
+    // cap). Defaults to 10 to preserve previous behavior.
+    promptRecentCount: parseInt(process.env.CHANNEL_CONTEXT_PROMPT_RECENT_COUNT || '10', 10),
     // Batch indexing interval in minutes (Tier 2: warm)
     batchIndexIntervalMinutes: parseInt(process.env.CHANNEL_CONTEXT_BATCH_INTERVAL || '60', 10),
     // Retention period in days for indexed messages

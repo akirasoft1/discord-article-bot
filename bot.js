@@ -143,7 +143,8 @@ class DiscordBot {
           config,
           this.openaiClient,
           this.mongoService,
-          this.mem0Service
+          this.mem0Service,
+          config.discord?.clientId
         );
         logger.info('Channel context service initialized (pending start)');
       } catch (error) {
