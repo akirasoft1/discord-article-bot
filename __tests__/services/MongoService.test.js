@@ -979,3 +979,53 @@ describe('MongoService', () => {
     });
   });
 });
+
+describe('MongoService.getRecentChannelMessages', () => {
+  let svc;
+  let mockCollection;
+
+  beforeEach(async () => {
+    svc = new MongoService('mongodb://test/test');
+    await new Promise(resolve => setTimeout(resolve, 10));
+    mockCollection = {
+      find: jest.fn().mockReturnThis(),
+      sort: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      toArray: jest.fn(),
+    };
+    svc.db = { collection: jest.fn(() => mockCollection) };
+  });
+
+  test('returns messages sorted ascending (oldest first) regardless of DB return order', async () => {
+    // DB returns DESC (newest first); we reverse to ascending
+    mockCollection.toArray.mockResolvedValueOnce([
+      { messageId: '3', timestamp: new Date('2026-05-16T03:00:00Z'), content: 'c' },
+      { messageId: '2', timestamp: new Date('2026-05-16T02:00:00Z'), content: 'b' },
+      { messageId: '1', timestamp: new Date('2026-05-16T01:00:00Z'), content: 'a' },
+    ]);
+    const out = await svc.getRecentChannelMessages('chan-1', 100);
+    expect(svc.db.collection).toHaveBeenCalledWith('channel_messages');
+    expect(mockCollection.find).toHaveBeenCalledWith({ channelId: 'chan-1' });
+    expect(mockCollection.sort).toHaveBeenCalledWith({ timestamp: -1 });
+    expect(mockCollection.limit).toHaveBeenCalledWith(100);
+    expect(out.map(m => m.messageId)).toEqual(['1', '2', '3']);
+  });
+
+  test('returns empty array when db is null', async () => {
+    svc.db = null;
+    const out = await svc.getRecentChannelMessages('chan-1', 100);
+    expect(out).toEqual([]);
+  });
+
+  test('returns empty array when query throws', async () => {
+    mockCollection.toArray.mockRejectedValueOnce(new Error('boom'));
+    const out = await svc.getRecentChannelMessages('chan-1', 100);
+    expect(out).toEqual([]);
+  });
+
+  test('honors the limit parameter', async () => {
+    mockCollection.toArray.mockResolvedValueOnce([]);
+    await svc.getRecentChannelMessages('chan-1', 5);
+    expect(mockCollection.limit).toHaveBeenCalledWith(5);
+  });
+});
