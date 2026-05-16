@@ -34,12 +34,14 @@ The wrapper requires `kubectl` configured for the cluster and the `discord-artic
 
 ### What happens inside the pod
 
-The bot pod's `/usr/src/app` is the same source tree built into the image, so `scripts/prompt-tuning/run.js` is already present. The wrapper:
+The wrapper is image-agnostic — it works whether the running pod was built before or after this tool existed. It:
 1. Resolves the current bot pod name (`kubectl get pod -l app.kubernetes.io/name=discord-article-bot ...`)
-2. `kubectl cp`s your candidate file into `/usr/src/app/scripts/prompt-tuning/candidates/`
-3. `kubectl exec`s `node scripts/prompt-tuning/run.js --candidate ...` with all the runtime env vars already populated by the deployment's envFrom/secret bindings
-4. `kubectl cp`s the resulting report back to your local `scripts/prompt-tuning/runs/`
-5. Cleans up the candidate file from the pod so it doesn't survive across rolls
+2. `mkdir -p`s `/usr/src/app/scripts/prompt-tuning/{candidates,runs}` inside the pod (no-op when the image already has them)
+3. `kubectl cp`s your local `run.js` into `/usr/src/app/scripts/prompt-tuning/run.js` (so the wrapper works even against pods built before this tool existed)
+4. `kubectl cp`s your candidate file into `/usr/src/app/scripts/prompt-tuning/candidates/`
+5. `kubectl exec`s `node scripts/prompt-tuning/run.js --candidate ...` with all the runtime env vars already populated by the deployment's envFrom/secret bindings
+6. `kubectl cp`s the resulting report back to your local `scripts/prompt-tuning/runs/`
+7. Cleans up the candidate + report files from the pod so they don't survive across pod rolls. (`run.js` is intentionally left in place — harmless and saves the next run a copy step.)
 
 ### Manual fallback (no wrapper)
 

@@ -42,6 +42,25 @@ fi
 
 echo "Using pod: ${POD}"
 
+# Ensure the remote dirs exist. The deployed pod's image may pre-date the
+# prompt-tuning tool, in which case scripts/prompt-tuning/ won't be in /usr/src/app.
+# This makes the wrapper image-agnostic.
+echo "Ensuring remote directories exist..."
+kubectl exec -n "${NAMESPACE}" "${POD}" -c "${CONTAINER}" -- \
+  mkdir -p "${REMOTE_BASE}/candidates" "${REMOTE_BASE}/runs"
+
+# Always copy run.js into the pod (also for image-agnosticism — old images don't
+# have it; new images get it overwritten with the local copy, which is harmless).
+LOCAL_RUN_JS="$(dirname "$0")/run.js"
+if [[ ! -f "${LOCAL_RUN_JS}" ]]; then
+  echo "ERROR: local run.js not found at ${LOCAL_RUN_JS}" >&2
+  exit 1
+fi
+echo "Copying run.js into pod..."
+kubectl cp -c "${CONTAINER}" \
+  "${LOCAL_RUN_JS}" \
+  "${NAMESPACE}/${POD}:${REMOTE_BASE}/run.js"
+
 # Copy candidate into the pod
 echo "Copying candidate into pod..."
 kubectl cp -c "${CONTAINER}" \
@@ -86,14 +105,11 @@ kubectl cp -c "${CONTAINER}" \
   "${NAMESPACE}/${POD}:${REPORT_REMOTE_PATH}" \
   "${LOCAL_RUNS_DIR}/${REPORT_FILENAME}"
 
-# Clean up the candidate file from the pod so it doesn't survive across rolls
-echo "Cleaning up candidate from pod..."
+# Clean up the candidate + report files from the pod so they don't survive across rolls.
+# (We deliberately leave run.js in place — harmless and saves the next run a copy step.)
+echo "Cleaning up candidate + report from pod..."
 kubectl exec -n "${NAMESPACE}" "${POD}" -c "${CONTAINER}" -- \
-  rm -f "${REMOTE_CANDIDATE}" || true
-
-# Also clean up the report from the pod so /runs/ doesn't accumulate
-kubectl exec -n "${NAMESPACE}" "${POD}" -c "${CONTAINER}" -- \
-  rm -f "${REPORT_REMOTE_PATH}" || true
+  rm -f "${REMOTE_CANDIDATE}" "${REPORT_REMOTE_PATH}" || true
 
 echo ""
 echo "Done. Local report: ${LOCAL_RUNS_DIR}/${REPORT_FILENAME}"
