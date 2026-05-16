@@ -224,3 +224,63 @@ describe('ElevenLabsMusicService._splitLyricsIntoMaxLines', () => {
     expect(out).toEqual([]);
   });
 });
+
+describe('ElevenLabsMusicService.generateMusic - error paths', () => {
+  let svc;
+  let composeDetailed;
+  let costService;
+
+  beforeEach(() => {
+    ElevenLabsClient.mockReset();
+    composeDetailed = jest.fn();
+    ElevenLabsClient.mockImplementation(() => ({ music: { composeDetailed } }));
+    costService = { recordMediaGen: jest.fn(), mediaPricing: {} };
+    svc = new ElevenLabsMusicService(makeConfig(), costService);
+  });
+
+  test('returns success:false when SDK throws (5xx / network)', async () => {
+    composeDetailed.mockRejectedValueOnce(new Error('upstream 503'));
+    const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/upstream 503/);
+    expect(costService.recordMediaGen).not.toHaveBeenCalled();
+  });
+
+  test('returns API message verbatim on 4xx-style rejection', async () => {
+    composeDetailed.mockRejectedValueOnce(new Error('Music generation rejected: prompt violates policy'));
+    const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('prompt violates policy');
+    expect(costService.recordMediaGen).not.toHaveBeenCalled();
+  });
+
+  test('returns success:false when response.audio is empty/zero-length buffer', async () => {
+    composeDetailed.mockResolvedValueOnce({ audio: Buffer.alloc(0) });
+    const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/no audio data/i);
+    expect(costService.recordMediaGen).not.toHaveBeenCalled();
+  });
+
+  test('returns success:false when response.audio is missing', async () => {
+    composeDetailed.mockResolvedValueOnce({});
+    const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/no audio data/i);
+    expect(costService.recordMediaGen).not.toHaveBeenCalled();
+  });
+
+  test('returns success:false when response is null', async () => {
+    composeDetailed.mockResolvedValueOnce(null);
+    const result = await svc.generateMusic('prompt', {}, { id: 'u1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/no audio data/i);
+    expect(costService.recordMediaGen).not.toHaveBeenCalled();
+  });
+
+  test('does not record cost on any failure path', async () => {
+    composeDetailed.mockRejectedValueOnce(new Error('boom'));
+    await svc.generateMusic('prompt', {}, { id: 'u1' });
+    expect(costService.recordMediaGen).not.toHaveBeenCalled();
+  });
+});
