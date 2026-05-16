@@ -178,6 +178,7 @@ The "planned" section below reflects items that have NOT yet shipped. Anything p
 - [ ] **`@tootallnate/once` chain.** High-sev via `@google-cloud/storage` → `teeny-request` → `http-proxy-agent@5`. Fixing requires breaking-change library swaps. Deferred.
 - [ ] **Slash-command unit tests.** No `__tests__/commands/slash/` pattern exists; commands are smoke-tested manually in Discord. Worth introducing.
 - [ ] **Files-to-touch checklist for new secret-backed services.** PR #79 missed `deployment.yaml`'s `valueFrom: secretKeyRef` binding for `ELEVENLABS_API_KEY` and the bot booted with the service disabled. Catch this for the next media-gen plan.
+- [ ] **Voice-profile regen-pipeline hardening.** The local prompt-tuning tool at `scripts/prompt-tuning/` ships for offline iteration on `personalities/channel-voice.js`. Pipeline-side improvements (synthesis prompt updates, topic-bleed filter, eval-gated rotation) remain TODO — addressed when we want continuous quality rather than periodic manual tuning.
 
 ### Chat / personality
 - [ ] **More personality archetypes beyond `channel-voice`.** All other personalities were removed in v2.8.x; reintroducing distinct ones is a backlog item.

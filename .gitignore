@@ -32,3 +32,9 @@ service.account.key.json
 
 # Conversation logs
 Dec012025.txt
+
+# Prompt tuning tool — local-only drafts and reports
+scripts/prompt-tuning/candidates/*
+!scripts/prompt-tuning/candidates/.gitkeep
+scripts/prompt-tuning/runs/*
+!scripts/prompt-tuning/runs/.gitkeep
