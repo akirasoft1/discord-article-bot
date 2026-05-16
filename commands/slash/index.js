@@ -17,6 +17,7 @@ module.exports = {
   ImagineSlashCommand: require('./ImagineCommand'),
   VideogenSlashCommand: require('./VideogenCommand'),
   MusicgenSlashCommand: require('./MusicgenCommand'),
+  ElevenmusicSlashCommand: require('./ElevenmusicCommand'),
 
   // Memory commands
   MemoriesSlashCommand: require('./MemoriesCommand'),
