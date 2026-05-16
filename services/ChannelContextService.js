@@ -47,12 +47,13 @@ class ChannelContextService {
    * @param {Object} mongoService - MongoDB service for persistence
    * @param {Object} mem0Service - Optional Mem0 service for channel memories
    */
-  constructor(config, openaiClient, mongoService, mem0Service = null) {
+  constructor(config, openaiClient, mongoService, mem0Service = null, botUserId = null) {
     this.config = config.channelContext;
     this.qdrantConfig = config.qdrant;
     this.openai = openaiClient;
     this.mongoService = mongoService;
     this.mem0Service = mem0Service;
+    this.botUserId = botUserId || config.discord?.clientId || null;
 
     // Tier 1: In-memory buffers per channel
     this.channelBuffers = new Map();
@@ -451,6 +452,66 @@ class ChannelContextService {
         field_schema: 'datetime'
       });
     }
+  }
+
+  /**
+   * Rehydrate the in-memory hot buffer for a channel from MongoDB on startup.
+   * `channel_messages` persists every incoming message, so this gives the bot
+   * immediate conversation context after a pod restart instead of waiting for
+   * new messages to arrive.
+   *
+   * Called after `_loadTrackedChannels` has already initialized buffer entries
+   * for each tracked channel, so the buffer is guaranteed to exist by the time
+   * this runs.
+   *
+   * @param {string} channelId
+   * @private
+   */
+  async _rehydrateBufferFromMongoDB(channelId) {
+    if (!this.mongoService) {
+      logger.debug(`Skipping buffer rehydration for ${channelId}: no mongoService`);
+      return;
+    }
+
+    let docs;
+    try {
+      docs = await this.mongoService.getRecentChannelMessages(channelId, this.config.recentMessageCount);
+    } catch (err) {
+      logger.warn(`Failed to rehydrate buffer for channel ${channelId}: ${err.message}`);
+      return;
+    }
+
+    if (!Array.isArray(docs) || docs.length === 0) {
+      return;
+    }
+
+    const buffer = this.channelBuffers.get(channelId);
+    if (!buffer) {
+      // Defensive — _loadTrackedChannels should have initialized this. Bail.
+      logger.warn(`No buffer entry for ${channelId}; skipping rehydration`);
+      return;
+    }
+
+    let latestTimestamp = buffer.lastActivity;
+
+    for (const doc of docs) {
+      const record = {
+        id: doc.messageId,
+        authorId: doc.authorId,
+        authorName: doc.authorName,
+        content: doc.content,
+        timestamp: doc.timestamp,
+        isBot: this.botUserId ? doc.authorId === this.botUserId : false,
+        replyToId: null,
+      };
+      buffer.messages.push(record);
+      if (doc.timestamp instanceof Date && doc.timestamp > latestTimestamp) {
+        latestTimestamp = doc.timestamp;
+      }
+    }
+    buffer.lastActivity = latestTimestamp;
+
+    logger.info(`Rehydrated ${docs.length} messages for channel ${channelId} from MongoDB`);
   }
 
   /**
