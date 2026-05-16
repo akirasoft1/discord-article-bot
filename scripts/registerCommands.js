@@ -108,6 +108,7 @@ async function registerCommands() {
 
   try {
     // Always register globally so commands appear in every guild the bot is in.
+    // Global commands can take up to 1 hour to propagate to Discord clients.
     console.log('\nRegistering globally (may take up to 1 hour to propagate to all guilds)...');
 
     await rest.put(
@@ -117,7 +118,9 @@ async function registerCommands() {
 
     console.log(`Successfully registered ${commandData.length} global commands`);
 
-    // If a test guild is configured, ALSO register there for instant feedback.
+    // If a test guild is configured, ALSO register there for instant feedback
+    // during development. Guild commands shadow global ones in that guild, so
+    // there's no duplication or conflict.
     const testGuildId = config.discord.testGuildId;
     if (testGuildId) {
       console.log(`\nAlso registering to test guild ${testGuildId} (instant)...`);
