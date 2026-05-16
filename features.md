@@ -98,6 +98,31 @@
 
 **TODO: Approach B refactor.** `ImagenService` / `VeoService` / `LyriaService` duplicate noticeable plumbing (enabled checks, image fetching, attachment construction, error shaping). Worth extracting a `MediaGenBase` once Lyria has soaked. See `docs/superpowers/specs/2026-05-15-lyria-music-generation-design.md` ("Approach B").
 
+### ElevenLabs Music Generation (`/elevenmusic`)
+
+Parallel music generation surface via ElevenLabs' `POST /v1/music` (Compose Music). Shipped alongside `/musicgen` (Lyria) for A/B comparison.
+
+**Inputs**
+- `prompt` (required) — description of the music
+- `duration` (optional, 3–600s) — default 90 seconds (matches Lyria Pro for apples-to-apples comparison)
+- `instrumental` (optional, boolean) — `force_instrumental: true` when no lyrics
+- `lyrics` (optional) — triggers an under-the-hood switch to ElevenLabs' `composition_plan` mode (the only API path that accepts lyrics)
+
+**Output**
+- MP3 audio attachment, duration controlled by the `duration` option
+
+**Config**
+- `ELEVENMUSIC_ENABLED=true`
+- `ELEVENLABS_MUSIC_MODEL` (default `music_v1`)
+- `ELEVENLABS_DEFAULT_DURATION_SECONDS` (default `90`)
+- `ELEVENLABS_PER_CALL_COST_USD` (default `0.10`, placeholder pending verified pricing)
+- `ELEVENLABS_API_KEY` (secret)
+
+**Cost tracking**
+- Each call recorded through `CostService.recordMediaGen('elevenlabs-music-v1', user)` and surfaced in the bot's cumulative cost log lines. Not surfaced in `/stats` today (same gap as Lyria — needs MongoDB-backed media-gen records, part of Approach B).
+
+**TODO: Approach B refactor (louder now).** `ImagenService` / `VeoService` / `LyriaService` / `ElevenLabsMusicService` duplicate noticeable plumbing. Worth extracting a `MediaGenBase` now that four services share the same shape. See `docs/superpowers/specs/2026-05-15-elevenlabs-music-generation-design.md` ("Approach B").
+
 ### Channel Context Tracking
 - **Passive Recording**: Opt-in per-channel message tracking (non-blocking)
 - **3-Tier Architecture**: Hot (recent messages in memory), warm (batch-indexed to Qdrant), cold (Mem0 memory extraction)
