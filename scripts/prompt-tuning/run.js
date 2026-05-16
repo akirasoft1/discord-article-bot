@@ -186,7 +186,7 @@ async function main() {
   if (sampled.length === 0) {
     const where = args.channel ? ` in channel ${args.channel}` : '';
     console.error(`ERROR: no eligible messages found for last ${args.days} days${where}`);
-    await mongoService.disconnect();
+    await mongoService.client.close();
     process.exit(1);
   }
 
@@ -212,7 +212,7 @@ async function main() {
     process.exit(1);
   }
 
-  await mongoService.disconnect();
+  await mongoService.client.close();
   const OpenAI = appRequire('openai');
   const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
