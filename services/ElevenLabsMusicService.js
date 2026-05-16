@@ -54,15 +54,37 @@ class ElevenLabsMusicService {
 
     const durationSeconds = options.durationSeconds || this.config.elevenlabs.defaultDurationSeconds;
     const forceInstrumental = options.instrumental === true;
+    const lyrics = (typeof options.lyrics === 'string') ? options.lyrics.trim() : '';
 
-    // NOTE: The @elevenlabs/elevenlabs-js SDK uses camelCase for all request
-    // fields, NOT the snake_case shown in the REST docs.
-    const request = {
-      prompt,
-      musicLengthMs: durationSeconds * 1000,
-      modelId: this.config.elevenlabs.model,
-      forceInstrumental: forceInstrumental
-    };
+    let request;
+    if (lyrics.length > 0) {
+      // ElevenLabs' `forceInstrumental` is prompt-mode-only and would contradict the
+      // presence of lyrics anyway. Drop it with a warn-log when both are provided.
+      if (forceInstrumental) {
+        logger.warn('elevenmusic: ignoring instrumental=true because lyrics were provided');
+      }
+      request = {
+        compositionPlan: {
+          sections: [{
+            sectionName: 'main',
+            positiveLocalStyles: [prompt],
+            negativeLocalStyles: [],
+            durationMs: durationSeconds * 1000,
+            lines: this._splitLyricsIntoMaxLines(lyrics, 200)
+          }]
+        },
+        modelId: this.config.elevenlabs.model
+      };
+    } else {
+      // NOTE: The @elevenlabs/elevenlabs-js SDK uses camelCase for all request
+      // fields, NOT the snake_case shown in the REST docs.
+      request = {
+        prompt,
+        musicLengthMs: durationSeconds * 1000,
+        modelId: this.config.elevenlabs.model,
+        forceInstrumental: forceInstrumental
+      };
+    }
 
     let response;
     try {
@@ -80,6 +102,10 @@ class ElevenLabsMusicService {
     this.costService?.recordMediaGen('elevenlabs-music-v1', user);
 
     return { success: true, buffer, mimeType: 'audio/mpeg' };
+  }
+
+  _splitLyricsIntoMaxLines(lyrics, maxLen) {
+    return lyrics.split('\n').filter((l) => l.length > 0);
   }
 }
 

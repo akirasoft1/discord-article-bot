@@ -113,3 +113,65 @@ describe('ElevenLabsMusicService.generateMusic - prompt mode happy path', () => 
     expect(costService.recordMediaGen).not.toHaveBeenCalled();
   });
 });
+
+describe('ElevenLabsMusicService.generateMusic - compositionPlan mode (lyrics)', () => {
+  let svc;
+  let composeDetailed;
+
+  beforeEach(() => {
+    ElevenLabsClient.mockReset();
+    composeDetailed = jest.fn().mockResolvedValue({ audio: Buffer.from('FAKE_MP3') });
+    ElevenLabsClient.mockImplementation(() => ({ music: { composeDetailed } }));
+    svc = new ElevenLabsMusicService(makeConfig(), { recordMediaGen: jest.fn(), mediaPricing: {} });
+  });
+
+  test('switches to compositionPlan when lyrics provided', async () => {
+    await svc.generateMusic('upbeat jazz', { lyrics: 'first line\nsecond line', durationSeconds: 30 }, { id: 'u1' });
+    const call = composeDetailed.mock.calls[0][0];
+    expect(call.prompt).toBeUndefined();
+    expect(call.musicLengthMs).toBeUndefined();
+    expect(call.compositionPlan).toBeDefined();
+    expect(call.compositionPlan.sections).toHaveLength(1);
+    expect(call.compositionPlan.sections[0]).toMatchObject({
+      sectionName: 'main',
+      positiveLocalStyles: ['upbeat jazz'],
+      negativeLocalStyles: [],
+      durationMs: 30000
+    });
+    expect(call.compositionPlan.sections[0].lines).toEqual(['first line', 'second line']);
+    expect(call.modelId).toBe('music_v1');
+  });
+
+  test('does not pass forceInstrumental in compositionPlan mode (API contradiction)', async () => {
+    await svc.generateMusic('jazz', { lyrics: 'hello', instrumental: true }, { id: 'u1' });
+    const call = composeDetailed.mock.calls[0][0];
+    expect(call.forceInstrumental).toBeUndefined();
+  });
+
+  test('logs warning when instrumental=true is combined with lyrics', async () => {
+    const warnSpy = jest.spyOn(require('../../logger'), 'warn');
+    await svc.generateMusic('jazz', { lyrics: 'hello', instrumental: true }, { id: 'u1' });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/ignoring instrumental=true/i));
+    warnSpy.mockRestore();
+  });
+
+  test('uses default duration in compositionPlan mode too', async () => {
+    await svc.generateMusic('jazz', { lyrics: 'hello' }, { id: 'u1' });
+    const call = composeDetailed.mock.calls[0][0];
+    expect(call.compositionPlan.sections[0].durationMs).toBe(90000);
+  });
+
+  test('empty lyrics string falls back to prompt mode', async () => {
+    await svc.generateMusic('jazz', { lyrics: '' }, { id: 'u1' });
+    const call = composeDetailed.mock.calls[0][0];
+    expect(call.prompt).toBe('jazz');
+    expect(call.compositionPlan).toBeUndefined();
+  });
+
+  test('whitespace-only lyrics falls back to prompt mode', async () => {
+    await svc.generateMusic('jazz', { lyrics: '   \n  ' }, { id: 'u1' });
+    const call = composeDetailed.mock.calls[0][0];
+    expect(call.prompt).toBe('jazz');
+    expect(call.compositionPlan).toBeUndefined();
+  });
+});
