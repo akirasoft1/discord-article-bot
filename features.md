@@ -131,6 +131,8 @@ Parallel music generation surface via ElevenLabs' `POST /v1/music` (Compose Musi
 - **Admin Controls**: `/channeltrack` command for enabling/disabling per channel
 - **Configurable Retention**: Adjustable retention period and batch indexing interval
 - **Startup Cleanup**: Expired messages purged from Qdrant on bot startup (prevents accumulation across pod restarts)
+- **Startup buffer rehydration**: On bot startup, the per-channel hot buffer is repopulated from MongoDB's `channel_messages` collection, so the bot has immediate conversation context after a pod restart instead of waiting for 10+ new messages to arrive.
+- **Tunable prompt window**: `CHANNEL_CONTEXT_PROMPT_RECENT_COUNT` controls how many of the buffered messages get injected into the chat prompt's recent-conversation block (independent of the buffer cap `CHANNEL_CONTEXT_RECENT_COUNT`).
 
 ### Voice Profile (Channel Voice Personality)
 - **Dynamic Style Learning**: Analyzes IRC history (378k+ conversations) and Discord messages to build a communication style profile
