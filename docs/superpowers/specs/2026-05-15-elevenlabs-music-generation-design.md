@@ -77,28 +77,30 @@ ElevenmusicCommand.execute:
    ElevenLabsMusicService.generateMusic:
    ├─ if (!isEnabled()) return {success:false, error:"…not enabled."}
    ├─ if (lyrics provided and non-empty):
-   │     // ElevenLabs' `force_instrumental` is prompt-mode-only and contradicts having lyrics anyway.
+   │     // ElevenLabs' `forceInstrumental` is prompt-mode-only and contradicts having lyrics anyway.
    │     // If the user also set `instrumental:true`, log a warning and drop it; lyrics imply vocals.
    │     if (instrumental) logger.warn('elevenmusic: ignoring instrumental=true because lyrics were provided')
    │     compositionPlan = {
    │       sections: [{
-   │         section_name: "main",
-   │         positive_local_styles: [prompt],
-   │         negative_local_styles: [],
-   │         duration_ms: durationSeconds * 1000,
+   │         sectionName: "main",
+   │         positiveLocalStyles: [prompt],
+   │         negativeLocalStyles: [],
+   │         durationMs: durationSeconds * 1000,
    │         lines: splitLyricsIntoMaxLines(lyrics, 200)
    │       }]
    │     }
-   │     response = await client.music.compose({
-   │       composition_plan: compositionPlan,
-   │       model_id: config.elevenlabs.model
+   │     // SDK uses camelCase for all request fields, NOT the snake_case shown in the
+   │     // REST docs. composeDetailed() returns { audio: Buffer } directly.
+   │     response = await client.music.composeDetailed({
+   │       compositionPlan,
+   │       modelId: config.elevenlabs.model
    │     })
    │ else:
-   │     response = await client.music.compose({
+   │     response = await client.music.composeDetailed({
    │       prompt,
-   │       music_length_ms: durationSeconds * 1000,
-   │       model_id: config.elevenlabs.model,
-   │       force_instrumental: instrumental
+   │       musicLengthMs: durationSeconds * 1000,
+   │       modelId: config.elevenlabs.model,
+   │       forceInstrumental: instrumental
    │     })
    ├─ collect raw audio bytes (SDK returns a Buffer or Readable; concat as needed)
    ├─ costService?.recordMediaGen('elevenlabs-music-v1', user)
