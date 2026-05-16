@@ -184,7 +184,54 @@ async function main() {
   console.log(`Sampled ${sampled.length} messages`);
 
   await mongoService.disconnect();
-  // Task 5 onwards extend main() — OpenAI replays + report writing
+  const OpenAI = require('openai');
+  const openai = new OpenAI({ apiKey: config.openai.apiKey });
+
+  const baselineSystem = baselineModule.systemPrompt.replace('{VOICE_INSTRUCTIONS}', voiceInstructions);
+  const candidateSystem = candidateModule.systemPrompt.replace('{VOICE_INSTRUCTIONS}', voiceInstructions);
+
+  async function callOnce(systemPrompt, userContent) {
+    try {
+      const params = {
+        model: args.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent }
+        ]
+      };
+      if (typeof args.seed === 'number') params.seed = args.seed;
+      const resp = await openai.chat.completions.create(params);
+      return {
+        ok: true,
+        text: resp.choices?.[0]?.message?.content || '',
+        usage: resp.usage || null
+      };
+    } catch (err) {
+      return { ok: false, error: err.message || String(err) };
+    }
+  }
+
+  // Batch with concurrency 4
+  const BATCH = 4;
+  const results = new Array(sampled.length);
+  let completed = 0;
+  for (let i = 0; i < sampled.length; i += BATCH) {
+    const slice = sampled.slice(i, i + BATCH);
+    const sliceResults = await Promise.all(slice.map(async (msg) => {
+      const [base, cand] = await Promise.all([
+        callOnce(baselineSystem, msg.content),
+        callOnce(candidateSystem, msg.content)
+      ]);
+      return { msg, baseline: base, candidate: cand };
+    }));
+    sliceResults.forEach((r, j) => {
+      results[i + j] = r;
+      completed++;
+      console.log(`[${completed}/${sampled.length}] case complete`);
+    });
+  }
+
+  // Task 6 onwards extend main() — build + write the report
 }
 
 main().catch((err) => {
